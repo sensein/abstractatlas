@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ohbm2026 import assets, enrichment, neuroscape
+from ohbm2026 import assets, enrichment, neuroscape, openalex
 
 
 def _copy_actions(target: argparse.ArgumentParser, source: argparse.ArgumentParser) -> None:
@@ -38,6 +38,30 @@ def build_parser() -> argparse.ArgumentParser:
 
     stage2_parser = subparsers.add_parser("embed-stage2", help="Train and apply a local NeuroScape stage-2 model")
     _copy_actions(stage2_parser, neuroscape.build_stage2_parser())
+
+    semantic_analysis_parser = subparsers.add_parser(
+        "semantic-analysis",
+        help="Build a semantic graph, communities, and cluster summaries from a local embedding bundle",
+    )
+    _copy_actions(semantic_analysis_parser, neuroscape.build_semantic_analysis_parser())
+
+    umap_parser = subparsers.add_parser(
+        "umap-plot",
+        help="Project a local embedding bundle to 2D with UMAP and write an interactive Plotly HTML",
+    )
+    _copy_actions(umap_parser, neuroscape.build_umap_parser())
+
+    analyze_stage2_parser = subparsers.add_parser(
+        "analyze-stage2",
+        help="Compatibility alias for semantic analysis on a local embedding bundle",
+    )
+    _copy_actions(analyze_stage2_parser, neuroscape.build_stage2_analysis_parser())
+
+    references_parser = subparsers.add_parser(
+        "reference-metadata",
+        help="Resolve abstract references against OpenAlex and persist citation metadata",
+    )
+    _copy_actions(references_parser, openalex.build_parser())
 
     manifest_parser = subparsers.add_parser("write-manifest", help="Write the NeuroScape handoff manifest")
     _copy_actions(manifest_parser, neuroscape.build_manifest_parser())
@@ -75,6 +99,14 @@ def main(argv: list[str] | None = None) -> int:
         return neuroscape.voyage_main(subcommand_argv)
     if command == "embed-stage2":
         return neuroscape.stage2_main(subcommand_argv)
+    if command == "semantic-analysis":
+        return neuroscape.semantic_analysis_main(subcommand_argv)
+    if command == "umap-plot":
+        return neuroscape.umap_main(subcommand_argv)
+    if command == "analyze-stage2":
+        return neuroscape.stage2_analysis_main(subcommand_argv)
+    if command == "reference-metadata":
+        return openalex.main(subcommand_argv)
     if command == "write-manifest":
         return neuroscape.manifest_main(subcommand_argv)
 

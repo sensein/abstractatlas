@@ -63,11 +63,39 @@ class CLITest(unittest.TestCase):
         self.assertEqual(result, 21)
         stage2_main.assert_called_once_with(["--epochs", "5"])
 
-    def test_write_manifest_subcommand_delegates_to_manifest_main(self) -> None:
-        with mock.patch.object(cli.neuroscape, "manifest_main", return_value=23) as manifest_main:
-            result = cli.main(["write-manifest", "--output", "manifest.json"])
+    def test_semantic_analysis_subcommand_delegates_to_semantic_analysis_main(self) -> None:
+        with mock.patch.object(cli.neuroscape, "semantic_analysis_main", return_value=22) as semantic_analysis_main:
+            result = cli.main(["semantic-analysis", "--num-neighbors", "25"])
+
+        self.assertEqual(result, 22)
+        semantic_analysis_main.assert_called_once_with(["--num-neighbors", "25"])
+
+    def test_umap_plot_subcommand_delegates_to_umap_main(self) -> None:
+        with mock.patch.object(cli.neuroscape, "umap_main", return_value=23) as umap_main:
+            result = cli.main(["umap-plot", "--n-neighbors", "25"])
 
         self.assertEqual(result, 23)
+        umap_main.assert_called_once_with(["--n-neighbors", "25"])
+
+    def test_analyze_stage2_subcommand_delegates_to_stage2_analysis_main(self) -> None:
+        with mock.patch.object(cli.neuroscape, "stage2_analysis_main", return_value=24) as stage2_analysis_main:
+            result = cli.main(["analyze-stage2", "--num-neighbors", "25"])
+
+        self.assertEqual(result, 24)
+        stage2_analysis_main.assert_called_once_with(["--num-neighbors", "25"])
+
+    def test_reference_metadata_subcommand_delegates_to_openalex_main(self) -> None:
+        with mock.patch.object(cli.openalex, "main", return_value=24) as openalex_main:
+            result = cli.main(["reference-metadata", "--use-title-search"])
+
+        self.assertEqual(result, 24)
+        openalex_main.assert_called_once_with(["--use-title-search"])
+
+    def test_write_manifest_subcommand_delegates_to_manifest_main(self) -> None:
+        with mock.patch.object(cli.neuroscape, "manifest_main", return_value=25) as manifest_main:
+            result = cli.main(["write-manifest", "--output", "manifest.json"])
+
+        self.assertEqual(result, 25)
         manifest_main.assert_called_once_with(["--output", "manifest.json"])
 
 

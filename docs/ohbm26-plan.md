@@ -10,7 +10,8 @@ Build a complete local OHBM 2026 abstract processing pipeline that:
 4. enriches abstracts with author metadata and markdown sections,
 5. analyzes figures locally with Ollama + Qwen,
 6. produces local embedding spaces and relationship indexes,
-7. keeps a path open for NeuroScape-compatible retraining and evaluation.
+7. builds a purely semantic graph-and-clustering analysis for the single-year corpus,
+8. keeps a path open for NeuroScape-compatible retraining and evaluation.
 
 This is the operational planning document for the repository.
 
@@ -24,11 +25,13 @@ This is the operational planning document for the repository.
 - `data/authors.json`
   - normalized author metadata keyed by author ID
 - `data/abstracts_enriched.json`
-  - enriched abstracts with markdown sections, author resolution, figure analyses, and embedding text
+  - enriched abstracts with markdown sections and figure analyses only
 - `data/image_analyses.json`
   - cached multimodal figure analysis output
 - `data/embeddings/minilm_stage1/`
   - local MiniLM embeddings and neighbors
+- `data/embeddings/minilm_stage1/semantic_analysis/`
+  - semantic similarity graph, community assignments, and cluster summaries
 - `data/embeddings/neuroscape_stage2_manifest.json`
   - retraining/compatibility handoff for NeuroScape work
 
@@ -41,7 +44,7 @@ This is the operational planning document for the repository.
 - `src/ohbm2026/enrichment.py`
   - author export, HTML-to-markdown conversion, section mapping, local Qwen figure analysis, enriched abstract assembly, and phase-2 CLI
 - `src/ohbm2026/neuroscape.py`
-  - stage-one embeddings, similarity graph generation, NeuroScape handoff manifest
+  - stage-one embeddings, semantic graph generation, clustering, and NeuroScape handoff manifest
 - `src/ohbm2026/cli.py`
   - unified `ohbmcli` command
 
@@ -61,6 +64,8 @@ This is the operational planning document for the repository.
   - generate local MiniLM embeddings
 - `ohbmcli embed-voyage`
   - generate Voyage embeddings
+- `ohbmcli semantic-analysis`
+  - build the semantic graph and semantic cluster summaries from any local embedding bundle
 - `ohbmcli write-manifest`
   - write the NeuroScape handoff manifest
 
@@ -74,8 +79,9 @@ This is the operational planning document for the repository.
 6. Run local Qwen multimodal analysis on linked figures.
 7. Merge figure-derived keywords back into enriched abstracts.
 8. Generate local stage-one embeddings with `all-MiniLM-L6-v2`.
-9. Compute nearest-neighbor relationships for local exploration.
-10. Prepare a retraining handoff for NeuroScape stage-two work.
+9. Build the semantic similarity graph and cluster summaries.
+10. Compute nearest-neighbor relationships for local exploration.
+11. Prepare a retraining handoff for NeuroScape stage-two work.
 
 ## Workstreams
 
@@ -197,10 +203,12 @@ Create a local semantic search space and retain a path toward NeuroScape stage-t
 
 Checks:
 
- - [x] Build embedding inputs on demand from selected abstract sections.
+- [x] Build embedding inputs on demand from selected abstract sections.
 - [x] Generate local stage-one embeddings with `all-MiniLM-L6-v2`.
 - [x] Persist vectors and metadata to `data/embeddings/minilm_stage1/`.
 - [x] Build nearest-neighbor relationships.
+- [x] Build a semantic similarity graph and community assignments without citation links.
+- [x] Summarize semantic clusters with keywords and representative abstracts.
 - [x] Write a NeuroScape stage-two handoff manifest.
 - [ ] Validate the PR-based NeuroScape retraining path and required artifacts.
 
@@ -216,6 +224,7 @@ Checks:
 - [x] Convert HTML response bodies into markdown.
 - [x] Build ordered section markdown and `abstract_markdown`.
 - [x] Create a local MiniLM embedding pipeline and neighbor database.
+- [x] Create a purely semantic graph-and-cluster pipeline for the single-year corpus.
 - [x] Split the codebase into API, asset, enrichment, and embedding modules.
 - [x] Add a unified `ohbmcli` entrypoint.
 - [ ] Complete a full cached figure-analysis sweep with local `qwen3.5:35b`.
@@ -230,11 +239,13 @@ Checks:
 - Confirm refresh operations can rebuild `local_assets` from the existing JSON database.
 - Confirm markdown conversion preserves section order and list formatting.
 - Confirm the local embedding bundle and neighbor graph have one entry per abstract.
+- Confirm the semantic analysis writes a graph, assignments, and cluster summaries from local embeddings.
 - Confirm figure analysis remains resumable and cache-first.
 
 ## NeuroScape Direction
 
 - Treat the local `all-MiniLM-L6-v2` embedding space as the executed stage-one local baseline.
+- Treat the semantic graph-and-cluster workflow as the primary analysis path for this single-year abstract corpus.
 - Treat NeuroScape stage-two as a separate retraining/validation track rather than a direct reuse of the published Voyage-based projection.
 - Keep the PR-based retraining path as the next implementation target once the repository workflow is validated locally.
 
@@ -244,3 +255,5 @@ Checks:
 - Scripts should check for a required local Ollama model before pulling anything.
 - Asset logic should continue to prefer local reuse over redownloads.
 - The local JSON databases remain the source of truth for refresh-style maintenance tasks.
+- Temporal trend analysis is out of scope for the 2026-only corpus.
+- Citation-density graph analysis is out of scope unless internal citation links become available.

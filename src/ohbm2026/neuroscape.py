@@ -15,6 +15,8 @@ DEFAULT_MINILM_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_EMBEDDING_FIELDS = ("title", "introduction", "methods", "results", "conclusion")
 DEFAULT_STAGE2_OUTPUT_DIMENSION = 64
 DEFAULT_STAGE2_HIDDEN_DIMENSIONS = (192, 96, 64)
+DEFAULT_UMAP_NEIGHBORS = 15
+DEFAULT_UMAP_MIN_DIST = 0.1
 ALLOWED_EMBEDDING_FIELDS = {
     "title",
     "introduction",
@@ -54,6 +56,32 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def parse_string_list_value(raw_value: str | None) -> list[str]:
+    if not raw_value:
+        return []
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        text = raw_value.strip()
+        return [text] if text else []
+    if isinstance(parsed, list):
+        return [str(item).strip() for item in parsed if str(item).strip()]
+    if isinstance(parsed, str):
+        text = parsed.strip()
+        return [text] if text else []
+    return []
+
+
+def unique_strings(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
 def load_title_lookup(path: Path) -> dict[int, str]:
     database = json.loads(path.read_text(encoding="utf-8"))
     return {
@@ -61,6 +89,64 @@ def load_title_lookup(path: Path) -> dict[int, str]:
         for abstract in database.get("abstracts", [])
         if isinstance(abstract.get("id"), int)
     }
+
+
+def extract_raw_keywords(abstract: dict[str, Any]) -> list[str]:
+    for response in abstract.get("responses", []):
+        if str(response.get("question_name") or "").strip().lower() == "keywords":
+            return parse_string_list_value(response.get("value"))
+    return []
+
+
+def load_annotation_lookup(
+    raw_path: Path,
+    enriched_path: Path | None = None,
+) -> dict[int, dict[str, Any]]:
+    raw_database = json.loads(raw_path.read_text(encoding="utf-8"))
+    enriched_lookup: dict[int, dict[str, Any]] = {}
+    if enriched_path and enriched_path.exists():
+        enriched_database = json.loads(enriched_path.read_text(encoding="utf-8"))
+        enriched_lookup = {
+            abstract["id"]: abstract
+            for abstract in enriched_database.get("abstracts", [])
+            if isinstance(abstract.get("id"), int)
+        }
+
+    annotations: dict[int, dict[str, Any]] = {}
+    for abstract in raw_database.get("abstracts", []):
+        abstract_id = abstract.get("id")
+        if not isinstance(abstract_id, int):
+            continue
+        enriched = enriched_lookup.get(abstract_id, {})
+        keywords = unique_strings(
+            extract_raw_keywords(abstract)
+            + [str(keyword).strip() for keyword in enriched.get("figure_keywords", []) if str(keyword).strip()]
+        )
+        annotations[abstract_id] = {
+            "id": abstract_id,
+            "title": abstract.get("title") or "",
+            "accepted_for": abstract.get("accepted_for") or "Unknown",
+            "keywords": keywords,
+        }
+    return annotations
+
+
+def build_visualization_records(
+    ids: list[int],
+    annotation_lookup: dict[int, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for abstract_id in ids:
+        annotation = annotation_lookup.get(int(abstract_id), {})
+        records.append(
+            {
+                "id": int(abstract_id),
+                "title": annotation.get("title") or "",
+                "accepted_for": annotation.get("accepted_for") or "Unknown",
+                "keywords": list(annotation.get("keywords") or []),
+            }
+        )
+    return records
 
 
 def normalize_embedding_fields(fields: list[str] | tuple[str, ...] | None) -> list[str]:
@@ -273,6 +359,104 @@ def load_stage1_bundle(bundle_dir: Path) -> dict[str, Any]:
     if len(ids) != len(rows) or len(ids) != int(matrix.shape[0]):
         raise NeuroScapeError("Stage-1 bundle metadata does not match vectors.npy")
     return {"ids": ids, "metadata": rows, "matrix": matrix, "source_metadata": metadata}
+
+
+def load_embedding_bundle(bundle_dir: Path) -> dict[str, Any]:
+    return load_stage1_bundle(bundle_dir)
+
+
+def compute_umap_projection(
+    matrix: Any,
+    n_neighbors: int = DEFAULT_UMAP_NEIGHBORS,
+    min_dist: float = DEFAULT_UMAP_MIN_DIST,
+    metric: str = "cosine",
+    random_state: int = 42,
+) -> Any:
+    import umap
+
+    reducer = umap.UMAP(
+        n_components=2,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        metric=metric,
+        random_state=random_state,
+    )
+    return reducer.fit_transform(matrix)
+
+
+def write_umap_outputs(
+    output_html: Path,
+    output_json: Path,
+    coordinates: Any,
+    records: list[dict[str, Any]],
+    title: str = "OHBM 2026 Abstract Embeddings UMAP",
+) -> None:
+    import numpy as np
+    import plotly.graph_objects as go
+
+    output_html.parent.mkdir(parents=True, exist_ok=True)
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+
+    coords = np.asarray(coordinates)
+    grouped_indices: dict[str, list[int]] = {}
+    for index, record in enumerate(records):
+        grouped_indices.setdefault(str(record.get("accepted_for") or "Unknown"), []).append(index)
+
+    figure = go.Figure()
+    for group_name in sorted(grouped_indices):
+        indices = grouped_indices[group_name]
+        customdata = [
+            [
+                records[index]["id"],
+                records[index]["title"],
+                group_name,
+                ", ".join(records[index]["keywords"]),
+            ]
+            for index in indices
+        ]
+        figure.add_trace(
+            go.Scattergl(
+                x=coords[indices, 0],
+                y=coords[indices, 1],
+                mode="markers",
+                name=group_name,
+                marker={"size": 7, "opacity": 0.8},
+                customdata=customdata,
+                hovertemplate=(
+                    "id=%{customdata[0]}<br>"
+                    "title=%{customdata[1]}<br>"
+                    "accepted_for=%{customdata[2]}<br>"
+                    "keywords=%{customdata[3]}<extra></extra>"
+                ),
+            )
+        )
+    figure.update_layout(
+        title=title,
+        xaxis_title="UMAP-1",
+        yaxis_title="UMAP-2",
+        template="plotly_white",
+        legend_title="Accepted For",
+    )
+    figure.write_html(str(output_html), include_plotlyjs="cdn")
+
+    write_json(
+        output_json,
+        {
+            "title": title,
+            "count": len(records),
+            "points": [
+                {
+                    "id": record["id"],
+                    "title": record["title"],
+                    "accepted_for": record["accepted_for"],
+                    "keywords": record["keywords"],
+                    "x": float(coords[index, 0]),
+                    "y": float(coords[index, 1]),
+                }
+                for index, record in enumerate(records)
+            ],
+        },
+    )
 
 
 def split_stage2_matrix(
@@ -553,6 +737,298 @@ def write_stage2_bundle(
     )
 
 
+def load_enriched_lookup(path: Path) -> dict[int, dict[str, Any]]:
+    return {
+        abstract["id"]: abstract
+        for abstract in load_embedding_inputs(path)
+        if isinstance(abstract.get("id"), int)
+    }
+
+
+def align_semantic_records(
+    ids: list[int],
+    enriched_lookup: dict[int, dict[str, Any]],
+    title_lookup: dict[int, str] | None = None,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for abstract_id in ids:
+        abstract = enriched_lookup.get(abstract_id, {"id": abstract_id})
+        record = dict(abstract)
+        record["id"] = abstract_id
+        record["title"] = (
+            (title_lookup or {}).get(abstract_id)
+            or abstract.get("title")
+            or ""
+        )
+        record["cluster_document"] = build_embedding_text(
+            record,
+            DEFAULT_EMBEDDING_FIELDS,
+            title_lookup=title_lookup,
+        )
+        records.append(record)
+    return records
+
+
+def align_cluster_records(
+    ids: list[int],
+    enriched_lookup: dict[int, dict[str, Any]],
+    title_lookup: dict[int, str] | None = None,
+) -> list[dict[str, Any]]:
+    return align_semantic_records(ids, enriched_lookup, title_lookup=title_lookup)
+
+
+def build_knn_graph(ids: list[int], matrix: Any, num_neighbors: int = 50) -> Any:
+    import networkx as nx
+    from sklearn.neighbors import NearestNeighbors
+
+    if num_neighbors <= 0:
+        raise NeuroScapeError("num_neighbors must be positive")
+    if len(ids) != int(matrix.shape[0]):
+        raise NeuroScapeError("IDs and matrix row count do not match")
+
+    graph = nx.Graph()
+    graph.add_nodes_from(int(abstract_id) for abstract_id in ids)
+    neighbor_count = min(num_neighbors + 1, int(matrix.shape[0]))
+    search = NearestNeighbors(n_neighbors=neighbor_count, metric="cosine", algorithm="brute")
+    search.fit(matrix)
+    distances, indices = search.kneighbors(matrix)
+
+    for row_index, abstract_id in enumerate(ids):
+        for neighbor_index, distance in zip(indices[row_index][1:], distances[row_index][1:]):
+            neighbor_id = int(ids[int(neighbor_index)])
+            similarity = max(0.0, 1.0 - float(distance))
+            if similarity <= 0.0:
+                continue
+            if graph.has_edge(int(abstract_id), neighbor_id):
+                graph[int(abstract_id)][neighbor_id]["weight"] = max(
+                    float(graph[int(abstract_id)][neighbor_id]["weight"]),
+                    similarity,
+                )
+            else:
+                graph.add_edge(int(abstract_id), neighbor_id, weight=similarity)
+    return graph
+
+
+def detect_semantic_communities(
+    graph: Any,
+    num_resolution_parameter: int = 20,
+    max_resolution_parameter: float = 1.0,
+) -> dict[str, Any]:
+    import numpy as np
+    from networkx.algorithms.community import greedy_modularity_communities, modularity
+
+    if num_resolution_parameter <= 0:
+        raise NeuroScapeError("num_resolution_parameter must be positive")
+    resolution_values = np.linspace(
+        max_resolution_parameter / num_resolution_parameter,
+        max_resolution_parameter,
+        num_resolution_parameter,
+    )
+    history: list[dict[str, Any]] = []
+    best_modularity = float("-inf")
+    best_resolution = float(resolution_values[0])
+    best_communities: list[set[int]] = []
+
+    for resolution in resolution_values:
+        try:
+            communities = list(
+                greedy_modularity_communities(
+                    graph,
+                    weight="weight",
+                    resolution=float(resolution),
+                )
+            )
+            modularity_value = float(
+                modularity(graph, communities, weight="weight", resolution=float(resolution))
+            )
+        except TypeError:
+            communities = list(greedy_modularity_communities(graph, weight="weight"))
+            modularity_value = float(modularity(graph, communities, weight="weight"))
+        history.append(
+            {
+                "resolution": float(resolution),
+                "modularity": modularity_value,
+                "community_count": len(communities),
+            }
+        )
+        if modularity_value > best_modularity:
+            best_modularity = modularity_value
+            best_resolution = float(resolution)
+            best_communities = [set(community) for community in communities]
+
+    ordered_communities = sorted(best_communities, key=lambda community: (-len(community), min(community)))
+    assignments: dict[int, int] = {}
+    for cluster_id, community in enumerate(ordered_communities):
+        for abstract_id in community:
+            assignments[int(abstract_id)] = cluster_id
+
+    return {
+        "best_resolution": best_resolution,
+        "best_modularity": best_modularity,
+        "history": history,
+        "communities": ordered_communities,
+        "assignments": assignments,
+    }
+
+
+def detect_stage2_communities(
+    graph: Any,
+    num_resolution_parameter: int = 20,
+    max_resolution_parameter: float = 1.0,
+) -> dict[str, Any]:
+    return detect_semantic_communities(
+        graph,
+        num_resolution_parameter=num_resolution_parameter,
+        max_resolution_parameter=max_resolution_parameter,
+    )
+
+
+def extract_cluster_keywords(documents: list[str], max_keywords: int = 8) -> list[str]:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
+    filtered_documents = [document for document in documents if document.strip()]
+    if not filtered_documents:
+        return []
+    try:
+        vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), max_features=5000)
+        matrix = vectorizer.fit_transform(filtered_documents)
+    except ValueError:
+        return []
+    scores = matrix.sum(axis=0).A1
+    feature_names = vectorizer.get_feature_names_out()
+    ranked_indices = scores.argsort()[::-1]
+    keywords = [feature_names[index] for index in ranked_indices if scores[index] > 0]
+    return keywords[:max_keywords]
+
+
+def summarize_semantic_clusters(
+    ids: list[int],
+    matrix: Any,
+    records: list[dict[str, Any]],
+    assignments: dict[int, int],
+    max_keywords: int = 8,
+    max_representatives: int = 5,
+) -> list[dict[str, Any]]:
+    import numpy as np
+
+    index_by_id = {int(abstract_id): position for position, abstract_id in enumerate(ids)}
+    cluster_members: dict[int, list[int]] = {}
+    for abstract_id, cluster_id in assignments.items():
+        cluster_members.setdefault(int(cluster_id), []).append(int(abstract_id))
+
+    centroids: dict[int, Any] = {}
+    for cluster_id, member_ids in cluster_members.items():
+        cluster_matrix = matrix[[index_by_id[member_id] for member_id in member_ids]]
+        centroid = cluster_matrix.mean(axis=0)
+        centroid_norm = np.linalg.norm(centroid)
+        if centroid_norm:
+            centroid = centroid / centroid_norm
+        centroids[cluster_id] = centroid
+
+    cluster_ids = sorted(cluster_members)
+    centroid_matrix = np.vstack([centroids[cluster_id] for cluster_id in cluster_ids])
+    centroid_similarities = centroid_matrix @ centroid_matrix.T
+    record_by_id = {int(record["id"]): record for record in records}
+
+    summaries: list[dict[str, Any]] = []
+    for cluster_position, cluster_id in enumerate(cluster_ids):
+        member_ids = sorted(cluster_members[cluster_id])
+        member_indices = [index_by_id[member_id] for member_id in member_ids]
+        member_matrix = matrix[member_indices]
+        centroid = centroids[cluster_id]
+        scores = member_matrix @ centroid
+        representative_order = np.argsort(scores)[::-1][:max_representatives]
+        representative_ids = [member_ids[index] for index in representative_order]
+        documents = [record_by_id[member_id].get("cluster_document", "") for member_id in member_ids]
+        keywords = extract_cluster_keywords(documents, max_keywords=max_keywords)
+        accepted_for_counts: dict[str, int] = {}
+        for member_id in member_ids:
+            accepted_for = record_by_id[member_id].get("accepted_for") or "Unknown"
+            accepted_for_counts[str(accepted_for)] = accepted_for_counts.get(str(accepted_for), 0) + 1
+        similarity_row = centroid_similarities[cluster_position].copy()
+        similarity_row[cluster_position] = -1.0
+        nearest_cluster_position = int(np.argmax(similarity_row))
+        nearest_cluster_id = cluster_ids[nearest_cluster_position]
+
+        summaries.append(
+            {
+                "cluster_id": cluster_id,
+                "size": len(member_ids),
+                "label": ", ".join(keywords[:3]) if keywords else f"Cluster {cluster_id}",
+                "keywords": keywords,
+                "accepted_for_counts": accepted_for_counts,
+                "representative_abstracts": [
+                    {
+                        "id": member_id,
+                        "title": record_by_id[member_id].get("title") or "",
+                    }
+                    for member_id in representative_ids
+                ],
+                "most_similar_cluster_id": nearest_cluster_id,
+                "most_similar_cluster_score": float(similarity_row[nearest_cluster_position]),
+            }
+        )
+    return summaries
+
+
+def summarize_stage2_clusters(
+    ids: list[int],
+    matrix: Any,
+    records: list[dict[str, Any]],
+    assignments: dict[int, int],
+    max_keywords: int = 8,
+    max_representatives: int = 5,
+) -> list[dict[str, Any]]:
+    return summarize_semantic_clusters(
+        ids,
+        matrix,
+        records,
+        assignments,
+        max_keywords=max_keywords,
+        max_representatives=max_representatives,
+    )
+
+
+def write_semantic_analysis(
+    output_dir: Path,
+    graph: Any,
+    community_result: dict[str, Any],
+    cluster_summaries: list[dict[str, Any]],
+) -> None:
+    import networkx as nx
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    graphml_graph = nx.relabel_nodes(graph, lambda node: str(node))
+    nx.write_graphml(graphml_graph, output_dir / "article_similarity.graphml")
+    write_json(
+        output_dir / "community_detection.json",
+        {
+            "best_resolution": community_result["best_resolution"],
+            "best_modularity": community_result["best_modularity"],
+            "history": community_result["history"],
+        },
+    )
+    write_json(
+        output_dir / "cluster_assignments.json",
+        {
+            "assignments": {
+                str(abstract_id): cluster_id
+                for abstract_id, cluster_id in sorted(community_result["assignments"].items())
+            }
+        },
+    )
+    write_json(output_dir / "cluster_summaries.json", {"clusters": cluster_summaries})
+
+
+def write_stage2_analysis(
+    output_dir: Path,
+    graph: Any,
+    community_result: dict[str, Any],
+    cluster_summaries: list[dict[str, Any]],
+) -> None:
+    write_semantic_analysis(output_dir, graph, community_result, cluster_summaries)
+
+
 def build_minilm_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate local MiniLM embeddings for OHBM 2026 abstracts")
     parser.add_argument("--input", default="data/abstracts_enriched.json")
@@ -717,6 +1193,136 @@ def stage2_main(argv: list[str] | None = None) -> int:
                 "device": training_summary["device"],
                 "best_validation_loss": training_summary["best_validation_loss"],
                 "epochs": args.epochs,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def build_semantic_analysis_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Build a semantic graph, detect communities, and summarize clusters from a local embedding bundle"
+    )
+    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
+    parser.add_argument("--input", default="data/abstracts_enriched.json")
+    parser.add_argument("--title-input", default="data/abstracts.json")
+    parser.add_argument("--output-dir", default="data/embeddings/minilm_stage1/semantic_analysis")
+    parser.add_argument("--num-neighbors", type=int, default=50)
+    parser.add_argument("--num-resolution-parameter", type=int, default=20)
+    parser.add_argument("--max-resolution-parameter", type=float, default=1.0)
+    parser.add_argument("--max-keywords", type=int, default=8)
+    parser.add_argument("--max-representatives", type=int, default=5)
+    return parser
+
+
+def semantic_analysis_main(argv: list[str] | None = None) -> int:
+    args = build_semantic_analysis_parser().parse_args(argv)
+    bundle = load_embedding_bundle(Path(args.embeddings_dir))
+    title_lookup = load_title_lookup(Path(args.title_input))
+    enriched_lookup = load_enriched_lookup(Path(args.input))
+    records = align_semantic_records(bundle["ids"], enriched_lookup, title_lookup=title_lookup)
+    graph = build_knn_graph(bundle["ids"], bundle["matrix"], num_neighbors=args.num_neighbors)
+    community_result = detect_semantic_communities(
+        graph,
+        num_resolution_parameter=args.num_resolution_parameter,
+        max_resolution_parameter=args.max_resolution_parameter,
+    )
+    cluster_summaries = summarize_semantic_clusters(
+        bundle["ids"],
+        bundle["matrix"],
+        records,
+        community_result["assignments"],
+        max_keywords=args.max_keywords,
+        max_representatives=args.max_representatives,
+    )
+    write_semantic_analysis(Path(args.output_dir), graph, community_result, cluster_summaries)
+    print(
+        json.dumps(
+            {
+                "embeddings_dir": args.embeddings_dir,
+                "output_dir": args.output_dir,
+                "node_count": len(bundle["ids"]),
+                "edge_count": int(graph.number_of_edges()),
+                "cluster_count": len(cluster_summaries),
+                "best_resolution": community_result["best_resolution"],
+                "best_modularity": community_result["best_modularity"],
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def build_stage2_analysis_parser() -> argparse.ArgumentParser:
+    parser = build_semantic_analysis_parser()
+    parser.description = (
+        "Compatibility alias for semantic analysis from a local embedding bundle"
+    )
+    return parser
+
+
+def stage2_analysis_main(argv: list[str] | None = None) -> int:
+    argv = list(argv or [])
+    translated_argv: list[str] = []
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token == "--stage2-dir":
+            translated_argv.append("--embeddings-dir")
+        else:
+            translated_argv.append(token)
+        index += 1
+    return semantic_analysis_main(translated_argv)
+
+
+def build_umap_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Project a local embedding bundle to 2D with UMAP and write an interactive Plotly HTML"
+    )
+    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
+    parser.add_argument("--raw-input", default="data/abstracts.json")
+    parser.add_argument("--enriched-input", default="data/abstracts_enriched.json")
+    parser.add_argument("--output-html", default="data/embeddings/minilm_stage1/umap_2d.html")
+    parser.add_argument("--output-json", default="data/embeddings/minilm_stage1/umap_2d.json")
+    parser.add_argument("--n-neighbors", type=int, default=DEFAULT_UMAP_NEIGHBORS)
+    parser.add_argument("--min-dist", type=float, default=DEFAULT_UMAP_MIN_DIST)
+    parser.add_argument("--metric", default="cosine")
+    parser.add_argument("--random-state", type=int, default=42)
+    return parser
+
+
+def umap_main(argv: list[str] | None = None) -> int:
+    args = build_umap_parser().parse_args(argv)
+    bundle = load_embedding_bundle(Path(args.embeddings_dir))
+    annotations = load_annotation_lookup(Path(args.raw_input), Path(args.enriched_input))
+    records = build_visualization_records(bundle["ids"], annotations)
+    coordinates = compute_umap_projection(
+        bundle["matrix"],
+        n_neighbors=args.n_neighbors,
+        min_dist=args.min_dist,
+        metric=args.metric,
+        random_state=args.random_state,
+    )
+    write_umap_outputs(
+        Path(args.output_html),
+        Path(args.output_json),
+        coordinates,
+        records,
+        title="OHBM 2026 Abstract Embeddings UMAP",
+    )
+    print(
+        json.dumps(
+            {
+                "embeddings_dir": args.embeddings_dir,
+                "raw_input": args.raw_input,
+                "enriched_input": args.enriched_input,
+                "output_html": args.output_html,
+                "output_json": args.output_json,
+                "count": len(records),
+                "n_neighbors": args.n_neighbors,
+                "min_dist": args.min_dist,
+                "metric": args.metric,
             },
             indent=2,
         )

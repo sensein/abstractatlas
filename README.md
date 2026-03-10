@@ -3,7 +3,7 @@
 This project builds a local OHBM 2026 abstract corpus from the Oxford
 Abstracts GraphQL API, keeps only methods/results figure assets, enriches the
 abstracts into ordered markdown, runs local multimodal figure analysis, and
-produces local embedding bundles.
+produces local embedding bundles plus a semantic graph and cluster analysis.
 
 ## External Requirements
 
@@ -20,6 +20,7 @@ Required for figure analysis:
 Optional for embedding generation:
 
 - Python package `sentence-transformers` for local MiniLM embeddings
+- Python packages `plotly` and `umap-learn` for local 2D embedding visualization
 - Voyage API access if you want to run the Voyage embedding path
 
 ## Token Requirements
@@ -31,6 +32,8 @@ Environment variables are read from `.env`. A safe template is provided in
   - required for abstract ingest and author metadata fetches from Oxford Abstracts
 - `VOYAGE_API`
   - optional, only required if running `embed-voyage`
+- `OPENALEX_API`
+  - optional, used for authenticated OpenAlex reference enrichment
 
 No API token is required for local Ollama usage.
 
@@ -50,6 +53,12 @@ For local MiniLM embeddings, install:
 UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python sentence-transformers
 ```
 
+For the interactive 2D UMAP visualization, install:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python plotly umap-learn
+```
+
 For local figure analysis, confirm Ollama can see the required model:
 
 ```bash
@@ -67,6 +76,8 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli authors
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli enrich
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-figures --vision-max-images 10
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli semantic-analysis
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli umap-plot
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli write-manifest
 ```
 
@@ -86,6 +97,10 @@ Subcommands:
   - generate local MiniLM embeddings and nearest neighbors
 - `embed-voyage`
   - generate Voyage embeddings and nearest neighbors
+- `semantic-analysis`
+  - build a semantic similarity graph, community assignments, and cluster summaries from a local embedding bundle
+- `umap-plot`
+  - project a local embedding bundle to 2D UMAP and write an interactive Plotly HTML with hover metadata
 - `write-manifest`
   - write the NeuroScape handoff manifest
 
@@ -114,7 +129,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm --fields title meth
 - `src/ohbm2026/enrichment.py`
   - author resolution, HTML-to-markdown conversion, figure analysis, and enrichment assembly
 - `src/ohbm2026/neuroscape.py`
-  - local embedding generation, neighbor computation, and NeuroScape handoff metadata
+  - local embedding generation, semantic graph analysis, and NeuroScape handoff metadata
 - `src/ohbm2026/cli.py`
   - unified CLI entrypoint
 
@@ -126,4 +141,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm --fields title meth
 - `data/abstracts_enriched.json`
 - `data/image_analyses.json`
 - `data/embeddings/minilm_stage1/`
+- `data/embeddings/minilm_stage1/semantic_analysis/`
+- `data/embeddings/minilm_stage1/umap_2d.html`
+- `data/embeddings/minilm_stage1/umap_2d.json`
 - `data/embeddings/neuroscape_stage2_manifest.json`
