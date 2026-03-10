@@ -4,6 +4,7 @@ from ohbm2026.enrichment import (
     build_sections_markdown,
     enrich_database,
     html_to_markdown,
+    is_content_question,
     parse_jsonish_content,
     question_to_section,
     render_abstract_markdown,
@@ -47,7 +48,13 @@ class EnrichmentHelpersTest(unittest.TestCase):
         parsed = parse_jsonish_content(content)
         self.assertEqual(parsed["caption_guess"], "Example")
 
-    def test_enrich_database_adds_embedding_text_and_resolved_authors(self) -> None:
+    def test_is_content_question_filters_admin_prompts(self) -> None:
+        self.assertTrue(is_content_question("Keywords"))
+        self.assertTrue(is_content_question("Which processing packages did you use for your study?"))
+        self.assertFalse(is_content_question("Submitter Approval"))
+        self.assertFalse(is_content_question("5. Country"))
+
+    def test_enrich_database_adds_markdown_fields_and_removes_authors(self) -> None:
         base = {
             "event_ids": [1],
             "abstracts": [
@@ -58,18 +65,31 @@ class EnrichmentHelpersTest(unittest.TestCase):
                     "authors": [{"id": 10}],
                     "responses": [
                         {"question_name": "Introduction", "value": "<p>Hello</p>"},
+                        {"question_name": "Methods", "value": "<p>Method text</p>"},
                         {"question_name": "Keywords", "value": "[\"A\", \"B\"]"},
+                        {"question_name": "Submitter Approval", "value": "yes"},
                     ],
                     "local_assets": [],
                 }
             ],
         }
-        authors = {"authors": [{"id": 10, "first_name": "Ada", "last_name": "Lovelace"}]}
-        enriched = enrich_database(base, authors)
+        enriched = enrich_database(base)
         abstract = enriched["abstracts"][0]
-        self.assertEqual(abstract["authors_resolved"][0]["first_name"], "Ada")
-        self.assertIn("Introduction:\nHello", abstract["embedding_text"])
-        self.assertEqual(abstract["generated_keywords"], ["A", "B"])
+        self.assertEqual(sorted(abstract.keys()), [
+            "accepted_for",
+            "additional_content_questions_markdown",
+            "figure_analyses",
+            "figure_keywords",
+            "id",
+            "introduction_markdown",
+            "methods_markdown",
+        ])
+        self.assertEqual(abstract["introduction_markdown"], "Hello")
+        self.assertEqual(abstract["methods_markdown"], "Method text")
+        self.assertEqual(
+            abstract["additional_content_questions_markdown"],
+            [{"question_name": "Keywords", "markdown": "[\"A\", \"B\"]"}],
+        )
 
 
 if __name__ == "__main__":

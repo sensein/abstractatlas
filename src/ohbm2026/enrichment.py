@@ -24,6 +24,22 @@ SECTION_ORDER = [
     ("references", "References"),
     ("acknowledgement", "Acknowledgement"),
 ]
+SECTION_MARKDOWN_KEYS = {section_key: f"{section_key}_markdown" for section_key, _ in SECTION_ORDER}
+CONTENT_QUESTION_NAMES = {
+    "Primary Parent Category & Sub-Category",
+    "Secondary Parent Category & Sub-Category",
+    "Keywords",
+    "Which processing packages did you use for your study?",
+    "For human MRI, what field strength scanner do you use?",
+    'Please indicate below if your study was a "resting state" or "task-activation” study.',
+    "Please indicate which methods were used in your research:",
+    "Healthy subjects only or patients (note that patient studies may also involve healthy subjects).",
+    "If other, please specify:",
+    "If Other, please list the terms below. Multiple terms must be separated by semi-colons ( ; ).",
+    "If yes:",
+    "If other, please explain:",
+}
+NORMALIZED_CONTENT_QUESTION_NAMES = {normalize.lower() for normalize in CONTENT_QUESTION_NAMES}
 
 OLLAMA_API = "http://127.0.0.1:11434/api"
 DEFAULT_VISION_MODEL = "qwen3.5:35b"
@@ -208,10 +224,6 @@ def build_author_database(base_database: dict[str, Any], api_key: str) -> dict[s
     }
 
 
-def build_author_lookup(author_database: dict[str, Any]) -> dict[int, dict[str, Any]]:
-    return {author["id"]: author for author in author_database.get("authors", [])}
-
-
 def build_sections_markdown(abstract: dict[str, Any]) -> tuple[dict[str, str], list[dict[str, str]]]:
     sections: dict[str, list[str]] = {key: [] for key, _ in SECTION_ORDER}
     unmapped: list[dict[str, str]] = []
@@ -229,6 +241,31 @@ def build_sections_markdown(abstract: dict[str, Any]) -> tuple[dict[str, str], l
             sections[section_key].append(markdown)
 
     return {key: "\n\n".join(values).strip() for key, values in sections.items() if values}, unmapped
+
+
+def is_content_question(question_name: str | None) -> bool:
+    if not question_name:
+        return False
+    normalized = normalize_question_name(question_name)
+    if normalized in NORMALIZED_CONTENT_QUESTION_NAMES:
+        return True
+    return False
+
+
+def build_section_markdown_fields(sections_markdown: dict[str, str]) -> dict[str, str]:
+    return {
+        SECTION_MARKDOWN_KEYS[section_key]: value
+        for section_key, value in sections_markdown.items()
+        if section_key in SECTION_MARKDOWN_KEYS and value
+    }
+
+
+def filter_content_questions_markdown(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [
+        item
+        for item in items
+        if is_content_question(item.get("question_name")) and item.get("markdown")
+    ]
 
 
 def render_abstract_markdown(title: str, sections_markdown: dict[str, str]) -> str:
@@ -365,30 +402,18 @@ def extract_original_keywords(abstract: dict[str, Any]) -> list[str]:
     return []
 
 
-def build_embedding_text(abstract: dict[str, Any]) -> str:
-    parts = [abstract.get("title", "").strip()]
-    for section_key, heading in SECTION_ORDER:
-        section_text = abstract.get("sections_markdown", {}).get(section_key)
-        if section_text:
-            parts.append(f"{heading}:\n{section_text}")
-    keywords = abstract.get("generated_keywords", [])
-    if keywords:
-        parts.append("Keywords: " + ", ".join(keywords))
-    return "\n\n".join(part for part in parts if part).strip()
-
-
 def enrich_database(
     base_database: dict[str, Any],
-    author_database: dict[str, Any],
     image_analysis_cache: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    author_lookup = build_author_lookup(author_database)
     image_analysis_cache = image_analysis_cache or {"analyses": {}}
     image_lookup = image_analysis_cache.get("analyses", {})
     enriched_abstracts: list[dict[str, Any]] = []
 
     for abstract in base_database.get("abstracts", []):
         sections_markdown, unmapped_responses = build_sections_markdown(abstract)
+        section_fields = build_section_markdown_fields(sections_markdown)
+        additional_content_questions = filter_content_questions_markdown(unmapped_responses)
         original_keywords = extract_original_keywords(abstract)
         figure_analyses = []
         figure_keywords: list[str] = []
@@ -399,20 +424,14 @@ def enrich_database(
                 figure_analyses.append(analysis_entry)
                 figure_keywords.extend(analysis_entry.get("analysis", {}).get("keywords", []))
 
-        enriched = dict(abstract)
-        enriched["figure_urls"] = extract_target_figure_urls(abstract.get("responses", []))
-        enriched["authors_resolved"] = [
-            author_lookup.get(author["id"], {"id": author["id"]})
-            for author in abstract.get("authors", [])
-        ]
-        enriched["sections_markdown"] = sections_markdown
-        enriched["abstract_markdown"] = render_abstract_markdown(abstract.get("title", ""), sections_markdown)
-        enriched["unmapped_responses_markdown"] = unmapped_responses
-        enriched["original_keywords"] = original_keywords
-        enriched["figure_analyses"] = figure_analyses
-        enriched["figure_keywords"] = unique_preserve_order(figure_keywords)
-        enriched["generated_keywords"] = unique_preserve_order(original_keywords + figure_keywords)
-        enriched["embedding_text"] = build_embedding_text(enriched)
+        enriched = {
+            "id": abstract.get("id"),
+            "accepted_for": abstract.get("accepted_for"),
+            **section_fields,
+            "additional_content_questions_markdown": additional_content_questions,
+            "figure_analyses": figure_analyses,
+            "figure_keywords": unique_preserve_order(figure_keywords),
+        }
         enriched_abstracts.append(enriched)
 
     return {
@@ -457,7 +476,6 @@ def authors_main(argv: list[str] | None = None) -> int:
 def build_enrich_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build enriched OHBM 2026 abstracts from local databases")
     parser.add_argument("--input", default="data/abstracts.json")
-    parser.add_argument("--authors-input", default="data/authors.json")
     parser.add_argument("--image-analyses-input", default="data/image_analyses.json")
     parser.add_argument("--enriched-output", default="data/abstracts_enriched.json")
     return parser
@@ -470,15 +488,13 @@ def parse_enrich_args(argv: list[str] | None = None) -> argparse.Namespace:
 def enrich_main(argv: list[str] | None = None) -> int:
     args = parse_enrich_args(argv)
     base_database = load_json(Path(args.input))
-    author_database = load_json(Path(args.authors_input))
     image_cache = load_image_analysis_cache(Path(args.image_analyses_input))
-    enriched_database = enrich_database(base_database, author_database, image_cache)
+    enriched_database = enrich_database(base_database, image_cache)
     write_json(Path(args.enriched_output), enriched_database)
     print(
         json.dumps(
             {
                 "input": args.input,
-                "authors_input": args.authors_input,
                 "image_analyses_input": args.image_analyses_input,
                 "enriched_output": args.enriched_output,
                 "abstract_count": enriched_database["abstract_count"],

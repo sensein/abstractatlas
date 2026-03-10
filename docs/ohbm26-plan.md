@@ -135,14 +135,13 @@ Checks:
 ### Workstream C: Author Metadata
 
 Goal:
-Create a de-duplicated author database and resolve author IDs in enriched abstracts.
+Create a de-duplicated standalone author database.
 
 Checks:
 
 - [x] Extract the unique author ID set from the raw corpus.
 - [x] Fetch author details in batches.
 - [x] Normalize and persist `data/authors.json`.
-- [x] Add `authors_resolved` to enriched abstracts.
 
 ### Workstream D: Ordered Markdown Abstracts
 
@@ -198,7 +197,7 @@ Create a local semantic search space and retain a path toward NeuroScape stage-t
 
 Checks:
 
-- [x] Build canonical `embedding_text` from title, ordered sections, and keywords.
+ - [x] Build embedding inputs on demand from selected abstract sections.
 - [x] Generate local stage-one embeddings with `all-MiniLM-L6-v2`.
 - [x] Persist vectors and metadata to `data/embeddings/minilm_stage1/`.
 - [x] Build nearest-neighbor relationships.

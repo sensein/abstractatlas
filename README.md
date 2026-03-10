@@ -79,7 +79,7 @@ Subcommands:
 - `authors`
   - export author metadata from the local abstract database
 - `enrich`
-  - build `data/abstracts_enriched.json` from abstracts, authors, and any cached image analyses
+  - build `data/abstracts_enriched.json` from abstracts and any cached image analyses
 - `analyze-figures`
   - analyze local figure files with Ollama and update `data/image_analyses.json`
 - `embed-minilm`
@@ -88,6 +88,22 @@ Subcommands:
   - generate Voyage embeddings and nearest neighbors
 - `write-manifest`
   - write the NeuroScape handoff manifest
+
+Embedding text is generated on demand from the enriched abstract content and is
+not stored in `data/abstracts_enriched.json`. By default, the embedding
+commands use:
+
+- `title`
+- `introduction`
+- `methods`
+- `results`
+- `conclusion`
+
+You can override that at runtime, for example:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm --fields title methods results
+```
 
 ## Module Layout
 
