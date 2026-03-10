@@ -10,7 +10,7 @@ from ohbm2026.enrichment import (
 )
 
 
-class Phase2HelpersTest(unittest.TestCase):
+class EnrichmentHelpersTest(unittest.TestCase):
     def test_html_to_markdown_handles_lists_and_emphasis(self) -> None:
         html = "<p>Hello <strong>world</strong></p><ol><li>One</li><li>Two</li></ol>"
         markdown = html_to_markdown(html)

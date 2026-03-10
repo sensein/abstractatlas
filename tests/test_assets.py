@@ -8,33 +8,18 @@ from ohbm2026.assets import (
     build_existing_asset_index,
     download_asset,
     extract_external_urls,
+    extract_target_figure_urls,
     find_existing_asset,
     guess_extension,
     is_image_url_candidate,
     is_target_figure_question,
-    is_valid_external_url,
     normalize_abstract,
     refresh_local_assets_from_database,
     stringify_error,
-    extract_target_figure_urls,
 )
-from ohbm2026.graphql_api import chunked, extract_value_field, load_dotenv, timeout_sequence
 
 
-class IngestHelpersTest(unittest.TestCase):
-    def test_load_dotenv_parses_simple_pairs(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            env_file = Path(temp_dir) / ".env"
-            env_file.write_text(
-                "OHBM2026_API=test-key\n# comment\nOTHER=value\n",
-                encoding="utf-8",
-            )
-
-            parsed = load_dotenv(env_file)
-
-        self.assertEqual(parsed["OHBM2026_API"], "test-key")
-        self.assertEqual(parsed["OTHER"], "value")
-
+class AssetHelpersTest(unittest.TestCase):
     def test_extract_external_urls_deduplicates_and_cleans(self) -> None:
         urls = extract_external_urls(
             [
@@ -81,10 +66,6 @@ class IngestHelpersTest(unittest.TestCase):
         )
         self.assertEqual(normalized["local_assets"], [])
 
-    def test_extract_value_field_handles_list_backed_value(self) -> None:
-        self.assertEqual(extract_value_field([{"value": "A title"}]), "A title")
-        self.assertEqual(extract_value_field({"value": "Poster"}), "Poster")
-
     def test_guess_extension_prefers_content_type(self) -> None:
         self.assertEqual(guess_extension("https://example.org/noext", "image/png"), ".png")
         self.assertEqual(guess_extension("https://example.org/path/file.jpg", None), ".jpg")
@@ -93,10 +74,6 @@ class IngestHelpersTest(unittest.TestCase):
         self.assertTrue(is_image_url_candidate("https://example.org/figure.png"))
         self.assertFalse(is_image_url_candidate("https://example.org/paper.pdf"))
         self.assertTrue(is_image_url_candidate("https://example.org/download"))
-
-    def test_is_valid_external_url_rejects_invalid_port(self) -> None:
-        self.assertTrue(is_valid_external_url("https://doi.org/10.1038/s41586-020-2649-2"))
-        self.assertFalse(is_valid_external_url("https://doi.org:10.1038/s41586-020-2649-2"))
 
     def test_target_figure_question_matching(self) -> None:
         self.assertTrue(is_target_figure_question("Methods Figure (Optional)"))
@@ -116,15 +93,6 @@ class IngestHelpersTest(unittest.TestCase):
                 {"question_name": "Results Figure (Optional)", "source_url": "https://example.org/results.png"},
             ],
         )
-
-    def test_timeout_sequence_doubles_and_caps(self) -> None:
-        self.assertEqual(
-            timeout_sequence(start_seconds=0.1, limit_seconds=10.0),
-            [0.1, 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 10.0],
-        )
-
-    def test_chunked_preserves_order(self) -> None:
-        self.assertEqual(chunked([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]])
 
     def test_asset_helpers_match_existing_file(self) -> None:
         with TemporaryDirectory() as temp_dir:
