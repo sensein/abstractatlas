@@ -3,20 +3,29 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
+import re
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from ohbm2026.graphql_api import chunked
+from ohbm2026.graphql_api import chunked, load_dotenv
 
 DEFAULT_VOYAGE_MODEL = "voyage-large-2-instruct"
 DEFAULT_MINILM_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_HF_MODEL = DEFAULT_MINILM_MODEL
 DEFAULT_EMBEDDING_FIELDS = ("title", "introduction", "methods", "results", "conclusion")
 DEFAULT_STAGE2_OUTPUT_DIMENSION = 64
 DEFAULT_STAGE2_HIDDEN_DIMENSIONS = (192, 96, 64)
+PUBLISHED_STAGE2_HIDDEN_DIMENSIONS = (512, 256, 128)
+PUBLISHED_STAGE2_OUTPUT_DIMENSION = 64
 DEFAULT_UMAP_NEIGHBORS = 15
 DEFAULT_UMAP_MIN_DIST = 0.1
+DEFAULT_TSNE_PERPLEXITY = 30.0
+DEFAULT_TSNE_LEARNING_RATE = "auto"
+DEFAULT_TSNE_EARLY_EXAGGERATION = 12.0
+HUGGINGFACE_TOKEN_ENV_VARS = ("HF_TOKEN", "HUGGINGFACE_HUB_TOKEN")
 ALLOWED_EMBEDDING_FIELDS = {
     "title",
     "introduction",
@@ -82,6 +91,20 @@ def unique_strings(values: list[str]) -> list[str]:
     return result
 
 
+def configure_huggingface_auth(env_path: Path) -> str | None:
+    env_values = load_dotenv(env_path)
+    token = None
+    for env_var in HUGGINGFACE_TOKEN_ENV_VARS:
+        token = os.environ.get(env_var) or env_values.get(env_var)
+        if token:
+            break
+    if not token:
+        return None
+    os.environ.setdefault("HF_TOKEN", token)
+    os.environ.setdefault("HUGGINGFACE_HUB_TOKEN", token)
+    return token
+
+
 def load_title_lookup(path: Path) -> dict[int, str]:
     database = json.loads(path.read_text(encoding="utf-8"))
     return {
@@ -96,6 +119,15 @@ def extract_raw_keywords(abstract: dict[str, Any]) -> list[str]:
         if str(response.get("question_name") or "").strip().lower() == "keywords":
             return parse_string_list_value(response.get("value"))
     return []
+
+
+def extract_primary_topic(abstract: dict[str, Any]) -> str:
+    for response in abstract.get("responses", []):
+        if str(response.get("question_name") or "").strip().lower() == "primary parent category & sub-category":
+            values = parse_string_list_value(response.get("value"))
+            if values:
+                return values[0]
+    return "Unknown"
 
 
 def load_annotation_lookup(
@@ -126,6 +158,7 @@ def load_annotation_lookup(
             "id": abstract_id,
             "title": abstract.get("title") or "",
             "accepted_for": abstract.get("accepted_for") or "Unknown",
+            "primary_topic": extract_primary_topic(abstract),
             "keywords": keywords,
         }
     return annotations
@@ -143,6 +176,7 @@ def build_visualization_records(
                 "id": int(abstract_id),
                 "title": annotation.get("title") or "",
                 "accepted_for": annotation.get("accepted_for") or "Unknown",
+                "primary_topic": annotation.get("primary_topic") or "Unknown",
                 "keywords": list(annotation.get("keywords") or []),
             }
         )
@@ -205,6 +239,24 @@ def embedding_variant_name(fields: list[str] | tuple[str, ...] | None = None) ->
     return "-".join(selected_fields)
 
 
+def model_name_slug(model_name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", model_name.strip().lower()).strip("-")
+    if not slug:
+        raise NeuroScapeError("model_name must not be empty")
+    return slug
+
+
+def build_embedding_output_name(
+    model_name: str,
+    embedding_fields: list[str] | tuple[str, ...] | None = None,
+    output_name: str | None = None,
+    prefix: str = "hf",
+) -> str:
+    if output_name:
+        return output_name
+    return f"{prefix}_{model_name_slug(model_name)}_{embedding_variant_name(embedding_fields)}"
+
+
 def voyage_embed(
     texts: list[str],
     api_key: str,
@@ -236,10 +288,51 @@ def voyage_embed(
     return vectors
 
 
-def minilm_embed(texts: list[str], model_name: str = DEFAULT_MINILM_MODEL) -> list[list[float]]:
+def openai_embed(
+    texts: list[str],
+    api_key: str,
+    model: str = "text-embedding-3-small",
+    batch_size: int = 128,
+    dimensions: int | None = None,
+) -> list[list[float]]:
+    endpoint = "https://api.openai.com/v1/embeddings"
+    vectors: list[list[float]] = []
+    for text_batch in chunked(list(range(len(texts))), batch_size):
+        batch_inputs = [texts[index] for index in text_batch]
+        payload_dict: dict[str, Any] = {
+            "input": batch_inputs,
+            "model": model,
+            "encoding_format": "float",
+        }
+        if dimensions is not None:
+            payload_dict["dimensions"] = dimensions
+        payload = json.dumps(payload_dict).encode("utf-8")
+        request = Request(
+            endpoint,
+            data=payload,
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=600) as response:
+                parsed = json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise NeuroScapeError(f"OpenAI embeddings failed with HTTP {exc.code}: {body}") from exc
+        except URLError as exc:
+            raise NeuroScapeError(f"OpenAI embeddings failed: {exc.reason}") from exc
+        vectors.extend(item["embedding"] for item in parsed.get("data", []))
+    return vectors
+
+
+def sentence_transformer_embed(
+    texts: list[str],
+    model_name: str = DEFAULT_HF_MODEL,
+    local_files_only: bool = False,
+) -> list[list[float]]:
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(model_name)
+    model = SentenceTransformer(model_name, local_files_only=local_files_only)
     embeddings = model.encode(
         texts,
         batch_size=64,
@@ -248,6 +341,14 @@ def minilm_embed(texts: list[str], model_name: str = DEFAULT_MINILM_MODEL) -> li
         normalize_embeddings=False,
     )
     return embeddings.tolist()
+
+
+def minilm_embed(
+    texts: list[str],
+    model_name: str = DEFAULT_MINILM_MODEL,
+    local_files_only: bool = False,
+) -> list[list[float]]:
+    return sentence_transformer_embed(texts, model_name=model_name, local_files_only=local_files_only)
 
 
 def write_embedding_bundle(
@@ -365,6 +466,22 @@ def load_embedding_bundle(bundle_dir: Path) -> dict[str, Any]:
     return load_stage1_bundle(bundle_dir)
 
 
+def build_embedding_visualization_title(
+    bundle: dict[str, Any],
+    prefix: str,
+) -> str:
+    source_metadata = bundle.get("source_metadata", {})
+    bundle_name = str(source_metadata.get("embedding_name") or "embedding")
+    source_name = str(source_metadata.get("source_embedding_name") or bundle_name)
+    fields = normalize_embedding_fields(source_metadata.get("embedding_fields"))
+    field_text = ", ".join(fields) if fields else "unspecified"
+    if source_name == bundle_name:
+        name_text = bundle_name
+    else:
+        name_text = f"{bundle_name} (source: {source_name})"
+    return f"{prefix}: {name_text} | fields: {field_text}"
+
+
 def compute_umap_projection(
     matrix: Any,
     n_neighbors: int = DEFAULT_UMAP_NEIGHBORS,
@@ -372,7 +489,17 @@ def compute_umap_projection(
     metric: str = "cosine",
     random_state: int = 42,
 ) -> Any:
+    import numpy as np
     import umap
+
+    matrix = np.asarray(matrix)
+    if int(matrix.shape[0]) <= 3:
+        # UMAP's spectral initialization is unstable for tiny smoke-test bundles.
+        if int(matrix.shape[1]) >= 2:
+            return matrix[:, :2].astype(np.float32, copy=True)
+        if int(matrix.shape[1]) == 1:
+            return np.column_stack([matrix[:, 0], np.zeros(int(matrix.shape[0]), dtype=np.float32)])
+        raise NeuroScapeError("UMAP projection requires at least one embedding dimension")
 
     reducer = umap.UMAP(
         n_components=2,
@@ -384,6 +511,164 @@ def compute_umap_projection(
     return reducer.fit_transform(matrix)
 
 
+def compute_tsne_projection(
+    matrix: Any,
+    perplexity: float = DEFAULT_TSNE_PERPLEXITY,
+    learning_rate: str | float = DEFAULT_TSNE_LEARNING_RATE,
+    early_exaggeration: float = DEFAULT_TSNE_EARLY_EXAGGERATION,
+    metric: str = "cosine",
+    random_state: int = 42,
+) -> Any:
+    import numpy as np
+    from sklearn.manifold import TSNE
+
+    matrix = np.asarray(matrix)
+    if int(matrix.shape[0]) <= 3:
+        if int(matrix.shape[1]) >= 2:
+            return matrix[:, :2].astype(np.float32, copy=True)
+        if int(matrix.shape[1]) == 1:
+            return np.column_stack([matrix[:, 0], np.zeros(int(matrix.shape[0]), dtype=np.float32)])
+        raise NeuroScapeError("t-SNE projection requires at least one embedding dimension")
+
+    max_perplexity = max(1.0, float(matrix.shape[0] - 1) / 3.0)
+    adjusted_perplexity = min(float(perplexity), max_perplexity)
+    reducer = TSNE(
+        n_components=2,
+        perplexity=adjusted_perplexity,
+        learning_rate=learning_rate,
+        early_exaggeration=early_exaggeration,
+        metric=metric,
+        init="pca",
+        random_state=random_state,
+    )
+    return reducer.fit_transform(matrix)
+
+
+def build_distinct_color_map(values: list[str]) -> dict[str, str]:
+    unique_values = sorted({value for value in values if value})
+    if not unique_values:
+        return {}
+    total = len(unique_values)
+    return {
+        value: f"hsl({int((index * 360) / total)}, 70%, 45%)"
+        for index, value in enumerate(unique_values)
+    }
+
+
+def _projection_trace_customdata(records: list[dict[str, Any]], indices: list[int]) -> list[list[Any]]:
+    return [
+        [
+            records[index]["id"],
+            records[index]["title"],
+            records[index]["accepted_for"],
+            records[index]["primary_topic"],
+            ", ".join(records[index]["keywords"]),
+        ]
+        for index in indices
+    ]
+
+
+def _add_projection_panel_traces(
+    figure: Any,
+    coordinates: Any,
+    records: list[dict[str, Any]],
+    row: int,
+    column: int,
+    color_by: str,
+    topic_color_map: dict[str, str],
+    show_legend: bool = True,
+) -> None:
+    import numpy as np
+    import plotly.graph_objects as go
+
+    coords = np.asarray(coordinates)
+    grouped_indices: dict[str, list[int]] = {}
+    for index, record in enumerate(records):
+        grouped_indices.setdefault(str(record.get(color_by) or "Unknown"), []).append(index)
+    for group_name in sorted(grouped_indices):
+        indices = grouped_indices[group_name]
+        marker: dict[str, Any] = {"size": 7, "opacity": 0.85}
+        if color_by == "primary_topic":
+            marker["color"] = topic_color_map.get(group_name, "hsl(0, 0%, 50%)")
+        figure.add_trace(
+            go.Scattergl(
+                x=coords[indices, 0],
+                y=coords[indices, 1],
+                mode="markers",
+                name=group_name,
+                marker=marker,
+                customdata=_projection_trace_customdata(records, indices),
+                hovertemplate=(
+                    "id=%{customdata[0]}<br>"
+                    "title=%{customdata[1]}<br>"
+                    "accepted_for=%{customdata[2]}<br>"
+                    "primary_topic=%{customdata[3]}<br>"
+                    "keywords=%{customdata[4]}<extra></extra>"
+                ),
+                legendgroup=f"{color_by}:{group_name}",
+                legendgrouptitle_text="Accepted For" if color_by == "accepted_for" else "Primary Topic",
+                showlegend=show_legend,
+                selected={"marker": {"size": 11, "opacity": 1.0, "color": "#111111"}},
+                unselected={"marker": {"opacity": 0.22}},
+            ),
+            row=row,
+            col=column,
+        )
+
+
+def _build_linked_highlight_script(div_id: str) -> str:
+    return f"""
+<script>
+(function() {{
+  const gd = document.getElementById({json.dumps(div_id)});
+  if (!gd) return;
+  let highlightedId = null;
+
+  function selectedPointsForTrace(trace, targetId) {{
+    if (!trace.customdata || targetId === null || targetId === undefined) return null;
+    const selected = [];
+    for (let index = 0; index < trace.customdata.length; index += 1) {{
+      if (trace.customdata[index] && trace.customdata[index][0] === targetId) {{
+        selected.push(index);
+      }}
+    }}
+    return selected.length ? selected : null;
+  }}
+
+  function highlightId(targetId) {{
+    if (targetId === highlightedId) return;
+    highlightedId = targetId;
+    for (let traceIndex = 0; traceIndex < gd.data.length; traceIndex += 1) {{
+      const selected = selectedPointsForTrace(gd.data[traceIndex], targetId);
+      Plotly.restyle(gd, {{selectedpoints: [selected]}}, [traceIndex]);
+    }}
+  }}
+
+  function clearHighlight() {{
+    highlightedId = null;
+    for (let traceIndex = 0; traceIndex < gd.data.length; traceIndex += 1) {{
+      Plotly.restyle(gd, {{selectedpoints: [null]}}, [traceIndex]);
+    }}
+  }}
+
+  gd.on('plotly_hover', function(event) {{
+    const point = event && event.points && event.points[0];
+    if (!point || !point.customdata) return;
+    highlightId(point.customdata[0]);
+  }});
+  gd.on('plotly_click', function(event) {{
+    const point = event && event.points && event.points[0];
+    if (!point || !point.customdata) return;
+    highlightId(point.customdata[0]);
+  }});
+  gd.on('plotly_unhover', function() {{
+    clearHighlight();
+  }});
+}})();
+</script>
+""".strip()
+
+
 def write_umap_outputs(
     output_html: Path,
     output_json: Path,
@@ -393,50 +678,69 @@ def write_umap_outputs(
 ) -> None:
     import numpy as np
     import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
 
     output_html.parent.mkdir(parents=True, exist_ok=True)
     output_json.parent.mkdir(parents=True, exist_ok=True)
 
     coords = np.asarray(coordinates)
-    grouped_indices: dict[str, list[int]] = {}
-    for index, record in enumerate(records):
-        grouped_indices.setdefault(str(record.get("accepted_for") or "Unknown"), []).append(index)
+    figure = make_subplots(
+        rows=1,
+        cols=2,
+        subplot_titles=("Accepted For", "Primary Topic"),
+        horizontal_spacing=0.08,
+    )
+    topic_color_map = build_distinct_color_map([str(record.get("primary_topic") or "Unknown") for record in records])
 
-    figure = go.Figure()
-    for group_name in sorted(grouped_indices):
-        indices = grouped_indices[group_name]
-        customdata = [
-            [
-                records[index]["id"],
-                records[index]["title"],
-                group_name,
-                ", ".join(records[index]["keywords"]),
+    for column, color_by in ((1, "accepted_for"), (2, "primary_topic")):
+        grouped_indices: dict[str, list[int]] = {}
+        for index, record in enumerate(records):
+            grouped_indices.setdefault(str(record.get(color_by) or "Unknown"), []).append(index)
+        for group_name in sorted(grouped_indices):
+            indices = grouped_indices[group_name]
+            customdata = [
+                [
+                    records[index]["id"],
+                    records[index]["title"],
+                    records[index]["accepted_for"],
+                    records[index]["primary_topic"],
+                    ", ".join(records[index]["keywords"]),
+                ]
+                for index in indices
             ]
-            for index in indices
-        ]
-        figure.add_trace(
-            go.Scattergl(
-                x=coords[indices, 0],
-                y=coords[indices, 1],
-                mode="markers",
-                name=group_name,
-                marker={"size": 7, "opacity": 0.8},
-                customdata=customdata,
-                hovertemplate=(
-                    "id=%{customdata[0]}<br>"
-                    "title=%{customdata[1]}<br>"
-                    "accepted_for=%{customdata[2]}<br>"
-                    "keywords=%{customdata[3]}<extra></extra>"
+            marker: dict[str, Any] = {"size": 7, "opacity": 0.8}
+            if color_by == "primary_topic":
+                marker["color"] = topic_color_map.get(group_name, "hsl(0, 0%, 50%)")
+            figure.add_trace(
+                go.Scattergl(
+                    x=coords[indices, 0],
+                    y=coords[indices, 1],
+                    mode="markers",
+                    name=group_name,
+                    marker=marker,
+                    customdata=customdata,
+                    hovertemplate=(
+                        "id=%{customdata[0]}<br>"
+                        "title=%{customdata[1]}<br>"
+                        "accepted_for=%{customdata[2]}<br>"
+                        "primary_topic=%{customdata[3]}<br>"
+                        "keywords=%{customdata[4]}<extra></extra>"
+                    ),
+                    legendgroup=f"{color_by}:{group_name}",
+                    legendgrouptitle_text="Accepted For" if color_by == "accepted_for" else "Primary Topic",
+                    showlegend=True,
                 ),
+                row=1,
+                col=column,
             )
-        )
     figure.update_layout(
         title=title,
-        xaxis_title="UMAP-1",
-        yaxis_title="UMAP-2",
         template="plotly_white",
-        legend_title="Accepted For",
     )
+    figure.update_xaxes(title_text="UMAP-1", row=1, col=1)
+    figure.update_yaxes(title_text="UMAP-2", row=1, col=1)
+    figure.update_xaxes(title_text="UMAP-1", row=1, col=2)
+    figure.update_yaxes(title_text="UMAP-2", row=1, col=2)
     figure.write_html(str(output_html), include_plotlyjs="cdn")
 
     write_json(
@@ -444,11 +748,13 @@ def write_umap_outputs(
         {
             "title": title,
             "count": len(records),
+            "primary_topic_colors": topic_color_map,
             "points": [
                 {
                     "id": record["id"],
                     "title": record["title"],
                     "accepted_for": record["accepted_for"],
+                    "primary_topic": record["primary_topic"],
                     "keywords": record["keywords"],
                     "x": float(coords[index, 0]),
                     "y": float(coords[index, 1]),
@@ -457,6 +763,355 @@ def write_umap_outputs(
             ],
         },
     )
+
+
+def default_umap_output_paths(
+    embeddings_dir: Path,
+    embedding_fields: list[str],
+) -> tuple[Path, Path]:
+    fieldset = "-".join(embedding_fields)
+    basename = f"umap_{fieldset}"
+    return embeddings_dir / f"{basename}.html", embeddings_dir / f"{basename}.json"
+
+
+def default_projection_output_paths(
+    embeddings_dir: Path,
+    embedding_fields: list[str],
+) -> tuple[Path, Path]:
+    fieldset = "-".join(embedding_fields)
+    basename = f"projection_comparison_{fieldset}"
+    return embeddings_dir / f"{basename}.html", embeddings_dir / f"{basename}.json"
+
+
+def write_projection_comparison_outputs(
+    output_html: Path,
+    output_json: Path,
+    umap_coordinates: Any,
+    tsne_coordinates: Any,
+    records: list[dict[str, Any]],
+    title: str = "OHBM 2026 Projection Comparison",
+) -> None:
+    import plotly.io as pio
+    from plotly.subplots import make_subplots
+
+    output_html.parent.mkdir(parents=True, exist_ok=True)
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+
+    topic_color_map = build_distinct_color_map([str(record.get("primary_topic") or "Unknown") for record in records])
+    figure = make_subplots(
+        rows=2,
+        cols=2,
+        subplot_titles=(
+            "UMAP by Accepted For",
+            "UMAP by Primary Topic",
+            "t-SNE by Accepted For",
+            "t-SNE by Primary Topic",
+        ),
+        horizontal_spacing=0.08,
+        vertical_spacing=0.12,
+    )
+
+    _add_projection_panel_traces(
+        figure,
+        umap_coordinates,
+        records,
+        row=1,
+        column=1,
+        color_by="accepted_for",
+        topic_color_map=topic_color_map,
+        show_legend=True,
+    )
+    _add_projection_panel_traces(
+        figure,
+        umap_coordinates,
+        records,
+        row=1,
+        column=2,
+        color_by="primary_topic",
+        topic_color_map=topic_color_map,
+        show_legend=True,
+    )
+    _add_projection_panel_traces(
+        figure,
+        tsne_coordinates,
+        records,
+        row=2,
+        column=1,
+        color_by="accepted_for",
+        topic_color_map=topic_color_map,
+        show_legend=False,
+    )
+    _add_projection_panel_traces(
+        figure,
+        tsne_coordinates,
+        records,
+        row=2,
+        column=2,
+        color_by="primary_topic",
+        topic_color_map=topic_color_map,
+        show_legend=False,
+    )
+    figure.update_layout(title=title, template="plotly_white")
+    figure.update_xaxes(title_text="Axis 1", row=1, col=1)
+    figure.update_yaxes(title_text="Axis 2", row=1, col=1)
+    figure.update_xaxes(title_text="Axis 1", row=1, col=2)
+    figure.update_yaxes(title_text="Axis 2", row=1, col=2)
+    figure.update_xaxes(title_text="Axis 1", row=2, col=1)
+    figure.update_yaxes(title_text="Axis 2", row=2, col=1)
+    figure.update_xaxes(title_text="Axis 1", row=2, col=2)
+    figure.update_yaxes(title_text="Axis 2", row=2, col=2)
+
+    div_id = "projection-comparison"
+    html = pio.to_html(figure, include_plotlyjs="cdn", full_html=True, div_id=div_id)
+    html = html.replace("</body>", f"{_build_linked_highlight_script(div_id)}\n</body>")
+    output_html.write_text(html, encoding="utf-8")
+
+    import numpy as np
+
+    umap_coords = np.asarray(umap_coordinates)
+    tsne_coords = np.asarray(tsne_coordinates)
+    write_json(
+        output_json,
+        {
+            "title": title,
+            "count": len(records),
+            "primary_topic_colors": topic_color_map,
+            "points": [
+                {
+                    "id": record["id"],
+                    "title": record["title"],
+                    "accepted_for": record["accepted_for"],
+                    "primary_topic": record["primary_topic"],
+                    "keywords": record["keywords"],
+                    "umap_x": float(umap_coords[index, 0]),
+                    "umap_y": float(umap_coords[index, 1]),
+                    "tsne_x": float(tsne_coords[index, 0]),
+                    "tsne_y": float(tsne_coords[index, 1]),
+                }
+                for index, record in enumerate(records)
+            ],
+        },
+    )
+
+
+def build_projection_graph(
+    ids: list[int],
+    coordinates: Any,
+    num_neighbors: int = 15,
+) -> Any:
+    import networkx as nx
+    import numpy as np
+    from sklearn.neighbors import NearestNeighbors
+
+    matrix = np.asarray(coordinates, dtype=np.float32)
+    if matrix.shape[0] != len(ids):
+        raise NeuroScapeError("Projection coordinate count does not match ids")
+    if matrix.shape[0] == 0:
+        raise NeuroScapeError("Projection graph requires at least one point")
+
+    graph = nx.Graph()
+    graph.add_nodes_from(int(abstract_id) for abstract_id in ids)
+    if matrix.shape[0] == 1:
+        return graph
+
+    effective_neighbors = min(max(1, num_neighbors), int(matrix.shape[0]) - 1)
+    nearest = NearestNeighbors(n_neighbors=effective_neighbors + 1, metric="euclidean")
+    nearest.fit(matrix)
+    distances, neighbor_indices = nearest.kneighbors(matrix)
+    for row_index, abstract_id in enumerate(ids):
+        for distance, neighbor_index in zip(distances[row_index][1:], neighbor_indices[row_index][1:]):
+            neighbor_id = int(ids[int(neighbor_index)])
+            if neighbor_id == int(abstract_id):
+                continue
+            weight = 1.0 / (1.0 + float(distance))
+            if graph.has_edge(int(abstract_id), neighbor_id):
+                graph[int(abstract_id)][neighbor_id]["weight"] = max(
+                    float(graph[int(abstract_id)][neighbor_id]["weight"]),
+                    weight,
+                )
+            else:
+                graph.add_edge(int(abstract_id), neighbor_id, weight=weight)
+    return graph
+
+
+def _cluster_distance_metrics(
+    ids: list[int],
+    coordinates: Any,
+    assignments: dict[int, int],
+) -> dict[str, float | int | None]:
+    import numpy as np
+
+    matrix = np.asarray(coordinates, dtype=np.float32)
+    if matrix.shape[0] != len(ids):
+        raise NeuroScapeError("Coordinate count does not match ids")
+
+    members: dict[int, list[int]] = {}
+    index_by_id = {int(abstract_id): index for index, abstract_id in enumerate(ids)}
+    for abstract_id, cluster_id in assignments.items():
+        members.setdefault(int(cluster_id), []).append(index_by_id[int(abstract_id)])
+
+    cluster_ids = sorted(members)
+    if len(cluster_ids) <= 1:
+        return {
+            "cluster_count": len(cluster_ids),
+            "mean_intercluster_distance": 0.0,
+            "mean_intracluster_distance": 0.0,
+            "intercluster_distance_ratio": 0.0,
+            "silhouette_score": None,
+        }
+
+    centroids: dict[int, Any] = {}
+    within_distances: list[float] = []
+    for cluster_id, member_indices in members.items():
+        cluster_points = matrix[member_indices]
+        centroid = cluster_points.mean(axis=0)
+        centroids[cluster_id] = centroid
+        within_distances.extend(np.linalg.norm(cluster_points - centroid, axis=1).tolist())
+
+    centroid_distances: list[float] = []
+    for index, cluster_id in enumerate(cluster_ids):
+        for other_cluster_id in cluster_ids[index + 1 :]:
+            centroid_distances.append(
+                float(np.linalg.norm(centroids[cluster_id] - centroids[other_cluster_id]))
+            )
+
+    mean_intercluster_distance = float(np.mean(centroid_distances)) if centroid_distances else 0.0
+    mean_intracluster_distance = float(np.mean(within_distances)) if within_distances else 0.0
+    denominator = mean_intracluster_distance if mean_intracluster_distance > 0 else 1.0
+    metrics: dict[str, float | int | None] = {
+        "cluster_count": len(cluster_ids),
+        "mean_intercluster_distance": mean_intercluster_distance,
+        "mean_intracluster_distance": mean_intracluster_distance,
+        "intercluster_distance_ratio": mean_intercluster_distance / denominator,
+        "silhouette_score": None,
+    }
+
+    try:
+        from sklearn.metrics import silhouette_score
+
+        labels = np.asarray([assignments[int(abstract_id)] for abstract_id in ids], dtype=np.int32)
+        metrics["silhouette_score"] = float(silhouette_score(matrix, labels, metric="euclidean"))
+    except Exception:
+        metrics["silhouette_score"] = None
+    return metrics
+
+
+def score_projection(
+    ids: list[int],
+    coordinates: Any,
+    graph_neighbors: int = 15,
+    num_resolution_parameter: int = 20,
+    max_resolution_parameter: float = 1.0,
+) -> dict[str, Any]:
+    graph = build_projection_graph(ids, coordinates, num_neighbors=graph_neighbors)
+    community_result = detect_semantic_communities(
+        graph,
+        num_resolution_parameter=num_resolution_parameter,
+        max_resolution_parameter=max_resolution_parameter,
+    )
+    distance_metrics = _cluster_distance_metrics(ids, coordinates, community_result["assignments"])
+    return {
+        "graph_neighbors": graph_neighbors,
+        "cluster_count": distance_metrics["cluster_count"],
+        "best_modularity": float(community_result["best_modularity"]),
+        "best_resolution": float(community_result["best_resolution"]),
+        "mean_intercluster_distance": float(distance_metrics["mean_intercluster_distance"]),
+        "mean_intracluster_distance": float(distance_metrics["mean_intracluster_distance"]),
+        "intercluster_distance_ratio": float(distance_metrics["intercluster_distance_ratio"]),
+        "silhouette_score": (
+            None if distance_metrics["silhouette_score"] is None else float(distance_metrics["silhouette_score"])
+        ),
+    }
+
+
+def _projection_rank_key(result: dict[str, Any]) -> tuple[float, float, float, float]:
+    cluster_count = int(result.get("cluster_count") or 0)
+    silhouette_score = result.get("silhouette_score")
+    return (
+        1.0 if cluster_count > 1 else 0.0,
+        float(result.get("best_modularity") or 0.0),
+        float(result.get("intercluster_distance_ratio") or 0.0),
+        float(silhouette_score) if silhouette_score is not None else -1.0,
+    )
+
+
+def optimize_projection_parameters(
+    ids: list[int],
+    matrix: Any,
+    umap_neighbors: list[int],
+    umap_min_dists: list[float],
+    tsne_perplexities: list[float],
+    tsne_early_exaggerations: list[float],
+    tsne_learning_rates: list[str],
+    metric: str = "cosine",
+    random_state: int = 42,
+    graph_neighbors: int = 15,
+    num_resolution_parameter: int = 20,
+    max_resolution_parameter: float = 1.0,
+) -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+
+    for n_neighbors in umap_neighbors:
+        for min_dist in umap_min_dists:
+            coordinates = compute_umap_projection(
+                matrix,
+                n_neighbors=int(n_neighbors),
+                min_dist=float(min_dist),
+                metric=metric,
+                random_state=random_state,
+            )
+            metrics = score_projection(
+                ids,
+                coordinates,
+                graph_neighbors=graph_neighbors,
+                num_resolution_parameter=num_resolution_parameter,
+                max_resolution_parameter=max_resolution_parameter,
+            )
+            results.append(
+                {
+                    "method": "umap",
+                    "params": {"n_neighbors": int(n_neighbors), "min_dist": float(min_dist), "metric": metric},
+                    **metrics,
+                }
+            )
+
+    for perplexity in tsne_perplexities:
+        for early_exaggeration in tsne_early_exaggerations:
+            for learning_rate in tsne_learning_rates:
+                coordinates = compute_tsne_projection(
+                    matrix,
+                    perplexity=float(perplexity),
+                    learning_rate=learning_rate,
+                    early_exaggeration=float(early_exaggeration),
+                    metric=metric,
+                    random_state=random_state,
+                )
+                metrics = score_projection(
+                    ids,
+                    coordinates,
+                    graph_neighbors=graph_neighbors,
+                    num_resolution_parameter=num_resolution_parameter,
+                    max_resolution_parameter=max_resolution_parameter,
+                )
+                results.append(
+                    {
+                        "method": "tsne",
+                        "params": {
+                            "perplexity": float(perplexity),
+                            "early_exaggeration": float(early_exaggeration),
+                            "learning_rate": learning_rate,
+                            "metric": metric,
+                        },
+                        **metrics,
+                    }
+                )
+
+    ordered_results = sorted(results, key=_projection_rank_key, reverse=True)
+    best_by_method: dict[str, dict[str, Any]] = {}
+    for result in ordered_results:
+        method = str(result["method"])
+        best_by_method.setdefault(method, result)
+    return {"results": ordered_results, "best_by_method": best_by_method, "best_overall": ordered_results[0]}
 
 
 def split_stage2_matrix(
@@ -693,6 +1348,29 @@ def apply_stage2_model(model: Any, matrix: Any, batch_size: int = 256, device: s
     return np.concatenate(projected_batches, axis=0)
 
 
+def load_pretrained_stage2_model(
+    model_path: Path,
+    input_dimension: int,
+    hidden_dimensions: tuple[int, int, int] = PUBLISHED_STAGE2_HIDDEN_DIMENSIONS,
+    output_dimension: int = PUBLISHED_STAGE2_OUTPUT_DIMENSION,
+    dropout: float = 0.05,
+    device: str | None = None,
+) -> tuple[Any, str]:
+    import torch
+
+    torch_device = choose_torch_device(device)
+    model = build_stage2_network(
+        input_dimension,
+        hidden_dimensions=hidden_dimensions,
+        output_dimension=output_dimension,
+        dropout=dropout,
+    ).to(torch_device)
+    state = torch.load(model_path, map_location=torch_device)
+    model.load_state_dict(state)
+    model.eval()
+    return model, torch_device
+
+
 def write_stage2_bundle(
     output_dir: Path,
     stage1_bundle: dict[str, Any],
@@ -732,6 +1410,44 @@ def write_stage2_bundle(
                 "epochs": training_summary["epochs"],
                 "batch_size": training_summary["batch_size"],
                 "best_validation_loss": training_summary["best_validation_loss"],
+            },
+        },
+    )
+
+
+def write_pretrained_stage2_bundle(
+    output_dir: Path,
+    stage1_bundle: dict[str, Any],
+    projected_matrix: Any,
+    model_path: Path,
+    model_name: str,
+    hidden_dimensions: tuple[int, int, int],
+    output_dimension: int,
+    dropout: float,
+) -> None:
+    import numpy as np
+    import shutil
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    np.save(output_dir / "vectors.npy", np.asarray(projected_matrix, dtype=np.float32))
+    shutil.copy2(model_path, output_dir / model_path.name)
+    write_json(output_dir / "neighbors.json", compute_neighbors(stage1_bundle["ids"], projected_matrix))
+    write_json(
+        output_dir / "metadata.json",
+        {
+            "embedding_name": output_dir.name,
+            "model_name": model_name,
+            "count": len(stage1_bundle["ids"]),
+            "ids": stage1_bundle["ids"],
+            "metadata": stage1_bundle["metadata"],
+            "source_embedding_name": stage1_bundle["source_metadata"].get("embedding_name"),
+            "source_model_name": stage1_bundle["source_metadata"].get("model_name"),
+            "embedding_fields": stage1_bundle["source_metadata"].get("embedding_fields"),
+            "stage2_config": {
+                "hidden_dimensions": list(hidden_dimensions),
+                "output_dimension": output_dimension,
+                "dropout": dropout,
+                "pretrained_model_path": str(model_path),
             },
         },
     )
@@ -813,12 +1529,15 @@ def detect_semantic_communities(
     graph: Any,
     num_resolution_parameter: int = 20,
     max_resolution_parameter: float = 1.0,
+    min_community_count: int = 1,
 ) -> dict[str, Any]:
     import numpy as np
     from networkx.algorithms.community import greedy_modularity_communities, modularity
 
     if num_resolution_parameter <= 0:
         raise NeuroScapeError("num_resolution_parameter must be positive")
+    if min_community_count <= 0:
+        raise NeuroScapeError("min_community_count must be positive")
     resolution_values = np.linspace(
         max_resolution_parameter / num_resolution_parameter,
         max_resolution_parameter,
@@ -828,6 +1547,9 @@ def detect_semantic_communities(
     best_modularity = float("-inf")
     best_resolution = float(resolution_values[0])
     best_communities: list[set[int]] = []
+    best_nontrivial_modularity = float("-inf")
+    best_nontrivial_resolution = float(resolution_values[0])
+    best_nontrivial_communities: list[set[int]] = []
 
     for resolution in resolution_values:
         try:
@@ -855,18 +1577,70 @@ def detect_semantic_communities(
             best_modularity = modularity_value
             best_resolution = float(resolution)
             best_communities = [set(community) for community in communities]
+        if len(communities) >= min_community_count and modularity_value > best_nontrivial_modularity:
+            best_nontrivial_modularity = modularity_value
+            best_nontrivial_resolution = float(resolution)
+            best_nontrivial_communities = [set(community) for community in communities]
 
-    ordered_communities = sorted(best_communities, key=lambda community: (-len(community), min(community)))
+    selected_communities = best_nontrivial_communities or best_communities
+    selected_modularity = best_nontrivial_modularity if best_nontrivial_communities else best_modularity
+    selected_resolution = best_nontrivial_resolution if best_nontrivial_communities else best_resolution
+
+    ordered_communities = sorted(selected_communities, key=lambda community: (-len(community), min(community)))
     assignments: dict[int, int] = {}
     for cluster_id, community in enumerate(ordered_communities):
         for abstract_id in community:
             assignments[int(abstract_id)] = cluster_id
 
     return {
-        "best_resolution": best_resolution,
-        "best_modularity": best_modularity,
+        "best_resolution": selected_resolution,
+        "best_modularity": selected_modularity,
         "history": history,
         "communities": ordered_communities,
+        "assignments": assignments,
+    }
+
+
+def detect_semantic_communities_at_resolution(
+    graph: Any,
+    resolution: float,
+) -> dict[str, Any]:
+    from networkx.algorithms.community import greedy_modularity_communities, modularity
+
+    if resolution <= 0:
+        raise NeuroScapeError("resolution must be positive")
+    try:
+        communities = list(
+            greedy_modularity_communities(
+                graph,
+                weight="weight",
+                resolution=float(resolution),
+            )
+        )
+        modularity_value = float(
+            modularity(graph, communities, weight="weight", resolution=float(resolution))
+        )
+    except TypeError:
+        communities = list(greedy_modularity_communities(graph, weight="weight"))
+        modularity_value = float(modularity(graph, communities, weight="weight"))
+
+    ordered_communities = sorted(communities, key=lambda community: (-len(community), min(community)))
+    assignments: dict[int, int] = {}
+    for cluster_id, community in enumerate(ordered_communities):
+        for abstract_id in community:
+            assignments[int(abstract_id)] = cluster_id
+
+    return {
+        "best_resolution": float(resolution),
+        "best_modularity": modularity_value,
+        "history": [
+            {
+                "resolution": float(resolution),
+                "modularity": modularity_value,
+                "community_count": len(ordered_communities),
+            }
+        ],
+        "communities": [set(community) for community in ordered_communities],
         "assignments": assignments,
     }
 
@@ -875,11 +1649,13 @@ def detect_stage2_communities(
     graph: Any,
     num_resolution_parameter: int = 20,
     max_resolution_parameter: float = 1.0,
+    min_community_count: int = 1,
 ) -> dict[str, Any]:
     return detect_semantic_communities(
         graph,
         num_resolution_parameter=num_resolution_parameter,
         max_resolution_parameter=max_resolution_parameter,
+        min_community_count=min_community_count,
     )
 
 
@@ -1029,28 +1805,44 @@ def write_stage2_analysis(
     write_semantic_analysis(output_dir, graph, community_result, cluster_summaries)
 
 
-def build_minilm_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate local MiniLM embeddings for OHBM 2026 abstracts")
+def build_sentence_transformer_parser(
+    description: str,
+    default_model: str,
+) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--input", default="data/abstracts_enriched.json")
     parser.add_argument("--title-input", default="data/abstracts.json")
     parser.add_argument("--embeddings-dir", default="data/embeddings")
-    parser.add_argument("--minilm-model", default=DEFAULT_MINILM_MODEL)
+    parser.add_argument("--env-file", default=".env")
+    parser.add_argument("--output-name")
     parser.add_argument("--fields", nargs="+", default=list(DEFAULT_EMBEDDING_FIELDS))
+    parser.add_argument("--local-files-only", action="store_true")
+    parser.add_argument("--model", default=default_model)
     return parser
 
 
-def minilm_main(argv: list[str] | None = None) -> int:
-    args = build_minilm_parser().parse_args(argv)
+def run_sentence_transformer_embedding(args: argparse.Namespace, output_prefix: str) -> int:
+    configure_huggingface_auth(Path(args.env_file))
     abstracts = load_embedding_inputs(Path(args.input))
     embedding_fields = normalize_embedding_fields(args.fields)
     title_lookup = load_title_lookup(Path(args.title_input)) if "title" in embedding_fields else None
     embedding_texts = build_embedding_texts(abstracts, embedding_fields, title_lookup=title_lookup)
-    output_dir = Path(args.embeddings_dir) / f"minilm_{embedding_variant_name(embedding_fields)}"
-    vectors = minilm_embed(embedding_texts, model_name=args.minilm_model)
+    output_name = build_embedding_output_name(
+        args.model,
+        embedding_fields,
+        output_name=args.output_name,
+        prefix=output_prefix,
+    )
+    output_dir = Path(args.embeddings_dir) / output_name
+    vectors = sentence_transformer_embed(
+        embedding_texts,
+        model_name=args.model,
+        local_files_only=args.local_files_only,
+    )
     bundle = write_embedding_bundle(
         output_dir,
         output_dir.name,
-        args.minilm_model,
+        args.model,
         abstracts,
         vectors,
         embedding_fields=embedding_fields,
@@ -1062,14 +1854,44 @@ def minilm_main(argv: list[str] | None = None) -> int:
                 "input": args.input,
                 "title_input": args.title_input,
                 "embeddings_dir": str(output_dir),
-                "model_name": args.minilm_model,
+                "model_name": args.model,
                 "embedding_fields": embedding_fields,
                 "abstract_count": len(abstracts),
+                "env_file": args.env_file,
+                "local_files_only": args.local_files_only,
             },
             indent=2,
         )
     )
     return 0
+
+
+def build_minilm_parser() -> argparse.ArgumentParser:
+    parser = build_sentence_transformer_parser(
+        "Generate local MiniLM embeddings for OHBM 2026 abstracts",
+        DEFAULT_MINILM_MODEL,
+    )
+    parser.add_argument("--minilm-model", dest="model", help=argparse.SUPPRESS)
+    return parser
+
+
+def minilm_main(argv: list[str] | None = None) -> int:
+    args = build_minilm_parser().parse_args(argv)
+    if args.output_name is None:
+        args.output_name = f"minilm_{embedding_variant_name(args.fields)}"
+    return run_sentence_transformer_embedding(args, output_prefix="minilm")
+
+
+def build_hf_parser() -> argparse.ArgumentParser:
+    return build_sentence_transformer_parser(
+        "Generate local Hugging Face sentence-transformer embeddings for OHBM 2026 abstracts",
+        DEFAULT_HF_MODEL,
+    )
+
+
+def hf_main(argv: list[str] | None = None) -> int:
+    args = build_hf_parser().parse_args(argv)
+    return run_sentence_transformer_embedding(args, output_prefix="hf")
 
 
 def build_voyage_parser() -> argparse.ArgumentParser:
@@ -1080,6 +1902,7 @@ def build_voyage_parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--voyage-api-var", default="VOYAGE_API")
     parser.add_argument("--voyage-model", default=DEFAULT_VOYAGE_MODEL)
+    parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--fields", nargs="+", default=list(DEFAULT_EMBEDDING_FIELDS))
     return parser
 
@@ -1097,6 +1920,7 @@ def voyage_main(argv: list[str] | None = None) -> int:
         embedding_texts,
         get_api_key(Path(args.env_file), args.voyage_api_var),
         model=args.voyage_model,
+        batch_size=args.batch_size,
     )
     bundle = write_embedding_bundle(
         output_dir,
@@ -1114,8 +1938,70 @@ def voyage_main(argv: list[str] | None = None) -> int:
                 "title_input": args.title_input,
                 "embeddings_dir": str(output_dir),
                 "model_name": args.voyage_model,
+                "batch_size": args.batch_size,
                 "embedding_fields": embedding_fields,
                 "abstract_count": len(abstracts),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def build_openai_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Generate OpenAI embeddings for OHBM 2026 abstracts")
+    parser.add_argument("--input", default="data/abstracts_enriched.json")
+    parser.add_argument("--title-input", default="data/abstracts.json")
+    parser.add_argument("--embeddings-dir", default="data/embeddings")
+    parser.add_argument("--env-file", default=".env")
+    parser.add_argument("--openai-api-var", default="OPENAI_API_KEY")
+    parser.add_argument("--openai-model", default="text-embedding-3-small")
+    parser.add_argument("--output-name")
+    parser.add_argument("--fields", nargs="+", default=list(DEFAULT_EMBEDDING_FIELDS))
+    parser.add_argument("--dimensions", type=int)
+    return parser
+
+
+def openai_main(argv: list[str] | None = None) -> int:
+    from ohbm2026.graphql_api import get_api_key
+
+    args = build_openai_parser().parse_args(argv)
+    abstracts = load_embedding_inputs(Path(args.input))
+    embedding_fields = normalize_embedding_fields(args.fields)
+    title_lookup = load_title_lookup(Path(args.title_input)) if "title" in embedding_fields else None
+    embedding_texts = build_embedding_texts(abstracts, embedding_fields, title_lookup=title_lookup)
+    output_name = build_embedding_output_name(
+        args.openai_model,
+        embedding_fields,
+        output_name=args.output_name,
+        prefix="openai",
+    )
+    output_dir = Path(args.embeddings_dir) / output_name
+    vectors = openai_embed(
+        embedding_texts,
+        get_api_key(Path(args.env_file), args.openai_api_var),
+        model=args.openai_model,
+        dimensions=args.dimensions,
+    )
+    bundle = write_embedding_bundle(
+        output_dir,
+        output_dir.name,
+        args.openai_model,
+        abstracts,
+        vectors,
+        embedding_fields=embedding_fields,
+    )
+    write_json(output_dir / "neighbors.json", compute_neighbors(bundle["ids"], bundle["matrix"]))
+    print(
+        json.dumps(
+            {
+                "input": args.input,
+                "title_input": args.title_input,
+                "embeddings_dir": str(output_dir),
+                "model_name": args.openai_model,
+                "embedding_fields": embedding_fields,
+                "abstract_count": len(abstracts),
+                "dimensions": args.dimensions,
             },
             indent=2,
         )
@@ -1145,6 +2031,72 @@ def build_stage2_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--report-every", type=int, default=10)
     return parser
+
+
+def build_apply_pretrained_stage2_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Apply the published NeuroScape stage-2 model to a compatible stage-1 embedding bundle"
+    )
+    parser.add_argument("--stage1-dir", default="data/embeddings/voyage_stage1")
+    parser.add_argument(
+        "--model-path",
+        default="/Users/satra/software/repronim/abcd-repronim/data/NeuroScape/Data/Models/domain_embedding_model.pth",
+    )
+    parser.add_argument("--output-dir", default="data/embeddings/voyage_stage2_published")
+    parser.add_argument("--device")
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--dropout", type=float, default=0.05)
+    return parser
+
+
+def apply_pretrained_stage2_main(argv: list[str] | None = None) -> int:
+    args = build_apply_pretrained_stage2_parser().parse_args(argv)
+    stage1_bundle = load_stage1_bundle(Path(args.stage1_dir))
+    matrix = stage1_bundle["matrix"]
+    if int(matrix.shape[1]) != 1024:
+        raise NeuroScapeError(
+            f"Published NeuroScape stage-2 model expects 1024-dimensional stage-1 embeddings; got {int(matrix.shape[1])}"
+        )
+    model_path = Path(args.model_path)
+    model, torch_device = load_pretrained_stage2_model(
+        model_path,
+        input_dimension=int(matrix.shape[1]),
+        hidden_dimensions=PUBLISHED_STAGE2_HIDDEN_DIMENSIONS,
+        output_dimension=PUBLISHED_STAGE2_OUTPUT_DIMENSION,
+        dropout=args.dropout,
+        device=args.device,
+    )
+    projected_matrix = apply_stage2_model(
+        model,
+        matrix,
+        batch_size=args.batch_size,
+        device=torch_device,
+    )
+    write_pretrained_stage2_bundle(
+        Path(args.output_dir),
+        stage1_bundle,
+        projected_matrix,
+        model_path=model_path,
+        model_name="neuroscape-stage2-published",
+        hidden_dimensions=PUBLISHED_STAGE2_HIDDEN_DIMENSIONS,
+        output_dimension=PUBLISHED_STAGE2_OUTPUT_DIMENSION,
+        dropout=args.dropout,
+    )
+    print(
+        json.dumps(
+            {
+                "stage1_dir": args.stage1_dir,
+                "model_path": str(model_path),
+                "output_dir": args.output_dir,
+                "count": len(stage1_bundle["ids"]),
+                "input_dimension": int(matrix.shape[1]),
+                "output_dimension": int(projected_matrix.shape[1]),
+                "device": torch_device,
+            },
+            indent=2,
+        )
+    )
+    return 0
 
 
 def stage2_main(argv: list[str] | None = None) -> int:
@@ -1209,8 +2161,10 @@ def build_semantic_analysis_parser() -> argparse.ArgumentParser:
     parser.add_argument("--title-input", default="data/abstracts.json")
     parser.add_argument("--output-dir", default="data/embeddings/minilm_stage1/semantic_analysis")
     parser.add_argument("--num-neighbors", type=int, default=50)
+    parser.add_argument("--resolution", type=float)
     parser.add_argument("--num-resolution-parameter", type=int, default=20)
     parser.add_argument("--max-resolution-parameter", type=float, default=1.0)
+    parser.add_argument("--min-community-count", type=int, default=1)
     parser.add_argument("--max-keywords", type=int, default=8)
     parser.add_argument("--max-representatives", type=int, default=5)
     return parser
@@ -1223,11 +2177,15 @@ def semantic_analysis_main(argv: list[str] | None = None) -> int:
     enriched_lookup = load_enriched_lookup(Path(args.input))
     records = align_semantic_records(bundle["ids"], enriched_lookup, title_lookup=title_lookup)
     graph = build_knn_graph(bundle["ids"], bundle["matrix"], num_neighbors=args.num_neighbors)
-    community_result = detect_semantic_communities(
-        graph,
-        num_resolution_parameter=args.num_resolution_parameter,
-        max_resolution_parameter=args.max_resolution_parameter,
-    )
+    if args.resolution is not None:
+        community_result = detect_semantic_communities_at_resolution(graph, args.resolution)
+    else:
+        community_result = detect_semantic_communities(
+            graph,
+            num_resolution_parameter=args.num_resolution_parameter,
+            max_resolution_parameter=args.max_resolution_parameter,
+            min_community_count=args.min_community_count,
+        )
     cluster_summaries = summarize_semantic_clusters(
         bundle["ids"],
         bundle["matrix"],
@@ -1247,6 +2205,8 @@ def semantic_analysis_main(argv: list[str] | None = None) -> int:
                 "cluster_count": len(cluster_summaries),
                 "best_resolution": community_result["best_resolution"],
                 "best_modularity": community_result["best_modularity"],
+                "resolution": args.resolution,
+                "min_community_count": args.min_community_count,
             },
             indent=2,
         )
@@ -1276,6 +2236,154 @@ def stage2_analysis_main(argv: list[str] | None = None) -> int:
     return semantic_analysis_main(translated_argv)
 
 
+def _normalize_tsne_learning_rates(values: list[str]) -> list[str | float]:
+    normalized: list[str | float] = []
+    for value in values:
+        text = str(value).strip()
+        if not text:
+            continue
+        if text == "auto":
+            normalized.append("auto")
+            continue
+        try:
+            normalized.append(float(text))
+        except ValueError as exc:
+            raise NeuroScapeError(f"Invalid t-SNE learning rate: {value}") from exc
+    if not normalized:
+        raise NeuroScapeError("At least one t-SNE learning rate must be provided")
+    return normalized
+
+
+def build_projection_compare_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Write a linked interactive UMAP/t-SNE comparison for a local embedding bundle"
+    )
+    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
+    parser.add_argument("--raw-input", default="data/abstracts.json")
+    parser.add_argument("--enriched-input", default="data/abstracts_enriched.json")
+    parser.add_argument("--output-html")
+    parser.add_argument("--output-json")
+    parser.add_argument("--umap-n-neighbors", type=int, default=DEFAULT_UMAP_NEIGHBORS)
+    parser.add_argument("--umap-min-dist", type=float, default=DEFAULT_UMAP_MIN_DIST)
+    parser.add_argument("--tsne-perplexity", type=float, default=DEFAULT_TSNE_PERPLEXITY)
+    parser.add_argument("--tsne-learning-rate", default=str(DEFAULT_TSNE_LEARNING_RATE))
+    parser.add_argument("--tsne-early-exaggeration", type=float, default=DEFAULT_TSNE_EARLY_EXAGGERATION)
+    parser.add_argument("--metric", default="cosine")
+    parser.add_argument("--random-state", type=int, default=42)
+    return parser
+
+
+def projection_compare_main(argv: list[str] | None = None) -> int:
+    args = build_projection_compare_parser().parse_args(argv)
+    bundle = load_embedding_bundle(Path(args.embeddings_dir))
+    embedding_fields = normalize_embedding_fields(bundle["source_metadata"].get("embedding_fields"))
+    default_output_html, default_output_json = default_projection_output_paths(
+        Path(args.embeddings_dir),
+        embedding_fields,
+    )
+    output_html = Path(args.output_html) if args.output_html else default_output_html
+    output_json = Path(args.output_json) if args.output_json else default_output_json
+    annotations = load_annotation_lookup(Path(args.raw_input), Path(args.enriched_input))
+    records = build_visualization_records(bundle["ids"], annotations)
+    umap_coordinates = compute_umap_projection(
+        bundle["matrix"],
+        n_neighbors=args.umap_n_neighbors,
+        min_dist=args.umap_min_dist,
+        metric=args.metric,
+        random_state=args.random_state,
+    )
+    tsne_coordinates = compute_tsne_projection(
+        bundle["matrix"],
+        perplexity=args.tsne_perplexity,
+        learning_rate=_normalize_tsne_learning_rates([args.tsne_learning_rate])[0],
+        early_exaggeration=args.tsne_early_exaggeration,
+        metric=args.metric,
+        random_state=args.random_state,
+    )
+    write_projection_comparison_outputs(
+        output_html,
+        output_json,
+        umap_coordinates,
+        tsne_coordinates,
+        records,
+        title=build_embedding_visualization_title(bundle, "OHBM 2026 Projection Comparison"),
+    )
+    print(
+        json.dumps(
+            {
+                "embeddings_dir": args.embeddings_dir,
+                "raw_input": args.raw_input,
+                "enriched_input": args.enriched_input,
+                "output_html": str(output_html),
+                "output_json": str(output_json),
+                "count": len(records),
+                "umap_n_neighbors": args.umap_n_neighbors,
+                "umap_min_dist": args.umap_min_dist,
+                "tsne_perplexity": args.tsne_perplexity,
+                "tsne_learning_rate": args.tsne_learning_rate,
+                "tsne_early_exaggeration": args.tsne_early_exaggeration,
+                "metric": args.metric,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def build_projection_optimize_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Search UMAP and t-SNE parameter sets for more separable projection clusters"
+    )
+    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
+    parser.add_argument("--output", help="Optional JSON output path for scored parameter sets")
+    parser.add_argument("--umap-neighbors", nargs="+", type=int, default=[10, 30])
+    parser.add_argument("--umap-min-dists", nargs="+", type=float, default=[0.0, 0.25])
+    parser.add_argument("--tsne-perplexities", nargs="+", type=float, default=[20.0, 40.0])
+    parser.add_argument("--tsne-early-exaggerations", nargs="+", type=float, default=[8.0, 12.0])
+    parser.add_argument("--tsne-learning-rates", nargs="+", default=["auto"])
+    parser.add_argument("--metric", default="cosine")
+    parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument("--graph-neighbors", type=int, default=15)
+    parser.add_argument("--num-resolution-parameter", type=int, default=20)
+    parser.add_argument("--max-resolution-parameter", type=float, default=1.0)
+    parser.add_argument("--top-k", type=int, default=5)
+    return parser
+
+
+def projection_optimize_main(argv: list[str] | None = None) -> int:
+    args = build_projection_optimize_parser().parse_args(argv)
+    bundle = load_embedding_bundle(Path(args.embeddings_dir))
+    optimization = optimize_projection_parameters(
+        bundle["ids"],
+        bundle["matrix"],
+        umap_neighbors=[int(value) for value in args.umap_neighbors],
+        umap_min_dists=[float(value) for value in args.umap_min_dists],
+        tsne_perplexities=[float(value) for value in args.tsne_perplexities],
+        tsne_early_exaggerations=[float(value) for value in args.tsne_early_exaggerations],
+        tsne_learning_rates=_normalize_tsne_learning_rates(list(args.tsne_learning_rates)),
+        metric=args.metric,
+        random_state=args.random_state,
+        graph_neighbors=args.graph_neighbors,
+        num_resolution_parameter=args.num_resolution_parameter,
+        max_resolution_parameter=args.max_resolution_parameter,
+    )
+    if args.output:
+        write_json(Path(args.output), optimization)
+    print(
+        json.dumps(
+            {
+                "embeddings_dir": args.embeddings_dir,
+                "best_overall": optimization["best_overall"],
+                "best_by_method": optimization["best_by_method"],
+                "top_results": optimization["results"][: max(1, int(args.top_k))],
+                "output": args.output,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def build_umap_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Project a local embedding bundle to 2D with UMAP and write an interactive Plotly HTML"
@@ -1283,8 +2391,8 @@ def build_umap_parser() -> argparse.ArgumentParser:
     parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
     parser.add_argument("--raw-input", default="data/abstracts.json")
     parser.add_argument("--enriched-input", default="data/abstracts_enriched.json")
-    parser.add_argument("--output-html", default="data/embeddings/minilm_stage1/umap_2d.html")
-    parser.add_argument("--output-json", default="data/embeddings/minilm_stage1/umap_2d.json")
+    parser.add_argument("--output-html")
+    parser.add_argument("--output-json")
     parser.add_argument("--n-neighbors", type=int, default=DEFAULT_UMAP_NEIGHBORS)
     parser.add_argument("--min-dist", type=float, default=DEFAULT_UMAP_MIN_DIST)
     parser.add_argument("--metric", default="cosine")
@@ -1295,6 +2403,13 @@ def build_umap_parser() -> argparse.ArgumentParser:
 def umap_main(argv: list[str] | None = None) -> int:
     args = build_umap_parser().parse_args(argv)
     bundle = load_embedding_bundle(Path(args.embeddings_dir))
+    embedding_fields = normalize_embedding_fields(bundle["source_metadata"].get("embedding_fields"))
+    default_output_html, default_output_json = default_umap_output_paths(
+        Path(args.embeddings_dir),
+        embedding_fields,
+    )
+    output_html = Path(args.output_html) if args.output_html else default_output_html
+    output_json = Path(args.output_json) if args.output_json else default_output_json
     annotations = load_annotation_lookup(Path(args.raw_input), Path(args.enriched_input))
     records = build_visualization_records(bundle["ids"], annotations)
     coordinates = compute_umap_projection(
@@ -1305,11 +2420,11 @@ def umap_main(argv: list[str] | None = None) -> int:
         random_state=args.random_state,
     )
     write_umap_outputs(
-        Path(args.output_html),
-        Path(args.output_json),
+        output_html,
+        output_json,
         coordinates,
         records,
-        title="OHBM 2026 Abstract Embeddings UMAP",
+        title=build_embedding_visualization_title(bundle, "OHBM 2026 Abstract Embeddings UMAP"),
     )
     print(
         json.dumps(
@@ -1317,8 +2432,8 @@ def umap_main(argv: list[str] | None = None) -> int:
                 "embeddings_dir": args.embeddings_dir,
                 "raw_input": args.raw_input,
                 "enriched_input": args.enriched_input,
-                "output_html": args.output_html,
-                "output_json": args.output_json,
+                "output_html": str(output_html),
+                "output_json": str(output_json),
                 "count": len(records),
                 "n_neighbors": args.n_neighbors,
                 "min_dist": args.min_dist,

@@ -33,11 +33,26 @@ def build_parser() -> argparse.ArgumentParser:
     minilm_parser = subparsers.add_parser("embed-minilm", help="Generate local MiniLM embeddings")
     _copy_actions(minilm_parser, neuroscape.build_minilm_parser())
 
+    hf_parser = subparsers.add_parser(
+        "embed-hf",
+        help="Generate local Hugging Face sentence-transformer embeddings",
+    )
+    _copy_actions(hf_parser, neuroscape.build_hf_parser())
+
     voyage_parser = subparsers.add_parser("embed-voyage", help="Generate Voyage embeddings")
     _copy_actions(voyage_parser, neuroscape.build_voyage_parser())
 
+    openai_parser = subparsers.add_parser("embed-openai", help="Generate OpenAI embeddings")
+    _copy_actions(openai_parser, neuroscape.build_openai_parser())
+
     stage2_parser = subparsers.add_parser("embed-stage2", help="Train and apply a local NeuroScape stage-2 model")
     _copy_actions(stage2_parser, neuroscape.build_stage2_parser())
+
+    published_stage2_parser = subparsers.add_parser(
+        "apply-published-stage2",
+        help="Apply the published NeuroScape stage-2 model to a compatible embedding bundle",
+    )
+    _copy_actions(published_stage2_parser, neuroscape.build_apply_pretrained_stage2_parser())
 
     semantic_analysis_parser = subparsers.add_parser(
         "semantic-analysis",
@@ -50,6 +65,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Project a local embedding bundle to 2D with UMAP and write an interactive Plotly HTML",
     )
     _copy_actions(umap_parser, neuroscape.build_umap_parser())
+
+    projection_compare_parser = subparsers.add_parser(
+        "compare-projections",
+        help="Write a linked UMAP/t-SNE comparison HTML for a local embedding bundle",
+    )
+    _copy_actions(projection_compare_parser, neuroscape.build_projection_compare_parser())
+
+    projection_optimize_parser = subparsers.add_parser(
+        "optimize-projections",
+        help="Score UMAP/t-SNE parameter sets for more separable projected clusters",
+    )
+    _copy_actions(projection_optimize_parser, neuroscape.build_projection_optimize_parser())
 
     analyze_stage2_parser = subparsers.add_parser(
         "analyze-stage2",
@@ -95,14 +122,24 @@ def main(argv: list[str] | None = None) -> int:
         return enrichment.analyze_figures_main(subcommand_argv)
     if command == "embed-minilm":
         return neuroscape.minilm_main(subcommand_argv)
+    if command == "embed-hf":
+        return neuroscape.hf_main(subcommand_argv)
     if command == "embed-voyage":
         return neuroscape.voyage_main(subcommand_argv)
+    if command == "embed-openai":
+        return neuroscape.openai_main(subcommand_argv)
     if command == "embed-stage2":
         return neuroscape.stage2_main(subcommand_argv)
+    if command == "apply-published-stage2":
+        return neuroscape.apply_pretrained_stage2_main(subcommand_argv)
     if command == "semantic-analysis":
         return neuroscape.semantic_analysis_main(subcommand_argv)
     if command == "umap-plot":
         return neuroscape.umap_main(subcommand_argv)
+    if command == "compare-projections":
+        return neuroscape.projection_compare_main(subcommand_argv)
+    if command == "optimize-projections":
+        return neuroscape.projection_optimize_main(subcommand_argv)
     if command == "analyze-stage2":
         return neuroscape.stage2_analysis_main(subcommand_argv)
     if command == "reference-metadata":

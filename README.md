@@ -21,6 +21,8 @@ Optional for embedding generation:
 
 - Python package `sentence-transformers` for local MiniLM embeddings
 - Python packages `plotly` and `umap-learn` for local 2D embedding visualization
+- Hugging Face access if you want to download additional sentence-transformer models
+- OpenAI API access if you want to run the OpenAI embedding path
 - Voyage API access if you want to run the Voyage embedding path
 
 ## Token Requirements
@@ -34,6 +36,10 @@ Environment variables are read from `.env`. A safe template is provided in
   - optional, only required if running `embed-voyage`
 - `OPENALEX_API`
   - optional, used for authenticated OpenAlex reference enrichment
+- `HF_TOKEN`
+  - optional, used for authenticated Hugging Face model downloads
+- `OPENAI_API_KEY`
+  - optional, required if running `embed-openai`
 
 No API token is required for local Ollama usage.
 
@@ -76,6 +82,8 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli authors
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli enrich
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-figures --vision-max-images 10
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-hf --model neuml/pubmedbert-base-embeddings
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-openai
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli semantic-analysis
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli umap-plot
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli write-manifest
@@ -95,8 +103,12 @@ Subcommands:
   - analyze local figure files with Ollama and update `data/image_analyses.json`
 - `embed-minilm`
   - generate local MiniLM embeddings and nearest neighbors
+- `embed-hf`
+  - generate embeddings from an arbitrary Hugging Face sentence-transformer model
 - `embed-voyage`
   - generate Voyage embeddings and nearest neighbors
+- `embed-openai`
+  - generate OpenAI embeddings and nearest neighbors
 - `semantic-analysis`
   - build a semantic similarity graph, community assignments, and cluster summaries from a local embedding bundle
 - `umap-plot`

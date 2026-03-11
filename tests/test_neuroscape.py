@@ -6,26 +6,49 @@ from unittest import mock
 from ohbm2026.neuroscape import (
     DEFAULT_EMBEDDING_FIELDS,
     align_semantic_records,
+    build_embedding_output_name,
+    build_distinct_color_map,
+    build_hf_parser,
+    build_openai_parser,
+    build_embedding_visualization_title,
+    build_apply_pretrained_stage2_parser,
+    build_projection_compare_parser,
+    build_projection_graph,
+    build_projection_optimize_parser,
     build_visualization_records,
     build_knn_graph,
     build_semantic_analysis_parser,
     build_umap_parser,
+    compute_tsne_projection,
+    default_umap_output_paths,
+    default_projection_output_paths,
     build_embedding_text,
     build_embedding_texts,
+    configure_huggingface_auth,
+    compute_umap_projection,
     extract_raw_keywords,
     detect_semantic_communities,
+    detect_semantic_communities_at_resolution,
     detect_stage2_communities,
     embedding_variant_name,
     load_annotation_lookup,
+    load_pretrained_stage2_model,
     load_stage1_bundle,
+    model_name_slug,
     normalize_embedding_fields,
     normalize_hidden_dimensions,
     parse_string_list_value,
+    projection_compare_main,
+    projection_optimize_main,
+    score_projection,
     semantic_analysis_main,
     split_stage2_matrix,
     summarize_semantic_clusters,
     summarize_stage2_clusters,
     umap_main,
+    apply_pretrained_stage2_main,
+    write_projection_comparison_outputs,
+    write_pretrained_stage2_bundle,
     write_stage2_bundle,
 )
 
@@ -84,6 +107,47 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         self.assertEqual(embedding_variant_name(DEFAULT_EMBEDDING_FIELDS), "stage1")
         self.assertEqual(embedding_variant_name(["title", "methods"]), "title-methods")
 
+    def test_model_name_slug_normalizes_hf_model_name(self) -> None:
+        self.assertEqual(
+            model_name_slug("neuml/pubmedbert-base-embeddings"),
+            "neuml-pubmedbert-base-embeddings",
+        )
+
+    def test_build_embedding_output_name_uses_model_and_fields(self) -> None:
+        self.assertEqual(
+            build_embedding_output_name(
+                "neuml/pubmedbert-base-embeddings",
+                ["title", "results", "conclusion"],
+                prefix="hf",
+            ),
+            "hf_neuml-pubmedbert-base-embeddings_title-results-conclusion",
+        )
+        self.assertEqual(
+            build_embedding_output_name(
+                "neuml/pubmedbert-base-embeddings",
+                ["title"],
+                output_name="custom",
+                prefix="hf",
+            ),
+            "custom",
+        )
+
+    def test_build_embedding_visualization_title_uses_source_name_and_fields(self) -> None:
+        bundle = {
+            "source_metadata": {
+                "embedding_name": "neuroscape_stage2_local",
+                "source_embedding_name": "minilm_stage1",
+                "embedding_fields": ["title", "methods", "results"],
+            }
+        }
+
+        title = build_embedding_visualization_title(bundle, "OHBM 2026 Projection Comparison")
+
+        self.assertEqual(
+            title,
+            "OHBM 2026 Projection Comparison: neuroscape_stage2_local (source: minilm_stage1) | fields: title, methods, results",
+        )
+
     def test_normalize_hidden_dimensions_requires_three_values(self) -> None:
         self.assertEqual(normalize_hidden_dimensions([12, 8, 4]), (12, 8, 4))
         with self.assertRaises(Exception):
@@ -92,6 +156,37 @@ class NeuroScapeHelpersTest(unittest.TestCase):
     def test_parse_string_list_value_handles_json_list(self) -> None:
         self.assertEqual(parse_string_list_value('["A", "B"]'), ["A", "B"])
         self.assertEqual(parse_string_list_value("Single"), ["Single"])
+
+    def test_compute_umap_projection_falls_back_for_tiny_bundle(self) -> None:
+        import numpy as np
+
+        matrix = np.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [0.5, 0.25, 0.75]], dtype=np.float32)
+
+        coordinates = compute_umap_projection(matrix)
+
+        self.assertEqual(tuple(coordinates.shape), (3, 2))
+        self.assertTrue((coordinates[:, 0] == matrix[:, 0]).all())
+
+    def test_compute_tsne_projection_falls_back_for_tiny_bundle(self) -> None:
+        import numpy as np
+
+        matrix = np.asarray([[1.0, 2.0], [4.0, 5.0], [0.5, 0.25]], dtype=np.float32)
+
+        coordinates = compute_tsne_projection(matrix)
+
+        self.assertEqual(tuple(coordinates.shape), (3, 2))
+        self.assertTrue((coordinates[:, 0] == matrix[:, 0]).all())
+
+    def test_configure_huggingface_auth_reads_token_from_env_file(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            env_path.write_text("HF_TOKEN=test-token\n", encoding="utf-8")
+
+            with mock.patch.dict("os.environ", {}, clear=True):
+                token = configure_huggingface_auth(env_path)
+                self.assertEqual(token, "test-token")
+                self.assertEqual(__import__("os").environ["HF_TOKEN"], "test-token")
+                self.assertEqual(__import__("os").environ["HUGGINGFACE_HUB_TOKEN"], "test-token")
 
     def test_extract_raw_keywords_reads_keywords_response(self) -> None:
         abstract = {
@@ -219,6 +314,37 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         self.assertEqual(set(result["assignments"]), {10, 11, 12, 13})
         self.assertGreaterEqual(len(result["communities"]), 1)
 
+    def test_detect_semantic_communities_can_require_nontrivial_partition(self) -> None:
+        import networkx as nx
+
+        graph = nx.Graph()
+        graph.add_edge(1, 2, weight=1.0)
+        graph.add_edge(3, 4, weight=1.0)
+        graph.add_edge(2, 3, weight=0.1)
+
+        result = detect_semantic_communities(
+            graph,
+            num_resolution_parameter=10,
+            max_resolution_parameter=1.0,
+            min_community_count=2,
+        )
+
+        self.assertGreaterEqual(len(result["communities"]), 2)
+
+    def test_detect_semantic_communities_at_resolution_assigns_each_node(self) -> None:
+        import networkx as nx
+
+        graph = nx.Graph()
+        graph.add_edge(20, 21, weight=1.0)
+        graph.add_edge(22, 23, weight=1.0)
+        graph.add_edge(21, 22, weight=0.01)
+
+        result = detect_semantic_communities_at_resolution(graph, resolution=1.0)
+
+        self.assertEqual(set(result["assignments"]), {20, 21, 22, 23})
+        self.assertEqual(result["best_resolution"], 1.0)
+        self.assertEqual(len(result["history"]), 1)
+
     def test_summarize_stage2_clusters_returns_representatives(self) -> None:
         import numpy as np
 
@@ -299,7 +425,13 @@ class NeuroScapeHelpersTest(unittest.TestCase):
                                 "id": 1,
                                 "title": "Example",
                                 "accepted_for": "Poster",
-                                "responses": [{"question_name": "Keywords", "value": '["MRI"]'}],
+                                "responses": [
+                                    {"question_name": "Keywords", "value": '["MRI"]'},
+                                    {
+                                        "question_name": "Primary Parent Category & Sub-Category",
+                                        "value": '["Brain Stimulation","Non-invasive Magnetic/TMS"]',
+                                    },
+                                ],
                             }
                         ]
                     }
@@ -315,18 +447,20 @@ class NeuroScapeHelpersTest(unittest.TestCase):
 
         self.assertEqual(lookup[1]["title"], "Example")
         self.assertEqual(lookup[1]["keywords"], ["MRI", "cortex"])
+        self.assertEqual(lookup[1]["primary_topic"], "Brain Stimulation")
 
     def test_build_visualization_records_preserves_id_order(self) -> None:
         records = build_visualization_records(
             [2, 1],
             {
-                1: {"title": "One", "accepted_for": "Poster", "keywords": ["a"]},
-                2: {"title": "Two", "accepted_for": "Oral", "keywords": ["b"]},
+                1: {"title": "One", "accepted_for": "Poster", "primary_topic": "MRI", "keywords": ["a"]},
+                2: {"title": "Two", "accepted_for": "Oral", "primary_topic": "EEG", "keywords": ["b"]},
             },
         )
 
         self.assertEqual([record["id"] for record in records], [2, 1])
         self.assertEqual(records[0]["title"], "Two")
+        self.assertEqual(records[0]["primary_topic"], "EEG")
 
     def test_build_semantic_analysis_parser_defaults_to_minilm_bundle(self) -> None:
         parser = build_semantic_analysis_parser()
@@ -340,8 +474,208 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         args = parser.parse_args([])
 
         self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
-        self.assertEqual(args.output_html, "data/embeddings/minilm_stage1/umap_2d.html")
-        self.assertEqual(args.output_json, "data/embeddings/minilm_stage1/umap_2d.json")
+        self.assertIsNone(args.output_html)
+        self.assertIsNone(args.output_json)
+
+    def test_default_umap_output_paths_include_fieldset(self) -> None:
+        html_path, json_path = default_umap_output_paths(
+            Path("data/embeddings/minilm_stage1"),
+            ["title", "methods", "results"],
+        )
+
+        self.assertEqual(str(html_path), "data/embeddings/minilm_stage1/umap_title-methods-results.html")
+        self.assertEqual(str(json_path), "data/embeddings/minilm_stage1/umap_title-methods-results.json")
+
+    def test_default_projection_output_paths_include_fieldset(self) -> None:
+        html_path, json_path = default_projection_output_paths(
+            Path("data/embeddings/minilm_stage1"),
+            ["title", "methods", "results"],
+        )
+
+        self.assertEqual(
+            str(html_path),
+            "data/embeddings/minilm_stage1/projection_comparison_title-methods-results.html",
+        )
+        self.assertEqual(
+            str(json_path),
+            "data/embeddings/minilm_stage1/projection_comparison_title-methods-results.json",
+        )
+
+    def test_build_distinct_color_map_assigns_unique_colors(self) -> None:
+        color_map = build_distinct_color_map(["A", "B", "C", "A"])
+
+        self.assertEqual(set(color_map), {"A", "B", "C"})
+        self.assertEqual(len(set(color_map.values())), 3)
+
+    def test_build_hf_parser_defaults_to_sentence_transformer_model(self) -> None:
+        parser = build_hf_parser()
+        args = parser.parse_args([])
+
+        self.assertEqual(args.model, "sentence-transformers/all-MiniLM-L6-v2")
+        self.assertEqual(args.embeddings_dir, "data/embeddings")
+        self.assertEqual(args.env_file, ".env")
+        self.assertFalse(args.local_files_only)
+
+    def test_build_openai_parser_defaults_to_openai_model(self) -> None:
+        parser = build_openai_parser()
+        args = parser.parse_args([])
+
+        self.assertEqual(args.openai_model, "text-embedding-3-small")
+        self.assertEqual(args.openai_api_var, "OPENAI_API_KEY")
+        self.assertIsNone(args.dimensions)
+
+    def test_build_projection_compare_parser_defaults(self) -> None:
+        parser = build_projection_compare_parser()
+        args = parser.parse_args([])
+
+        self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
+        self.assertEqual(args.umap_n_neighbors, 15)
+        self.assertEqual(args.tsne_perplexity, 30.0)
+
+    def test_build_projection_optimize_parser_defaults(self) -> None:
+        parser = build_projection_optimize_parser()
+        args = parser.parse_args([])
+
+        self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
+        self.assertEqual(args.umap_neighbors, [10, 30])
+        self.assertEqual(args.tsne_perplexities, [20.0, 40.0])
+
+    def test_build_apply_pretrained_stage2_parser_defaults(self) -> None:
+        parser = build_apply_pretrained_stage2_parser()
+        args = parser.parse_args([])
+
+        self.assertEqual(args.stage1_dir, "data/embeddings/voyage_stage1")
+        self.assertTrue(args.model_path.endswith("domain_embedding_model.pth"))
+        self.assertEqual(args.output_dir, "data/embeddings/voyage_stage2_published")
+
+    def test_build_projection_graph_creates_edges(self) -> None:
+        import numpy as np
+
+        graph = build_projection_graph(
+            [1, 2, 3, 4],
+            np.asarray([[0.0, 0.0], [0.1, 0.0], [2.0, 2.0], [2.1, 2.0]], dtype=np.float32),
+            num_neighbors=2,
+        )
+
+        self.assertEqual(graph.number_of_nodes(), 4)
+        self.assertGreater(graph.number_of_edges(), 0)
+
+    def test_score_projection_reports_cluster_metrics(self) -> None:
+        import numpy as np
+
+        metrics = score_projection(
+            [1, 2, 3, 4],
+            np.asarray([[0.0, 0.0], [0.1, 0.0], [2.0, 2.0], [2.1, 2.0]], dtype=np.float32),
+            graph_neighbors=2,
+            num_resolution_parameter=4,
+        )
+
+        self.assertGreaterEqual(metrics["cluster_count"], 1)
+        self.assertIn("best_modularity", metrics)
+        self.assertIn("intercluster_distance_ratio", metrics)
+
+    def test_write_projection_comparison_outputs_writes_linked_html_and_json(self) -> None:
+        import json
+        import numpy as np
+
+        records = [
+            {"id": 1, "title": "One", "accepted_for": "Poster", "primary_topic": "MRI", "keywords": ["a"]},
+            {"id": 2, "title": "Two", "accepted_for": "Oral", "primary_topic": "EEG", "keywords": ["b"]},
+        ]
+
+        with TemporaryDirectory() as temp_dir:
+            html_path = Path(temp_dir) / "comparison.html"
+            json_path = Path(temp_dir) / "comparison.json"
+            write_projection_comparison_outputs(
+                html_path,
+                json_path,
+                np.asarray([[0.1, 0.2], [0.3, 0.4]], dtype=np.float32),
+                np.asarray([[1.1, 1.2], [1.3, 1.4]], dtype=np.float32),
+                records,
+            )
+
+            html = html_path.read_text(encoding="utf-8")
+            payload = json.loads(json_path.read_text(encoding="utf-8"))
+
+        self.assertIn("plotly_hover", html)
+        self.assertEqual(payload["count"], 2)
+        self.assertAlmostEqual(payload["points"][0]["umap_x"], 0.1)
+        self.assertAlmostEqual(payload["points"][1]["tsne_y"], 1.4)
+
+    def test_write_pretrained_stage2_bundle_uses_published_metadata(self) -> None:
+        import json
+        import numpy as np
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output_dir = root / "stage2"
+            model_path = root / "domain_embedding_model.pth"
+            model_path.write_bytes(b"placeholder")
+            stage1_bundle = {
+                "ids": [1, 2],
+                "metadata": [{"id": 1}, {"id": 2}],
+                "source_metadata": {
+                    "embedding_name": "voyage_stage1",
+                    "model_name": "voyage-large-2-instruct",
+                    "embedding_fields": ["title", "methods"],
+                },
+            }
+            projected_matrix = np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+
+            write_pretrained_stage2_bundle(
+                output_dir,
+                stage1_bundle,
+                projected_matrix,
+                model_path=model_path,
+                model_name="neuroscape-stage2-published",
+                hidden_dimensions=(512, 256, 128),
+                output_dimension=64,
+                dropout=0.05,
+            )
+
+            metadata = json.loads((output_dir / "metadata.json").read_text(encoding="utf-8"))
+            self.assertEqual(metadata["source_embedding_name"], "voyage_stage1")
+            self.assertEqual(metadata["model_name"], "neuroscape-stage2-published")
+            self.assertEqual(metadata["stage2_config"]["hidden_dimensions"], [512, 256, 128])
+            self.assertTrue((output_dir / "domain_embedding_model.pth").exists())
+
+    def test_projection_traces_share_legend_groups_across_methods(self) -> None:
+        import numpy as np
+        from plotly.subplots import make_subplots
+        import ohbm2026.neuroscape as neuroscape_module
+
+        records = [
+            {"id": 1, "title": "One", "accepted_for": "Poster", "primary_topic": "MRI", "keywords": ["a"]},
+            {"id": 2, "title": "Two", "accepted_for": "Poster", "primary_topic": "MRI", "keywords": ["b"]},
+        ]
+        figure = make_subplots(rows=2, cols=1)
+
+        neuroscape_module._add_projection_panel_traces(
+            figure,
+            np.asarray([[0.1, 0.2], [0.3, 0.4]], dtype=np.float32),
+            records,
+            row=1,
+            column=1,
+            color_by="accepted_for",
+            topic_color_map={},
+            show_legend=True,
+        )
+        neuroscape_module._add_projection_panel_traces(
+            figure,
+            np.asarray([[1.1, 1.2], [1.3, 1.4]], dtype=np.float32),
+            records,
+            row=2,
+            column=1,
+            color_by="accepted_for",
+            topic_color_map={},
+            show_legend=False,
+        )
+
+        self.assertEqual(len(figure.data), 2)
+        self.assertEqual(figure.data[0].legendgroup, "accepted_for:Poster")
+        self.assertEqual(figure.data[1].legendgroup, "accepted_for:Poster")
+        self.assertTrue(figure.data[0].showlegend)
+        self.assertFalse(figure.data[1].showlegend)
 
     def test_semantic_analysis_main_writes_outputs(self) -> None:
         import json
@@ -428,6 +762,90 @@ class NeuroScapeHelpersTest(unittest.TestCase):
             self.assertTrue((output_dir / "cluster_summaries.json").exists())
             fake_print.assert_called_once()
 
+    def test_semantic_analysis_main_supports_fixed_resolution(self) -> None:
+        import json
+        import numpy as np
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            embeddings_dir = root / "bundle"
+            input_path = root / "abstracts_enriched.json"
+            title_input = root / "abstracts.json"
+            output_dir = root / "semantic_analysis"
+            embeddings_dir.mkdir(parents=True, exist_ok=True)
+            np.save(
+                embeddings_dir / "vectors.npy",
+                np.asarray(
+                    [
+                        [1.0, 0.0],
+                        [0.9, 0.1],
+                        [0.0, 1.0],
+                        [0.1, 0.9],
+                    ],
+                    dtype=np.float32,
+                ),
+            )
+            (embeddings_dir / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "ids": [1, 2, 3, 4],
+                        "metadata": [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}],
+                        "embedding_name": "bundle",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "abstracts": [
+                            {"id": 1, "accepted_for": "Poster", "introduction_markdown": "memory"},
+                            {"id": 2, "accepted_for": "Poster", "introduction_markdown": "recall"},
+                            {"id": 3, "accepted_for": "Oral", "introduction_markdown": "vision"},
+                            {"id": 4, "accepted_for": "Oral", "introduction_markdown": "attention"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            title_input.write_text(
+                json.dumps(
+                    {
+                        "abstracts": [
+                            {"id": 1, "title": "Memory encoding"},
+                            {"id": 2, "title": "Memory retrieval"},
+                            {"id": 3, "title": "Visual cortex"},
+                            {"id": 4, "title": "Visual attention"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch("builtins.print") as fake_print:
+                result = semantic_analysis_main(
+                    [
+                        "--embeddings-dir",
+                        str(embeddings_dir),
+                        "--input",
+                        str(input_path),
+                        "--title-input",
+                        str(title_input),
+                        "--output-dir",
+                        str(output_dir),
+                        "--num-neighbors",
+                        "2",
+                        "--resolution",
+                        "1.0",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            self.assertTrue((output_dir / "community_detection.json").exists())
+            data = json.loads((output_dir / "community_detection.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["best_resolution"], 1.0)
+            fake_print.assert_called_once()
+
     def test_umap_main_writes_outputs(self) -> None:
         import json
         import numpy as np
@@ -504,6 +922,184 @@ class NeuroScapeHelpersTest(unittest.TestCase):
             self.assertEqual(args[0], output_html)
             self.assertEqual(args[1], output_json)
             self.assertEqual(args[3][0]["keywords"], ["MRI", "cortex"])
+            fake_print.assert_called_once()
+
+    def test_projection_compare_main_writes_outputs(self) -> None:
+        import json
+        import numpy as np
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            embeddings_dir = root / "bundle"
+            raw_path = root / "abstracts.json"
+            enriched_path = root / "abstracts_enriched.json"
+            output_html = root / "comparison.html"
+            output_json = root / "comparison.json"
+            embeddings_dir.mkdir(parents=True, exist_ok=True)
+            np.save(embeddings_dir / "vectors.npy", np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32))
+            (embeddings_dir / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "ids": [1, 2],
+                        "metadata": [{"id": 1}, {"id": 2}],
+                        "embedding_name": "minilm_stage1",
+                        "embedding_fields": ["title", "results"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            raw_path.write_text(
+                json.dumps(
+                    {
+                        "abstracts": [
+                            {
+                                "id": 1,
+                                "title": "One",
+                                "accepted_for": "Poster",
+                                "responses": [{"question_name": "Keywords", "value": '["MRI"]'}],
+                            },
+                            {
+                                "id": 2,
+                                "title": "Two",
+                                "accepted_for": "Oral",
+                                "responses": [{"question_name": "Keywords", "value": '["EEG"]'}],
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            enriched_path.write_text(json.dumps({"abstracts": [{"id": 1}, {"id": 2}]}), encoding="utf-8")
+
+            with mock.patch(
+                "ohbm2026.neuroscape.compute_umap_projection",
+                return_value=np.asarray([[0.1, 0.2], [0.3, 0.4]], dtype=np.float32),
+            ), mock.patch(
+                "ohbm2026.neuroscape.compute_tsne_projection",
+                return_value=np.asarray([[1.1, 1.2], [1.3, 1.4]], dtype=np.float32),
+            ), mock.patch(
+                "ohbm2026.neuroscape.write_projection_comparison_outputs"
+            ) as write_projection_comparison_outputs_mock, mock.patch("builtins.print") as fake_print:
+                result = projection_compare_main(
+                    [
+                        "--embeddings-dir",
+                        str(embeddings_dir),
+                        "--raw-input",
+                        str(raw_path),
+                        "--enriched-input",
+                        str(enriched_path),
+                        "--output-html",
+                        str(output_html),
+                        "--output-json",
+                        str(output_json),
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            write_projection_comparison_outputs_mock.assert_called_once()
+            args = write_projection_comparison_outputs_mock.call_args.args
+            self.assertEqual(args[0], output_html)
+            self.assertEqual(args[1], output_json)
+            self.assertEqual(args[4][0]["keywords"], ["MRI"])
+            fake_print.assert_called_once()
+
+    def test_projection_optimize_main_prints_ranked_results(self) -> None:
+        import json
+        import numpy as np
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            embeddings_dir = root / "bundle"
+            output_path = root / "scores.json"
+            embeddings_dir.mkdir(parents=True, exist_ok=True)
+            np.save(embeddings_dir / "vectors.npy", np.asarray([[1.0, 0.0], [0.9, 0.1], [0.0, 1.0]], dtype=np.float32))
+            (embeddings_dir / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "ids": [1, 2, 3],
+                        "metadata": [{"id": 1}, {"id": 2}, {"id": 3}],
+                        "embedding_name": "minilm_stage1",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            optimization_payload = {
+                "best_overall": {"method": "umap", "best_modularity": 0.5},
+                "best_by_method": {"umap": {"method": "umap"}, "tsne": {"method": "tsne"}},
+                "results": [{"method": "umap"}, {"method": "tsne"}],
+            }
+            with mock.patch(
+                "ohbm2026.neuroscape.optimize_projection_parameters",
+                return_value=optimization_payload,
+            ) as optimize_mock, mock.patch("builtins.print") as fake_print:
+                result = projection_optimize_main(
+                    [
+                        "--embeddings-dir",
+                        str(embeddings_dir),
+                        "--output",
+                        str(output_path),
+                        "--top-k",
+                        "1",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            optimize_mock.assert_called_once()
+            self.assertTrue(output_path.exists())
+            fake_print.assert_called_once()
+
+    def test_apply_pretrained_stage2_main_writes_outputs(self) -> None:
+        import json
+        import numpy as np
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            stage1_dir = root / "voyage_stage1"
+            output_dir = root / "voyage_stage2_published"
+            model_path = root / "domain_embedding_model.pth"
+            stage1_dir.mkdir(parents=True, exist_ok=True)
+            np.save(stage1_dir / "vectors.npy", np.ones((2, 1024), dtype=np.float32))
+            (stage1_dir / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "ids": [1, 2],
+                        "metadata": [{"id": 1}, {"id": 2}],
+                        "embedding_name": "voyage_stage1",
+                        "model_name": "voyage-large-2-instruct",
+                        "embedding_fields": ["title", "results"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            model_path.write_bytes(b"model")
+
+            fake_model = object()
+            projected = np.asarray([[0.1] * 64, [0.2] * 64], dtype=np.float32)
+            with mock.patch(
+                "ohbm2026.neuroscape.load_pretrained_stage2_model",
+                return_value=(fake_model, "cpu"),
+            ) as load_model_mock, mock.patch(
+                "ohbm2026.neuroscape.apply_stage2_model",
+                return_value=projected,
+            ) as apply_mock, mock.patch(
+                "builtins.print"
+            ) as fake_print:
+                result = apply_pretrained_stage2_main(
+                    [
+                        "--stage1-dir",
+                        str(stage1_dir),
+                        "--model-path",
+                        str(model_path),
+                        "--output-dir",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            load_model_mock.assert_called_once()
+            apply_mock.assert_called_once()
+            self.assertTrue((output_dir / "metadata.json").exists())
             fake_print.assert_called_once()
 
 

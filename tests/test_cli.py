@@ -49,12 +49,26 @@ class CLITest(unittest.TestCase):
         self.assertEqual(result, 17)
         minilm_main.assert_called_once_with(["--embeddings-dir", "custom"])
 
+    def test_embed_hf_subcommand_delegates_to_hf_main(self) -> None:
+        with mock.patch.object(cli.neuroscape, "hf_main", return_value=18) as hf_main:
+            result = cli.main(["embed-hf", "--model", "neuml/pubmedbert-base-embeddings"])
+
+        self.assertEqual(result, 18)
+        hf_main.assert_called_once_with(["--model", "neuml/pubmedbert-base-embeddings"])
+
     def test_embed_voyage_subcommand_delegates_to_voyage_main(self) -> None:
         with mock.patch.object(cli.neuroscape, "voyage_main", return_value=19) as voyage_main:
-            result = cli.main(["embed-voyage", "--voyage-model", "test-model"])
+            result = cli.main(["embed-voyage", "--voyage-model", "test-model", "--batch-size", "16"])
 
         self.assertEqual(result, 19)
-        voyage_main.assert_called_once_with(["--voyage-model", "test-model"])
+        voyage_main.assert_called_once_with(["--voyage-model", "test-model", "--batch-size", "16"])
+
+    def test_embed_openai_subcommand_delegates_to_openai_main(self) -> None:
+        with mock.patch.object(cli.neuroscape, "openai_main", return_value=20) as openai_main:
+            result = cli.main(["embed-openai", "--openai-model", "text-embedding-3-small"])
+
+        self.assertEqual(result, 20)
+        openai_main.assert_called_once_with(["--openai-model", "text-embedding-3-small"])
 
     def test_embed_stage2_subcommand_delegates_to_stage2_main(self) -> None:
         with mock.patch.object(cli.neuroscape, "stage2_main", return_value=21) as stage2_main:
@@ -62,6 +76,13 @@ class CLITest(unittest.TestCase):
 
         self.assertEqual(result, 21)
         stage2_main.assert_called_once_with(["--epochs", "5"])
+
+    def test_apply_published_stage2_subcommand_delegates_to_pretrained_main(self) -> None:
+        with mock.patch.object(cli.neuroscape, "apply_pretrained_stage2_main", return_value=28) as pretrained_main:
+            result = cli.main(["apply-published-stage2", "--stage1-dir", "custom"])
+
+        self.assertEqual(result, 28)
+        pretrained_main.assert_called_once_with(["--stage1-dir", "custom"])
 
     def test_semantic_analysis_subcommand_delegates_to_semantic_analysis_main(self) -> None:
         with mock.patch.object(cli.neuroscape, "semantic_analysis_main", return_value=22) as semantic_analysis_main:
@@ -76,6 +97,20 @@ class CLITest(unittest.TestCase):
 
         self.assertEqual(result, 23)
         umap_main.assert_called_once_with(["--n-neighbors", "25"])
+
+    def test_compare_projections_subcommand_delegates_to_projection_compare_main(self) -> None:
+        with mock.patch.object(cli.neuroscape, "projection_compare_main", return_value=26) as compare_main:
+            result = cli.main(["compare-projections", "--umap-n-neighbors", "25"])
+
+        self.assertEqual(result, 26)
+        compare_main.assert_called_once_with(["--umap-n-neighbors", "25"])
+
+    def test_optimize_projections_subcommand_delegates_to_projection_optimize_main(self) -> None:
+        with mock.patch.object(cli.neuroscape, "projection_optimize_main", return_value=27) as optimize_main:
+            result = cli.main(["optimize-projections", "--top-k", "3"])
+
+        self.assertEqual(result, 27)
+        optimize_main.assert_called_once_with(["--top-k", "3"])
 
     def test_analyze_stage2_subcommand_delegates_to_stage2_analysis_main(self) -> None:
         with mock.patch.object(cli.neuroscape, "stage2_analysis_main", return_value=24) as stage2_analysis_main:
