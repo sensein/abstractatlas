@@ -4,6 +4,9 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from ohbm2026.enrichment import (
+    DEFAULT_OPENAI_MAX_IMAGES_PER_REQUEST,
+    DEFAULT_OPENAI_MAX_REQUEST_BYTES,
+    DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS,
     EnrichmentError,
     analyze_figures,
     build_figure_analysis_parser,
@@ -126,6 +129,9 @@ class EnrichmentHelpersTest(unittest.TestCase):
         self.assertEqual(args.vision_backend, "ollama")
         self.assertEqual(args.save_every, 1)
         self.assertEqual(args.enrich_every, 25)
+        self.assertEqual(args.openai_max_images_per_request, DEFAULT_OPENAI_MAX_IMAGES_PER_REQUEST)
+        self.assertEqual(args.openai_max_request_bytes, DEFAULT_OPENAI_MAX_REQUEST_BYTES)
+        self.assertEqual(args.openai_request_timeout_seconds, DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS)
 
     def test_resolve_openai_api_key_reads_env_file(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -165,13 +171,15 @@ class EnrichmentHelpersTest(unittest.TestCase):
             }
 
             with mock.patch(
-                "ohbm2026.enrichment.openai_chat_multimodal",
+                "ohbm2026.enrichment.openai_chat_multimodal_batch",
                 return_value={
-                    "caption_guess": "Figure caption",
-                    "rich_markdown": "Figure notes",
-                    "ocr_text": "OCR",
-                    "keywords": ["MRI", "Flowchart"],
-                    "notes": "Notes",
+                    str(image_path): {
+                        "caption_guess": "Figure caption",
+                        "rich_markdown": "Figure notes",
+                        "ocr_text": "OCR",
+                        "keywords": ["MRI", "Flowchart"],
+                        "notes": "Notes",
+                    }
                 },
             ) as openai_chat:
                 cache = analyze_figures(
@@ -228,15 +236,18 @@ class EnrichmentHelpersTest(unittest.TestCase):
             }
 
             with mock.patch(
-                "ohbm2026.enrichment.openai_chat_multimodal",
+                "ohbm2026.enrichment.openai_chat_multimodal_batch",
                 side_effect=[
+                    EnrichmentError("batch failed"),
                     EnrichmentError("bad json"),
                     {
-                        "caption_guess": "Figure caption",
-                        "rich_markdown": "Figure notes",
-                        "ocr_text": "OCR",
-                        "keywords": ["MRI"],
-                        "notes": "Notes",
+                        str(image_two): {
+                            "caption_guess": "Figure caption",
+                            "rich_markdown": "Figure notes",
+                            "ocr_text": "OCR",
+                            "keywords": ["MRI"],
+                            "notes": "Notes",
+                        }
                     },
                 ],
             ):
@@ -253,6 +264,73 @@ class EnrichmentHelpersTest(unittest.TestCase):
             self.assertEqual(cache["error_count"], 1)
             self.assertIn("error", cache["analyses"][str(image_one)])
             self.assertEqual(cache["analyses"][str(image_two)]["analysis"]["caption_guess"], "Figure caption")
+
+    def test_analyze_figures_openai_batches_multiple_images_per_request(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image_one = root / "figure1.png"
+            image_two = root / "figure2.png"
+            image_one.write_bytes(b"png-bytes-1")
+            image_two.write_bytes(b"png-bytes-2")
+            cache_path = root / "image_analyses_openai.json"
+            base_database = {
+                "event_ids": [1],
+                "abstracts": [
+                    {
+                        "id": 1,
+                        "title": "Example",
+                        "accepted_for": "Poster",
+                        "responses": [],
+                        "local_assets": [
+                            {
+                                "local_path": str(image_one),
+                                "source_question_name": "Methods Figure (Optional)",
+                            },
+                            {
+                                "local_path": str(image_two),
+                                "source_question_name": "Results Figure (Optional)",
+                            },
+                        ],
+                    }
+                ],
+            }
+
+            with mock.patch(
+                "ohbm2026.enrichment.openai_chat_multimodal_batch",
+                return_value={
+                    str(image_one): {
+                        "caption_guess": "Figure one",
+                        "rich_markdown": "Figure notes one",
+                        "ocr_text": "",
+                        "keywords": ["MRI"],
+                        "notes": "",
+                    },
+                    str(image_two): {
+                        "caption_guess": "Figure two",
+                        "rich_markdown": "Figure notes two",
+                        "ocr_text": "",
+                        "keywords": ["Connectivity"],
+                        "notes": "",
+                    },
+                },
+            ) as openai_batch:
+                cache = analyze_figures(
+                    base_database,
+                    cache_path,
+                    backend="openai",
+                    model="gpt-4.1-mini",
+                    openai_api_key="test-key",
+                    openai_max_images_per_request=8,
+                    save_every=2,
+                )
+
+            self.assertEqual(cache["processed_count"], 2)
+            self.assertEqual(cache["error_count"], 0)
+            self.assertEqual(cache["analyses"][str(image_one)]["analysis"]["caption_guess"], "Figure one")
+            self.assertEqual(cache["analyses"][str(image_two)]["analysis"]["caption_guess"], "Figure two")
+            openai_batch.assert_called_once()
+            batch_assets = openai_batch.call_args.args[2]
+            self.assertEqual([asset["cache_key"] for asset in batch_assets], [str(image_one), str(image_two)])
 
 
 if __name__ == "__main__":

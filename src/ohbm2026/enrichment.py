@@ -46,6 +46,9 @@ OLLAMA_API = "http://127.0.0.1:11434/api"
 DEFAULT_VISION_MODEL = "qwen3.5:35b"
 DEFAULT_OPENAI_VISION_MODEL = "gpt-4.1-mini"
 OPENAI_CHAT_API = "https://api.openai.com/v1/chat/completions"
+DEFAULT_OPENAI_MAX_IMAGES_PER_REQUEST = 48
+DEFAULT_OPENAI_MAX_REQUEST_BYTES = 40_000_000
+DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS = 600
 
 
 class EnrichmentError(RuntimeError):
@@ -315,6 +318,16 @@ def refresh_analysis_cache_stats(cache: dict[str, Any]) -> None:
     cache["error_count"] = sum(1 for entry in analyses.values() if isinstance(entry, dict) and entry.get("error"))
 
 
+def image_to_data_url(image_path: Path) -> str:
+    image_bytes = image_path.read_bytes()
+    return f"data:image/{image_path.suffix.lstrip('.') or 'png'};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+
+
+def estimate_openai_payload_bytes(data_url: str) -> int:
+    # Include some structural JSON headroom so batches stay under the effective payload cap.
+    return len(data_url.encode("utf-8")) + 2048
+
+
 def ollama_model_status(model: str) -> OllamaModelStatus:
     completed = subprocess.run(["ollama", "list"], check=True, capture_output=True, text=True)
     models = [line.split()[0] for line in completed.stdout.splitlines()[1:] if line.strip()]
@@ -380,8 +393,7 @@ def openai_chat_multimodal(
     image_path: Path,
     api_key: str,
 ) -> dict[str, Any]:
-    image_bytes = image_path.read_bytes()
-    data_url = f"data:image/{image_path.suffix.lstrip('.') or 'png'};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+    data_url = image_to_data_url(image_path)
     request_payload = json.dumps(
         {
             "model": model,
@@ -412,7 +424,7 @@ def openai_chat_multimodal(
         method="POST",
     )
     try:
-        with urlopen(request, timeout=600) as response:
+        with urlopen(request, timeout=DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
@@ -426,6 +438,185 @@ def openai_chat_multimodal(
         return parse_jsonish_content(content)
     except json.JSONDecodeError as exc:
         raise EnrichmentError(f"OpenAI response was not valid JSON for {image_path}") from exc
+
+
+def normalize_openai_batch_response(
+    payload: dict[str, Any] | list[Any],
+    batch_assets: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    if isinstance(payload, dict):
+        items = payload.get("images")
+        if items is None and all(key in payload for key in ("caption_guess", "rich_markdown", "ocr_text", "keywords", "notes")):
+            items = [payload]
+    elif isinstance(payload, list):
+        items = payload
+    else:
+        raise EnrichmentError("OpenAI batch response was not a JSON object or array")
+
+    if not isinstance(items, list):
+        raise EnrichmentError("OpenAI batch response did not include an 'images' array")
+
+    assets_by_key = {asset["cache_key"]: asset for asset in batch_assets}
+    assets_by_index = {index: asset for index, asset in enumerate(batch_assets, start=1)}
+    normalized: dict[str, dict[str, Any]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        cache_key = str(item.get("local_path") or "").strip()
+        if cache_key and cache_key in assets_by_key:
+            target_asset = assets_by_key[cache_key]
+        else:
+            input_index = item.get("input_index")
+            try:
+                target_asset = assets_by_index[int(input_index)]
+            except (TypeError, ValueError, KeyError):
+                continue
+        normalized[target_asset["cache_key"]] = {
+            "caption_guess": str(item.get("caption_guess") or "").strip(),
+            "rich_markdown": str(item.get("rich_markdown") or "").strip(),
+            "ocr_text": str(item.get("ocr_text") or "").strip(),
+            "keywords": [str(keyword).strip() for keyword in (item.get("keywords") or []) if str(keyword).strip()],
+            "notes": str(item.get("notes") or "").strip(),
+        }
+    return normalized
+
+
+def openai_chat_multimodal_batch(
+    model: str,
+    prompt: str,
+    batch_assets: list[dict[str, Any]],
+    api_key: str,
+    timeout_seconds: int = DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS,
+) -> dict[str, dict[str, Any]]:
+    content: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": (
+                f"{prompt} "
+                "You will receive multiple figures. Return strict JSON with key 'images', "
+                "an array the same length and order as the inputs. Each item must contain: "
+                "input_index (1-based integer), local_path (string exactly matching the identifier), "
+                "caption_guess (string), rich_markdown (string), ocr_text (string), "
+                "keywords (array of short strings), notes (string)."
+            ),
+        }
+    ]
+    for index, asset in enumerate(batch_assets, start=1):
+        content.append(
+            {
+                "type": "text",
+                "text": f"Image {index} identifier: {asset['cache_key']}",
+            }
+        )
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": asset["data_url"],
+                    "detail": "high",
+                },
+            }
+        )
+
+    request_payload = json.dumps(
+        {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": content,
+                }
+            ],
+        }
+    ).encode("utf-8")
+    request = Request(
+        OPENAI_CHAT_API,
+        data=request_payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise EnrichmentError(f"OpenAI vision batch request failed with HTTP {exc.code}: {body}") from exc
+    except URLError as exc:
+        raise EnrichmentError(f"OpenAI vision batch request failed: {exc.reason}") from exc
+
+    content_payload = response_payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+    if isinstance(content_payload, list):
+        content_payload = "".join(part.get("text", "") for part in content_payload if isinstance(part, dict))
+    try:
+        parsed = parse_jsonish_content(content_payload)
+    except json.JSONDecodeError as exc:
+        raise EnrichmentError("OpenAI batch response was not valid JSON") from exc
+
+    normalized = normalize_openai_batch_response(parsed, batch_assets)
+    if len(normalized) != len(batch_assets):
+        missing = [asset["cache_key"] for asset in batch_assets if asset["cache_key"] not in normalized]
+        raise EnrichmentError(f"OpenAI batch response missing analyses for {len(missing)} images")
+    return normalized
+
+
+def iter_openai_batch_assets(
+    candidate_assets: list[tuple[Path, Any, Any]],
+    analyses: dict[str, Any],
+    max_images: int | None,
+    max_images_per_request: int,
+    max_request_bytes: int,
+) -> Any:
+    current: list[dict[str, Any]] = []
+    current_bytes = 0
+    pending_count = 0
+
+    for image_path, question_name, abstract_id in candidate_assets:
+        cache_key = str(image_path)
+        if analysis_entry_succeeded(analyses.get(cache_key)):
+            continue
+        if max_images is not None and pending_count >= max_images:
+            break
+        data_url = image_to_data_url(image_path)
+        estimated_bytes = estimate_openai_payload_bytes(data_url)
+        asset = {
+            "image_path": image_path,
+            "question_name": question_name,
+            "abstract_id": abstract_id,
+            "cache_key": cache_key,
+            "data_url": data_url,
+            "estimated_bytes": estimated_bytes,
+        }
+
+        if estimated_bytes > max_request_bytes:
+            if current:
+                yield current
+                current = []
+                current_bytes = 0
+            yield [asset]
+            pending_count += 1
+            continue
+
+        would_overflow = (
+            current
+            and (
+                len(current) >= max(max_images_per_request, 1)
+                or current_bytes + estimated_bytes > max_request_bytes
+            )
+        )
+        if would_overflow:
+            yield current
+            current = []
+            current_bytes = 0
+
+        current.append(asset)
+        current_bytes += estimated_bytes
+        pending_count += 1
+
+    if current:
+        yield current
 
 
 def resolve_openai_api_key(env_file: Path, api_var: str) -> str:
@@ -447,6 +638,9 @@ def analyze_figures(
     save_every: int = 1,
     enriched_output_path: Path | None = None,
     enrich_every: int = 25,
+    openai_max_images_per_request: int = DEFAULT_OPENAI_MAX_IMAGES_PER_REQUEST,
+    openai_max_request_bytes: int = DEFAULT_OPENAI_MAX_REQUEST_BYTES,
+    openai_request_timeout_seconds: int = DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     if backend == "ollama":
         ensure_ollama_model(model, pull_if_missing=pull_model_if_missing)
@@ -472,36 +666,8 @@ def analyze_figures(
                 candidate_assets.append((Path(local_path), asset.get("source_question_name"), abstract["id"]))
 
     processed = 0
-    errors = 0
-    for image_path, question_name, abstract_id in candidate_assets:
-        cache_key = str(image_path)
-        if analysis_entry_succeeded(analyses.get(cache_key)):
-            continue
-        try:
-            if backend == "ollama":
-                analysis = ollama_chat_multimodal(model, prompt, image_path)
-            else:
-                analysis = openai_chat_multimodal(model, prompt, image_path, openai_api_key or "")
-            analyses[cache_key] = {
-                "abstract_id": abstract_id,
-                "question_name": question_name,
-                "local_path": cache_key,
-                "model": model,
-                "backend": backend,
-                "analysis": analysis,
-            }
-        except Exception as exc:
-            errors += 1
-            analyses[cache_key] = {
-                "abstract_id": abstract_id,
-                "question_name": question_name,
-                "local_path": cache_key,
-                "model": model,
-                "backend": backend,
-                "analysis": {},
-                "error": str(exc),
-            }
-        processed += 1
+
+    def persist_progress() -> None:
         refresh_analysis_cache_stats(cache)
         if processed % max(save_every, 1) == 0:
             cache["model"] = model
@@ -509,8 +675,83 @@ def analyze_figures(
             save_image_analysis_cache(analysis_cache_path, cache)
         if enriched_output_path is not None and processed % max(enrich_every, 1) == 0:
             write_json(enriched_output_path, enrich_database(base_database, cache))
-        if max_images is not None and processed >= max_images:
-            break
+
+    def store_analysis_entry(asset: dict[str, Any], analysis: dict[str, Any] | None = None, error: str | None = None) -> None:
+        nonlocal processed
+        analyses[asset["cache_key"]] = {
+            "abstract_id": asset["abstract_id"],
+            "question_name": asset["question_name"],
+            "local_path": asset["cache_key"],
+            "model": model,
+            "backend": backend,
+            "analysis": analysis or {},
+        }
+        if error:
+            analyses[asset["cache_key"]]["error"] = error
+        processed += 1
+        persist_progress()
+
+    def process_openai_batch(batch_assets: list[dict[str, Any]]) -> None:
+        if not batch_assets:
+            return
+        try:
+            batch_results = openai_chat_multimodal_batch(
+                model,
+                prompt,
+                batch_assets,
+                openai_api_key or "",
+                timeout_seconds=openai_request_timeout_seconds,
+            )
+        except Exception as exc:
+            if len(batch_assets) == 1:
+                store_analysis_entry(batch_assets[0], error=str(exc))
+                return
+            midpoint = max(1, len(batch_assets) // 2)
+            process_openai_batch(batch_assets[:midpoint])
+            process_openai_batch(batch_assets[midpoint:])
+            return
+
+        for asset in batch_assets:
+            store_analysis_entry(asset, analysis=batch_results[asset["cache_key"]])
+
+    if backend == "openai":
+        for batch_assets in iter_openai_batch_assets(
+            candidate_assets,
+            analyses,
+            max_images=max_images,
+            max_images_per_request=openai_max_images_per_request,
+            max_request_bytes=openai_max_request_bytes,
+        ):
+            process_openai_batch(batch_assets)
+    else:
+        for image_path, question_name, abstract_id in candidate_assets:
+            cache_key = str(image_path)
+            if analysis_entry_succeeded(analyses.get(cache_key)):
+                continue
+            try:
+                analysis = ollama_chat_multimodal(model, prompt, image_path)
+                analyses[cache_key] = {
+                    "abstract_id": abstract_id,
+                    "question_name": question_name,
+                    "local_path": cache_key,
+                    "model": model,
+                    "backend": backend,
+                    "analysis": analysis,
+                }
+            except Exception as exc:
+                analyses[cache_key] = {
+                    "abstract_id": abstract_id,
+                    "question_name": question_name,
+                    "local_path": cache_key,
+                    "model": model,
+                    "backend": backend,
+                    "analysis": {},
+                    "error": str(exc),
+                }
+            processed += 1
+            persist_progress()
+            if max_images is not None and processed >= max_images:
+                break
 
     cache["model"] = model
     cache["backend"] = backend
@@ -642,6 +883,9 @@ def build_figure_analysis_parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--openai-api-var", default="OPENAI_API_KEY")
     parser.add_argument("--vision-max-images", type=int, default=None)
+    parser.add_argument("--openai-max-images-per-request", type=int, default=DEFAULT_OPENAI_MAX_IMAGES_PER_REQUEST)
+    parser.add_argument("--openai-max-request-bytes", type=int, default=DEFAULT_OPENAI_MAX_REQUEST_BYTES)
+    parser.add_argument("--openai-request-timeout-seconds", type=int, default=DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS)
     parser.add_argument("--pull-missing-vision-model", action="store_true")
     parser.add_argument("--save-every", type=int, default=1)
     parser.add_argument("--enriched-output", default=None)
@@ -673,6 +917,9 @@ def analyze_figures_main(argv: list[str] | None = None) -> int:
         save_every=args.save_every,
         enriched_output_path=Path(args.enriched_output) if args.enriched_output else None,
         enrich_every=args.enrich_every,
+        openai_max_images_per_request=args.openai_max_images_per_request,
+        openai_max_request_bytes=args.openai_max_request_bytes,
+        openai_request_timeout_seconds=args.openai_request_timeout_seconds,
     )
     print(
         json.dumps(
