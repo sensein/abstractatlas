@@ -84,6 +84,13 @@ class CLITest(unittest.TestCase):
         self.assertEqual(result, 28)
         pretrained_main.assert_called_once_with(["--stage1-dir", "custom"])
 
+    def test_cluster_benchmark_subcommand_delegates_to_cluster_benchmark_main(self) -> None:
+        with mock.patch.object(cli.neuroscape, "cluster_benchmark_main", return_value=31) as cluster_benchmark_main:
+            result = cli.main(["cluster-benchmark", "--k-max", "12"])
+
+        self.assertEqual(result, 31)
+        cluster_benchmark_main.assert_called_once_with(["--k-max", "12"])
+
     def test_semantic_analysis_subcommand_delegates_to_semantic_analysis_main(self) -> None:
         with mock.patch.object(cli.neuroscape, "semantic_analysis_main", return_value=22) as semantic_analysis_main:
             result = cli.main(["semantic-analysis", "--num-neighbors", "25"])

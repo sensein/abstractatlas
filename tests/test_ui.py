@@ -38,6 +38,7 @@ class UIHelpersTest(unittest.TestCase):
 
         self.assertEqual(args.output_dir, "export/ui-site/data")
         self.assertEqual(args.top_neighbors, 8)
+        self.assertEqual(args.cluster_25_dir, "data/embeddings/voyage_stage2_published/clustering_benchmark")
         self.assertEqual(args.semantic_vectors_input, "data/embeddings/minilm_stage1/vectors.npy")
         self.assertEqual(args.umap_input, "data/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json")
 
@@ -54,8 +55,10 @@ class UIHelpersTest(unittest.TestCase):
             umap_input = root / "umap.json"
             cluster_15_dir = root / "semantic_analysis_15"
             cluster_21_dir = root / "semantic_analysis_21"
+            cluster_25_dir = root / "clustering_benchmark"
             cluster_15_dir.mkdir()
             cluster_21_dir.mkdir()
+            cluster_25_dir.mkdir()
 
             raw_input.write_text(
                 json.dumps(
@@ -189,7 +192,7 @@ class UIHelpersTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            for directory, cluster_id in ((cluster_15_dir, 3), (cluster_21_dir, 7)):
+            for directory, cluster_id in ((cluster_15_dir, 3), (cluster_21_dir, 7), (cluster_25_dir, 11)):
                 (directory / "cluster_assignments.json").write_text(
                     json.dumps({"assignments": {"1": cluster_id}}),
                     encoding="utf-8",
@@ -220,6 +223,7 @@ class UIHelpersTest(unittest.TestCase):
                 neighbors_input=neighbors_input,
                 cluster_15_dir=cluster_15_dir,
                 cluster_21_dir=cluster_21_dir,
+                cluster_25_dir=cluster_25_dir,
                 semantic_vectors_input=semantic_vectors_input,
                 semantic_metadata_input=semantic_metadata_input,
                 umap_input=umap_input,
@@ -230,6 +234,7 @@ class UIHelpersTest(unittest.TestCase):
         self.assertEqual(payload["search"]["abstracts"][0]["title"], "Memory fMRI in aging")
         self.assertEqual(payload["search"]["abstracts"][0]["primary_topic"], "Lifespan Development")
         self.assertEqual(payload["search"]["abstracts"][0]["facets"]["semantic_15"], ["3: memory, aging, hippocampus"])
+        self.assertEqual(payload["search"]["abstracts"][0]["facets"]["semantic_25"], ["11: memory, aging, hippocampus"])
         self.assertEqual(payload["search"]["abstracts"][0]["facets"]["species"], ["Human"])
         self.assertEqual(payload["search"]["abstracts"][0]["facets"]["brain_regions"], ["Hippocampus"])
         self.assertEqual(payload["search"]["abstracts"][0]["facets"]["brain_networks"], ["Default Mode Network"])
@@ -259,9 +264,11 @@ class UIHelpersTest(unittest.TestCase):
             umap_input = root / "umap.json"
             cluster_15_dir = root / "semantic_analysis_15"
             cluster_21_dir = root / "semantic_analysis_21"
+            cluster_25_dir = root / "clustering_benchmark"
             site_output_dir = root / "site"
             cluster_15_dir.mkdir()
             cluster_21_dir.mkdir()
+            cluster_25_dir.mkdir()
 
             raw_input.write_text(
                 json.dumps({"abstracts": [{"id": 1, "title": "T", "accepted_for": "Poster", "responses": []}]}),
@@ -308,7 +315,7 @@ class UIHelpersTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            for directory in (cluster_15_dir, cluster_21_dir):
+            for directory in (cluster_15_dir, cluster_21_dir, cluster_25_dir):
                 (directory / "cluster_assignments.json").write_text(
                     json.dumps({"assignments": {"1": 0}}),
                     encoding="utf-8",
@@ -351,6 +358,8 @@ class UIHelpersTest(unittest.TestCase):
                     str(cluster_15_dir),
                     "--cluster-21-dir",
                     str(cluster_21_dir),
+                    "--cluster-25-dir",
+                    str(cluster_25_dir),
                     "--semantic-vectors-input",
                     str(semantic_vectors_input),
                     "--semantic-metadata-input",

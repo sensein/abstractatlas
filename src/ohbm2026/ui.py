@@ -21,6 +21,7 @@ DEFAULT_IMAGE_ANALYSES_INPUT = "data/image_analyses.json"
 DEFAULT_NEIGHBORS_INPUT = "data/embeddings/voyage_stage2_published/neighbors.json"
 DEFAULT_CLUSTER_15_DIR = "data/embeddings/voyage_stage2_published/semantic_analysis_15-communities"
 DEFAULT_CLUSTER_21_DIR = "data/embeddings/voyage_stage2_published/semantic_analysis_21-communities"
+DEFAULT_CLUSTER_25_DIR = "data/embeddings/voyage_stage2_published/clustering_benchmark"
 DEFAULT_SEMANTIC_VECTORS_INPUT = "data/embeddings/minilm_stage1/vectors.npy"
 DEFAULT_SEMANTIC_METADATA_INPUT = "data/embeddings/minilm_stage1/metadata.json"
 DEFAULT_UMAP_INPUT = "data/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json"
@@ -53,6 +54,7 @@ FACET_GROUPS = (
     "brain_networks",
     "semantic_15",
     "semantic_21",
+    "semantic_25",
 )
 QUESTION_MAP = {
     "methods": "Please indicate which methods were used in your research:",
@@ -402,6 +404,9 @@ def build_metadata(raw_abstract: dict[str, Any], enriched_abstract: dict[str, An
     metadata["semantic_21"] = [
         normalize_cluster_value(partitions["semantic_21"]["assignments"].get(abstract_id), partitions["semantic_21"])
     ]
+    metadata["semantic_25"] = [
+        normalize_cluster_value(partitions["semantic_25"]["assignments"].get(abstract_id), partitions["semantic_25"])
+    ]
     return metadata
 
 
@@ -509,6 +514,7 @@ def build_ui_payload(
     neighbors_input: Path,
     cluster_15_dir: Path,
     cluster_21_dir: Path,
+    cluster_25_dir: Path,
     semantic_vectors_input: Path,
     semantic_metadata_input: Path,
     umap_input: Path,
@@ -523,6 +529,7 @@ def build_ui_payload(
     partitions = {
         "semantic_15": load_cluster_partition(cluster_15_dir, "semantic_15"),
         "semantic_21": load_cluster_partition(cluster_21_dir, "semantic_21"),
+        "semantic_25": load_cluster_partition(cluster_25_dir, "semantic_25"),
     }
     umap_projection = load_umap_projection(umap_input)
 
@@ -564,6 +571,7 @@ def build_ui_payload(
                 "brain_networks": domain_facets["brain_networks"],
                 "semantic_15": metadata["semantic_15"],
                 "semantic_21": metadata["semantic_21"],
+                "semantic_25": metadata["semantic_25"],
             },
             "search_blob": build_search_blob(raw_abstract, enriched_abstract, metadata),
         }
@@ -596,6 +604,7 @@ def build_ui_payload(
             "clusters": {
                 "semantic_15": partitions["semantic_15"]["assignments"].get(abstract_id),
                 "semantic_21": partitions["semantic_21"]["assignments"].get(abstract_id),
+                "semantic_25": partitions["semantic_25"]["assignments"].get(abstract_id),
             },
         }
 
@@ -650,6 +659,7 @@ def build_ui_payload(
             "partitions": {
                 "semantic_15": str(cluster_15_dir),
                 "semantic_21": str(cluster_21_dir),
+                "semantic_25": str(cluster_25_dir),
             },
             "files": files,
             "semantic_search": semantic_search["metadata"] if semantic_search else None,
@@ -700,6 +710,7 @@ def build_export_parser() -> argparse.ArgumentParser:
     parser.add_argument("--neighbors-input", default=DEFAULT_NEIGHBORS_INPUT)
     parser.add_argument("--cluster-15-dir", default=DEFAULT_CLUSTER_15_DIR)
     parser.add_argument("--cluster-21-dir", default=DEFAULT_CLUSTER_21_DIR)
+    parser.add_argument("--cluster-25-dir", default=DEFAULT_CLUSTER_25_DIR)
     parser.add_argument("--semantic-vectors-input", default=DEFAULT_SEMANTIC_VECTORS_INPUT)
     parser.add_argument("--semantic-metadata-input", default=DEFAULT_SEMANTIC_METADATA_INPUT)
     parser.add_argument("--umap-input", default=DEFAULT_UMAP_INPUT)
@@ -718,6 +729,7 @@ def export_ui_main(argv: list[str] | None = None) -> int:
         neighbors_input=Path(args.neighbors_input),
         cluster_15_dir=Path(args.cluster_15_dir),
         cluster_21_dir=Path(args.cluster_21_dir),
+        cluster_25_dir=Path(args.cluster_25_dir),
         semantic_vectors_input=Path(args.semantic_vectors_input),
         semantic_metadata_input=Path(args.semantic_metadata_input),
         umap_input=Path(args.umap_input),
@@ -746,6 +758,7 @@ def build_ui_parser() -> argparse.ArgumentParser:
     parser.add_argument("--neighbors-input", default=DEFAULT_NEIGHBORS_INPUT)
     parser.add_argument("--cluster-15-dir", default=DEFAULT_CLUSTER_15_DIR)
     parser.add_argument("--cluster-21-dir", default=DEFAULT_CLUSTER_21_DIR)
+    parser.add_argument("--cluster-25-dir", default=DEFAULT_CLUSTER_25_DIR)
     parser.add_argument("--semantic-vectors-input", default=DEFAULT_SEMANTIC_VECTORS_INPUT)
     parser.add_argument("--semantic-metadata-input", default=DEFAULT_SEMANTIC_METADATA_INPUT)
     parser.add_argument("--umap-input", default=DEFAULT_UMAP_INPUT)
@@ -767,6 +780,7 @@ def build_ui_main(argv: list[str] | None = None) -> int:
         neighbors_input=Path(args.neighbors_input),
         cluster_15_dir=Path(args.cluster_15_dir),
         cluster_21_dir=Path(args.cluster_21_dir),
+        cluster_25_dir=Path(args.cluster_25_dir),
         semantic_vectors_input=Path(args.semantic_vectors_input),
         semantic_metadata_input=Path(args.semantic_metadata_input),
         umap_input=Path(args.umap_input),

@@ -54,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _copy_actions(published_stage2_parser, neuroscape.build_apply_pretrained_stage2_parser())
 
+    cluster_benchmark_parser = subparsers.add_parser(
+        "cluster-benchmark",
+        help="Benchmark label-independent clustering methods over a local embedding bundle",
+    )
+    _copy_actions(cluster_benchmark_parser, neuroscape.build_cluster_benchmark_parser())
+
     semantic_analysis_parser = subparsers.add_parser(
         "semantic-analysis",
         help="Build a semantic graph, communities, and cluster summaries from a local embedding bundle",
@@ -144,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
         return neuroscape.stage2_main(subcommand_argv)
     if command == "apply-published-stage2":
         return neuroscape.apply_pretrained_stage2_main(subcommand_argv)
+    if command == "cluster-benchmark":
+        return neuroscape.cluster_benchmark_main(subcommand_argv)
     if command == "semantic-analysis":
         return neuroscape.semantic_analysis_main(subcommand_argv)
     if command == "umap-plot":

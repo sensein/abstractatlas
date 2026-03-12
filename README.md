@@ -89,6 +89,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-figures --vision-backend
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-hf --model neuml/pubmedbert-base-embeddings
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-openai
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli cluster-benchmark --embeddings-dir data/embeddings/voyage_stage2_published --output-dir data/embeddings/voyage_stage2_published/clustering_benchmark
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli semantic-analysis
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli umap-plot
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli export-ui
@@ -116,6 +117,8 @@ Subcommands:
   - generate Voyage embeddings and nearest neighbors
 - `embed-openai`
   - generate OpenAI embeddings and nearest neighbors
+- `cluster-benchmark`
+  - benchmark clustering methods and cluster counts on a local embedding bundle using label-independent metrics such as silhouette, Davies-Bouldin, Calinski-Harabasz, and cluster-separation ratios
 - `semantic-analysis`
   - build a semantic similarity graph, community assignments, and cluster summaries from a local embedding bundle
 - `umap-plot`

@@ -1024,6 +1024,356 @@ def score_projection(
     }
 
 
+def _normalize_rows(matrix: Any) -> Any:
+    import numpy as np
+
+    normalized = np.asarray(matrix, dtype=np.float32).copy()
+    norms = np.linalg.norm(normalized, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    return normalized / norms
+
+
+def prepare_clustering_matrix(
+    matrix: Any,
+    normalize_rows: bool = True,
+    pca_components: int | None = 50,
+    random_state: int = 42,
+) -> dict[str, Any]:
+    import numpy as np
+
+    prepared = np.asarray(matrix, dtype=np.float32)
+    metadata: dict[str, Any] = {
+        "input_dimension": int(prepared.shape[1]) if prepared.ndim == 2 else 0,
+        "row_normalized": bool(normalize_rows),
+        "pca_components": None,
+    }
+    if normalize_rows:
+        prepared = _normalize_rows(prepared)
+    requested_components = None if pca_components is None else int(pca_components)
+    if requested_components and requested_components > 0:
+        max_components = min(int(prepared.shape[0]), int(prepared.shape[1]))
+        effective_components = min(requested_components, max_components)
+        if effective_components >= 2 and effective_components < int(prepared.shape[1]):
+            from sklearn.decomposition import PCA
+
+            reducer = PCA(n_components=effective_components, random_state=random_state)
+            prepared = reducer.fit_transform(prepared).astype(np.float32, copy=False)
+            metadata["pca_components"] = int(effective_components)
+            metadata["explained_variance_ratio"] = float(reducer.explained_variance_ratio_.sum())
+    metadata["output_dimension"] = int(prepared.shape[1]) if prepared.ndim == 2 else 0
+    return {"matrix": prepared, "metadata": metadata}
+
+
+def _agglomerative_kwargs(metric: str, linkage: str) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {"n_clusters": None, "distance_threshold": None, "linkage": linkage}
+    try:
+        from sklearn.cluster import AgglomerativeClustering
+
+        AgglomerativeClustering(metric=metric, **kwargs)
+        kwargs["metric"] = metric
+    except TypeError:
+        kwargs["affinity"] = metric
+    return kwargs
+
+
+def cluster_with_method(
+    matrix: Any,
+    method: str,
+    cluster_count: int,
+    random_state: int = 42,
+) -> list[int]:
+    import numpy as np
+    from sklearn.cluster import AgglomerativeClustering, Birch, KMeans
+    from sklearn.mixture import GaussianMixture
+
+    method_name = str(method).strip().lower()
+    if cluster_count < 2:
+        raise NeuroScapeError("cluster_count must be at least 2")
+
+    if method_name == "kmeans":
+        estimator = KMeans(n_clusters=cluster_count, random_state=random_state, n_init=10)
+        return estimator.fit_predict(matrix).astype(np.int32).tolist()
+    if method_name == "agglomerative-ward":
+        estimator = AgglomerativeClustering(n_clusters=cluster_count, linkage="ward")
+        return estimator.fit_predict(matrix).astype(np.int32).tolist()
+    if method_name == "agglomerative-average":
+        kwargs = _agglomerative_kwargs("cosine", "average")
+        kwargs["n_clusters"] = cluster_count
+        kwargs.pop("distance_threshold", None)
+        estimator = AgglomerativeClustering(**kwargs)
+        try:
+            return estimator.fit_predict(matrix).astype(np.int32).tolist()
+        except ValueError as exc:
+            if "zero vectors" not in str(exc).lower():
+                raise
+            fallback_kwargs = _agglomerative_kwargs("euclidean", "average")
+            fallback_kwargs["n_clusters"] = cluster_count
+            fallback_kwargs.pop("distance_threshold", None)
+            fallback_estimator = AgglomerativeClustering(**fallback_kwargs)
+            return fallback_estimator.fit_predict(matrix).astype(np.int32).tolist()
+    if method_name == "gaussian-mixture":
+        estimator = GaussianMixture(n_components=cluster_count, covariance_type="diag", random_state=random_state)
+        return estimator.fit(matrix).predict(matrix).astype(np.int32).tolist()
+    if method_name == "birch":
+        estimator = Birch(n_clusters=cluster_count)
+        return estimator.fit_predict(matrix).astype(np.int32).tolist()
+    raise NeuroScapeError(f"Unsupported clustering method: {method}")
+
+
+def _normalized_cluster_entropy(counts: list[int]) -> float:
+    import math
+
+    total = sum(counts)
+    if total <= 0 or len(counts) <= 1:
+        return 0.0
+    probabilities = [count / total for count in counts if count > 0]
+    entropy = -sum(probability * math.log(probability) for probability in probabilities)
+    return float(entropy / math.log(len(probabilities))) if len(probabilities) > 1 else 0.0
+
+
+def compute_clustering_metrics(
+    ids: list[int],
+    matrix: Any,
+    labels: list[int] | tuple[int, ...],
+) -> dict[str, Any]:
+    import numpy as np
+    from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score, silhouette_score
+
+    if len(ids) != len(labels):
+        raise NeuroScapeError("ID and label counts do not match")
+    numeric_labels = np.asarray(labels, dtype=np.int32)
+    cluster_ids = sorted({int(value) for value in numeric_labels.tolist()})
+    cluster_sizes = [int(np.sum(numeric_labels == cluster_id)) for cluster_id in cluster_ids]
+    total = max(1, len(labels))
+    assignments = {int(abstract_id): int(cluster_id) for abstract_id, cluster_id in zip(ids, numeric_labels.tolist())}
+    distance_metrics = _cluster_distance_metrics(ids, matrix, assignments)
+
+    metrics: dict[str, Any] = {
+        "cluster_count": len(cluster_ids),
+        "cluster_sizes": cluster_sizes,
+        "largest_cluster_fraction": (max(cluster_sizes) / total) if cluster_sizes else 1.0,
+        "smallest_cluster_size": min(cluster_sizes) if cluster_sizes else 0,
+        "cluster_size_std_fraction": (
+            float(np.std(cluster_sizes) / np.mean(cluster_sizes)) if len(cluster_sizes) > 1 else 0.0
+        ),
+        "cluster_size_entropy": _normalized_cluster_entropy(cluster_sizes),
+        "mean_intercluster_distance": float(distance_metrics["mean_intercluster_distance"]),
+        "mean_intracluster_distance": float(distance_metrics["mean_intracluster_distance"]),
+        "intercluster_distance_ratio": float(distance_metrics["intercluster_distance_ratio"]),
+        "silhouette_score": None,
+        "calinski_harabasz_score": None,
+        "davies_bouldin_score": None,
+        "valid": len(cluster_ids) > 1,
+    }
+    if len(cluster_ids) <= 1:
+        return metrics
+
+    try:
+        metrics["silhouette_score"] = float(silhouette_score(matrix, numeric_labels, metric="euclidean"))
+    except Exception:
+        metrics["silhouette_score"] = None
+    try:
+        metrics["calinski_harabasz_score"] = float(calinski_harabasz_score(matrix, numeric_labels))
+    except Exception:
+        metrics["calinski_harabasz_score"] = None
+    try:
+        metrics["davies_bouldin_score"] = float(davies_bouldin_score(matrix, numeric_labels))
+    except Exception:
+        metrics["davies_bouldin_score"] = None
+    return metrics
+
+
+def _valid_benchmark_run(result: dict[str, Any]) -> bool:
+    cluster_count = int(result.get("cluster_count") or 0)
+    smallest_cluster_size = int(result.get("smallest_cluster_size") or 0)
+    largest_cluster_fraction = float(result.get("largest_cluster_fraction") or 1.0)
+    return (
+        bool(result.get("valid"))
+        and cluster_count >= 2
+        and smallest_cluster_size > 0
+        and largest_cluster_fraction < 0.98
+    )
+
+
+def _normalized_metric_value(
+    results: list[dict[str, Any]],
+    result: dict[str, Any],
+    key: str,
+    higher_is_better: bool,
+) -> float:
+    numeric_values = [
+        float(candidate[key])
+        for candidate in results
+        if _valid_benchmark_run(candidate) and candidate.get(key) is not None
+    ]
+    if not numeric_values or result.get(key) is None:
+        return 0.0
+    value = float(result[key])
+    minimum = min(numeric_values)
+    maximum = max(numeric_values)
+    if maximum <= minimum:
+        return 1.0
+    normalized = (value - minimum) / (maximum - minimum)
+    return normalized if higher_is_better else 1.0 - normalized
+
+
+def rank_clustering_benchmark_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ranked: list[dict[str, Any]] = []
+    for result in results:
+        normalized_metrics = {
+            "silhouette": _normalized_metric_value(results, result, "silhouette_score", higher_is_better=True),
+            "intercluster_ratio": _normalized_metric_value(
+                results,
+                result,
+                "intercluster_distance_ratio",
+                higher_is_better=True,
+            ),
+            "calinski_harabasz": _normalized_metric_value(
+                results,
+                result,
+                "calinski_harabasz_score",
+                higher_is_better=True,
+            ),
+            "davies_bouldin": _normalized_metric_value(
+                results,
+                result,
+                "davies_bouldin_score",
+                higher_is_better=False,
+            ),
+            "cluster_entropy": _normalized_metric_value(
+                results,
+                result,
+                "cluster_size_entropy",
+                higher_is_better=True,
+            ),
+            "cluster_balance": _normalized_metric_value(
+                results,
+                result,
+                "largest_cluster_fraction",
+                higher_is_better=False,
+            ),
+        }
+        weights = {
+            "silhouette": 0.30,
+            "intercluster_ratio": 0.20,
+            "calinski_harabasz": 0.15,
+            "davies_bouldin": 0.15,
+            "cluster_entropy": 0.10,
+            "cluster_balance": 0.10,
+        }
+        composite_score = sum(normalized_metrics[key] * weights[key] for key in weights)
+        if not _valid_benchmark_run(result):
+            composite_score = -1.0
+        ranked_result = dict(result)
+        ranked_result["normalized_metrics"] = normalized_metrics
+        ranked_result["composite_score"] = float(composite_score)
+        ranked.append(ranked_result)
+
+    return sorted(
+        ranked,
+        key=lambda item: (
+            float(item.get("composite_score") or -1.0),
+            float(item.get("silhouette_score") if item.get("silhouette_score") is not None else -1.0),
+            float(item.get("intercluster_distance_ratio") or 0.0),
+            -float(item.get("davies_bouldin_score") or 999999.0),
+        ),
+        reverse=True,
+    )
+
+
+def run_clustering_benchmark(
+    ids: list[int],
+    matrix: Any,
+    methods: list[str],
+    k_values: list[int],
+    random_state: int = 42,
+) -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+    best_labels_by_signature: dict[tuple[str, int], list[int]] = {}
+    for method in methods:
+        for cluster_count in k_values:
+            try:
+                labels = cluster_with_method(matrix, method, cluster_count=cluster_count, random_state=random_state)
+                metrics = compute_clustering_metrics(ids, matrix, labels)
+                result = {
+                    "method": method,
+                    "requested_cluster_count": int(cluster_count),
+                    **metrics,
+                }
+                results.append(result)
+                best_labels_by_signature[(method, int(cluster_count))] = labels
+            except Exception as exc:
+                results.append(
+                    {
+                        "method": method,
+                        "requested_cluster_count": int(cluster_count),
+                        "cluster_count": 0,
+                        "valid": False,
+                        "error": str(exc),
+                    }
+                )
+    ranked_results = rank_clustering_benchmark_results(results)
+    best_result = ranked_results[0] if ranked_results else None
+    best_labels = None
+    if best_result and _valid_benchmark_run(best_result):
+        best_labels = best_labels_by_signature.get(
+            (str(best_result["method"]), int(best_result["requested_cluster_count"]))
+        )
+    return {
+        "results": ranked_results,
+        "best_result": best_result,
+        "best_labels": best_labels,
+    }
+
+
+def write_clustering_benchmark(
+    output_dir: Path,
+    benchmark: dict[str, Any],
+    ids: list[int],
+    records: list[dict[str, Any]],
+    matrix: Any,
+    config: dict[str, Any],
+    max_keywords: int = 8,
+    max_representatives: int = 5,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    write_json(
+        output_dir / "benchmark.json",
+        {
+            "config": config,
+            "best_result": benchmark["best_result"],
+            "results": benchmark["results"],
+        },
+    )
+    best_result = benchmark.get("best_result")
+    best_labels = benchmark.get("best_labels")
+    if not best_result or not best_labels or not _valid_benchmark_run(best_result):
+        return
+    assignments = {
+        int(abstract_id): int(cluster_id)
+        for abstract_id, cluster_id in zip(ids, best_labels)
+    }
+    cluster_summaries = summarize_semantic_clusters(
+        ids,
+        matrix,
+        records,
+        assignments,
+        max_keywords=max_keywords,
+        max_representatives=max_representatives,
+    )
+    write_json(output_dir / "best_run.json", {"result": best_result})
+    write_json(
+        output_dir / "cluster_assignments.json",
+        {
+            "assignments": {
+                str(abstract_id): cluster_id
+                for abstract_id, cluster_id in sorted(assignments.items())
+            }
+        },
+    )
+    write_json(output_dir / "cluster_summaries.json", {"clusters": cluster_summaries})
+
+
 def _projection_rank_key(result: dict[str, Any]) -> tuple[float, float, float, float]:
     cluster_count = int(result.get("cluster_count") or 0)
     silhouette_score = result.get("silhouette_score")
@@ -2145,6 +2495,93 @@ def stage2_main(argv: list[str] | None = None) -> int:
                 "device": training_summary["device"],
                 "best_validation_loss": training_summary["best_validation_loss"],
                 "epochs": args.epochs,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def build_cluster_benchmark_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Benchmark label-independent clustering methods over a local embedding bundle"
+    )
+    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
+    parser.add_argument("--input", default="data/abstracts_enriched.json")
+    parser.add_argument("--title-input", default="data/abstracts.json")
+    parser.add_argument("--output-dir", default="data/embeddings/minilm_stage1/clustering_benchmark")
+    parser.add_argument(
+        "--methods",
+        nargs="+",
+        default=["kmeans", "agglomerative-ward", "agglomerative-average", "gaussian-mixture", "birch"],
+    )
+    parser.add_argument("--k-min", type=int, default=2)
+    parser.add_argument("--k-max", type=int, default=30)
+    parser.set_defaults(row_normalize=True)
+    parser.add_argument("--row-normalize", action="store_true", dest="row_normalize")
+    parser.add_argument("--no-row-normalize", action="store_false", dest="row_normalize")
+    parser.add_argument("--pca-components", type=int, default=50)
+    parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument("--max-keywords", type=int, default=8)
+    parser.add_argument("--max-representatives", type=int, default=5)
+    return parser
+
+
+def cluster_benchmark_main(argv: list[str] | None = None) -> int:
+    args = build_cluster_benchmark_parser().parse_args(argv)
+    if args.k_min < 2:
+        raise NeuroScapeError("k-min must be at least 2")
+    if args.k_max < args.k_min:
+        raise NeuroScapeError("k-max must be greater than or equal to k-min")
+    bundle = load_embedding_bundle(Path(args.embeddings_dir))
+    prepared = prepare_clustering_matrix(
+        bundle["matrix"],
+        normalize_rows=bool(args.row_normalize),
+        pca_components=args.pca_components,
+        random_state=args.random_state,
+    )
+    title_lookup = load_title_lookup(Path(args.title_input))
+    enriched_lookup = load_enriched_lookup(Path(args.input))
+    records = align_cluster_records(bundle["ids"], enriched_lookup, title_lookup=title_lookup)
+    methods = [str(method).strip().lower() for method in args.methods if str(method).strip()]
+    k_values = list(range(int(args.k_min), int(args.k_max) + 1))
+    benchmark = run_clustering_benchmark(
+        bundle["ids"],
+        prepared["matrix"],
+        methods=methods,
+        k_values=k_values,
+        random_state=args.random_state,
+    )
+    config = {
+        "embeddings_dir": args.embeddings_dir,
+        "input": args.input,
+        "title_input": args.title_input,
+        "methods": methods,
+        "k_values": k_values,
+        "random_state": args.random_state,
+        **prepared["metadata"],
+    }
+    write_clustering_benchmark(
+        Path(args.output_dir),
+        benchmark,
+        bundle["ids"],
+        records,
+        prepared["matrix"],
+        config,
+        max_keywords=args.max_keywords,
+        max_representatives=args.max_representatives,
+    )
+    valid_results = [result for result in benchmark["results"] if _valid_benchmark_run(result)]
+    print(
+        json.dumps(
+            {
+                "embeddings_dir": args.embeddings_dir,
+                "output_dir": args.output_dir,
+                "count": len(bundle["ids"]),
+                "tested_runs": len(benchmark["results"]),
+                "valid_runs": len(valid_results),
+                "best_result": benchmark["best_result"],
+                "preprocessing": prepared["metadata"],
             },
             indent=2,
         )

@@ -24,11 +24,13 @@ const FACET_LABELS = {
   brain_networks: "Brain networks",
   semantic_15: "Semantic clusters (15)",
   semantic_21: "Semantic clusters (21)",
+  semantic_25: "Semantic clusters (25)",
 };
 
 const CLUSTER_LAYER_LABELS = {
   semantic_15: "15-cluster view",
   semantic_21: "21-cluster view",
+  semantic_25: "25-cluster benchmark",
 };
 
 const SEARCH_MODE_LABELS = {

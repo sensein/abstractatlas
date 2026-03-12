@@ -12,6 +12,7 @@ from ohbm2026.neuroscape import (
     build_openai_parser,
     build_embedding_visualization_title,
     build_apply_pretrained_stage2_parser,
+    build_cluster_benchmark_parser,
     build_projection_compare_parser,
     build_projection_graph,
     build_projection_optimize_parser,
@@ -20,6 +21,9 @@ from ohbm2026.neuroscape import (
     build_semantic_analysis_parser,
     build_umap_parser,
     compute_tsne_projection,
+    compute_clustering_metrics,
+    cluster_benchmark_main,
+    cluster_with_method,
     default_umap_output_paths,
     default_projection_output_paths,
     build_embedding_text,
@@ -40,6 +44,8 @@ from ohbm2026.neuroscape import (
     parse_string_list_value,
     projection_compare_main,
     projection_optimize_main,
+    rank_clustering_benchmark_results,
+    run_clustering_benchmark,
     score_projection,
     semantic_analysis_main,
     split_stage2_matrix,
@@ -469,6 +475,16 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
         self.assertEqual(args.output_dir, "data/embeddings/minilm_stage1/semantic_analysis")
 
+    def test_build_cluster_benchmark_parser_defaults_to_minilm_bundle(self) -> None:
+        parser = build_cluster_benchmark_parser()
+        args = parser.parse_args([])
+
+        self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
+        self.assertEqual(args.output_dir, "data/embeddings/minilm_stage1/clustering_benchmark")
+        self.assertEqual(args.k_min, 2)
+        self.assertEqual(args.k_max, 30)
+        self.assertTrue(args.row_normalize)
+
     def test_build_umap_parser_defaults_to_minilm_bundle(self) -> None:
         parser = build_umap_parser()
         args = parser.parse_args([])
@@ -573,6 +589,105 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         self.assertGreaterEqual(metrics["cluster_count"], 1)
         self.assertIn("best_modularity", metrics)
         self.assertIn("intercluster_distance_ratio", metrics)
+
+    def test_cluster_with_method_returns_labels_for_supported_methods(self) -> None:
+        import numpy as np
+
+        matrix = np.asarray(
+            [
+                [0.0, 0.0],
+                [0.1, 0.0],
+                [4.0, 4.0],
+                [4.1, 4.0],
+            ],
+            dtype=np.float32,
+        )
+
+        for method in ["kmeans", "agglomerative-ward", "agglomerative-average", "gaussian-mixture", "birch"]:
+            labels = cluster_with_method(matrix, method, cluster_count=2, random_state=7)
+            self.assertEqual(len(labels), 4)
+            self.assertEqual(len(set(labels)), 2)
+
+    def test_compute_clustering_metrics_reports_density_and_separation(self) -> None:
+        import numpy as np
+
+        ids = [1, 2, 3, 4]
+        matrix = np.asarray(
+            [
+                [0.0, 0.0],
+                [0.1, 0.0],
+                [5.0, 5.0],
+                [5.1, 5.0],
+            ],
+            dtype=np.float32,
+        )
+
+        metrics = compute_clustering_metrics(ids, matrix, [0, 0, 1, 1])
+
+        self.assertEqual(metrics["cluster_count"], 2)
+        self.assertEqual(metrics["smallest_cluster_size"], 2)
+        self.assertGreater(metrics["intercluster_distance_ratio"], 1.0)
+        self.assertIsNotNone(metrics["silhouette_score"])
+        self.assertIsNotNone(metrics["calinski_harabasz_score"])
+        self.assertIsNotNone(metrics["davies_bouldin_score"])
+
+    def test_rank_clustering_benchmark_results_prefers_better_separated_solution(self) -> None:
+        ranked = rank_clustering_benchmark_results(
+            [
+                {
+                    "method": "kmeans",
+                    "requested_cluster_count": 2,
+                    "cluster_count": 2,
+                    "valid": True,
+                    "silhouette_score": 0.82,
+                    "intercluster_distance_ratio": 4.0,
+                    "calinski_harabasz_score": 250.0,
+                    "davies_bouldin_score": 0.35,
+                    "cluster_size_entropy": 1.0,
+                    "largest_cluster_fraction": 0.5,
+                    "smallest_cluster_size": 10,
+                },
+                {
+                    "method": "birch",
+                    "requested_cluster_count": 2,
+                    "cluster_count": 2,
+                    "valid": True,
+                    "silhouette_score": 0.18,
+                    "intercluster_distance_ratio": 1.2,
+                    "calinski_harabasz_score": 20.0,
+                    "davies_bouldin_score": 1.8,
+                    "cluster_size_entropy": 0.7,
+                    "largest_cluster_fraction": 0.9,
+                    "smallest_cluster_size": 1,
+                },
+            ]
+        )
+
+        self.assertEqual(ranked[0]["method"], "kmeans")
+        self.assertGreater(ranked[0]["composite_score"], ranked[1]["composite_score"])
+
+    def test_run_clustering_benchmark_returns_ranked_results(self) -> None:
+        import numpy as np
+
+        ids = [1, 2, 3, 4, 5, 6]
+        matrix = np.asarray(
+            [
+                [0.0, 0.0],
+                [0.1, 0.1],
+                [0.2, 0.0],
+                [5.0, 5.0],
+                [5.1, 5.0],
+                [5.0, 5.1],
+            ],
+            dtype=np.float32,
+        )
+
+        benchmark = run_clustering_benchmark(ids, matrix, methods=["kmeans", "birch"], k_values=[2, 3], random_state=7)
+
+        self.assertEqual(len(benchmark["results"]), 4)
+        self.assertIsNotNone(benchmark["best_result"])
+        self.assertEqual(len(benchmark["best_labels"]), 6)
+        self.assertGreaterEqual(benchmark["results"][0]["composite_score"], benchmark["results"][-1]["composite_score"])
 
     def test_write_projection_comparison_outputs_writes_linked_html_and_json(self) -> None:
         import json
@@ -844,6 +959,104 @@ class NeuroScapeHelpersTest(unittest.TestCase):
             self.assertTrue((output_dir / "community_detection.json").exists())
             data = json.loads((output_dir / "community_detection.json").read_text(encoding="utf-8"))
             self.assertEqual(data["best_resolution"], 1.0)
+            fake_print.assert_called_once()
+
+    def test_cluster_benchmark_main_writes_outputs(self) -> None:
+        import json
+        import numpy as np
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            embeddings_dir = root / "bundle"
+            input_path = root / "abstracts_enriched.json"
+            title_input = root / "abstracts.json"
+            output_dir = root / "clustering_benchmark"
+            embeddings_dir.mkdir(parents=True, exist_ok=True)
+            np.save(
+                embeddings_dir / "vectors.npy",
+                np.asarray(
+                    [
+                        [0.0, 0.0],
+                        [0.1, 0.0],
+                        [0.0, 0.1],
+                        [5.0, 5.0],
+                        [5.1, 5.0],
+                        [5.0, 5.1],
+                    ],
+                    dtype=np.float32,
+                ),
+            )
+            (embeddings_dir / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "ids": [1, 2, 3, 4, 5, 6],
+                        "metadata": [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}, {"id": 5}, {"id": 6}],
+                        "embedding_name": "bundle",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "abstracts": [
+                            {"id": 1, "accepted_for": "Poster", "methods_markdown": "memory fmri"},
+                            {"id": 2, "accepted_for": "Poster", "methods_markdown": "memory fmri"},
+                            {"id": 3, "accepted_for": "Poster", "methods_markdown": "memory fmri"},
+                            {"id": 4, "accepted_for": "Oral", "methods_markdown": "vision eeg"},
+                            {"id": 5, "accepted_for": "Oral", "methods_markdown": "vision eeg"},
+                            {"id": 6, "accepted_for": "Oral", "methods_markdown": "vision eeg"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            title_input.write_text(
+                json.dumps(
+                    {
+                        "abstracts": [
+                            {"id": 1, "title": "Memory 1"},
+                            {"id": 2, "title": "Memory 2"},
+                            {"id": 3, "title": "Memory 3"},
+                            {"id": 4, "title": "Vision 1"},
+                            {"id": 5, "title": "Vision 2"},
+                            {"id": 6, "title": "Vision 3"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch("builtins.print") as fake_print:
+                result = cluster_benchmark_main(
+                    [
+                        "--embeddings-dir",
+                        str(embeddings_dir),
+                        "--input",
+                        str(input_path),
+                        "--title-input",
+                        str(title_input),
+                        "--output-dir",
+                        str(output_dir),
+                        "--methods",
+                        "kmeans",
+                        "birch",
+                        "--k-min",
+                        "2",
+                        "--k-max",
+                        "3",
+                        "--pca-components",
+                        "2",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            self.assertTrue((output_dir / "benchmark.json").exists())
+            self.assertTrue((output_dir / "best_run.json").exists())
+            self.assertTrue((output_dir / "cluster_assignments.json").exists())
+            self.assertTrue((output_dir / "cluster_summaries.json").exists())
+            benchmark = json.loads((output_dir / "benchmark.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(benchmark["results"]), 4)
             fake_print.assert_called_once()
 
     def test_umap_main_writes_outputs(self) -> None:
