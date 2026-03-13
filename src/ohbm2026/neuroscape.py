@@ -11,6 +11,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from ohbm2026.graphql_api import chunked, load_dotenv
+from ohbm2026.titles import cleaned_abstract_title
 
 DEFAULT_VOYAGE_MODEL = "voyage-large-2-instruct"
 DEFAULT_MINILM_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -108,7 +109,7 @@ def configure_huggingface_auth(env_path: Path) -> str | None:
 def load_title_lookup(path: Path) -> dict[int, str]:
     database = json.loads(path.read_text(encoding="utf-8"))
     return {
-        abstract["id"]: abstract.get("title", "")
+        abstract["id"]: cleaned_abstract_title(abstract.get("title", ""))
         for abstract in database.get("abstracts", [])
         if isinstance(abstract.get("id"), int)
     }
@@ -156,7 +157,7 @@ def load_annotation_lookup(
         )
         annotations[abstract_id] = {
             "id": abstract_id,
-            "title": abstract.get("title") or "",
+            "title": cleaned_abstract_title(abstract.get("title") or ""),
             "accepted_for": abstract.get("accepted_for") or "Unknown",
             "primary_topic": extract_primary_topic(abstract),
             "keywords": keywords,
@@ -209,9 +210,9 @@ def build_embedding_text(
 
     for field in selected_fields:
         if field == "title":
-            title = (abstract.get("title") or "").strip()
+            title = cleaned_abstract_title(abstract.get("title") or "")
             if not title and title_lookup and isinstance(abstract.get("id"), int):
-                title = (title_lookup.get(abstract["id"]) or "").strip()
+                title = cleaned_abstract_title(title_lookup.get(abstract["id"]) or "")
             if title:
                 parts.append(title)
             continue

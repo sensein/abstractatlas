@@ -1,0 +1,2066 @@
+{
+  "abstract_count": 3333,
+  "built_at": "2026-03-12T23:50:59.222445+00:00",
+  "input": "data/abstracts.json",
+  "modifications": [
+    {
+      "abstract_id": 1240031,
+      "cleaned_title": "Whole-Brain MRSI Connectomics: A neurometabolic foundation as a new tool to assess brain networks",
+      "original_title": "Whole-Brain MRSI  Connectomics: A neurometabolic foundation as a new tool to assess brain networks",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1245936,
+      "cleaned_title": "Is the socially-anxious brain unique? Cross-disorder comparisons within the ENIGMA-consortium",
+      "original_title": "Is the socially-anxious brain unique? Cross-disorder comparisons within the ENIGMA-consortium ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246568,
+      "cleaned_title": "Temporal scales of functional connectome fingerprinting: reliability and behavioural relevance",
+      "original_title": "Temporal scales of functional connectome fingerprinting: reliability and behavioural relevance ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248394,
+      "cleaned_title": "Replicable resting networks: Towards the creation of a whole-brain NeuroMark SPECT brain template",
+      "original_title": "Replicable resting networks: Towards the creation of a whole-brain NeuroMark SPECT brain template ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1242903,
+      "cleaned_title": "Dual Pathways of Structural Cortical Reorganization in Degenerative Cervical Myelopathy",
+      "original_title": "Dual Pathways of Structural Cortical Reorganization in Degenerative Cervical Myelopathy ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245476,
+      "cleaned_title": "BOLD and ASL-based cerebrovascular reactivity mapping and their relationship with baseline CBF",
+      "original_title": "BOLD and ASL-based cerebrovascular reactivity mapping and their relationship with baseline CBF ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246647,
+      "cleaned_title": "Dynamic functional connectivity for the identification of early MCI-LB",
+      "original_title": "Dynamic functional connectivity for the identification of early MCI-LB     ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246721,
+      "cleaned_title": "Expressive aprosodia is associated with right frontal lesions and salience network disconnection",
+      "original_title": "Expressive aprosodia is associated with right frontal lesions and salience network disconnection ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241169,
+      "cleaned_title": "White matter disconnection improves prediction of cognitive status in multiple sclerosis.",
+      "original_title": "White matter disconnection improves prediction of cognitive status in multiple sclerosis. ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247654,
+      "cleaned_title": "Functional Mapping of Layer Dependent Connectivity During Movie Watching and Pain.",
+      "original_title": "Functional Mapping of Layer Dependent Connectivity During Movie Watching and Pain. ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1240557,
+      "cleaned_title": "Quantifying the shared heritability of neurogenerative diseases with brain imaging measurements",
+      "original_title": "Quantifying the shared heritability of neurogenerative diseases with brain imaging measurements  ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1220770,
+      "cleaned_title": "Pallidal circuits dual oscillatory signatures underlie symptom complexity in Huntington's disease",
+      "original_title": "Pallidal circuits dual oscillatory signatures underlie symptom complexity in Huntington's disease ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243226,
+      "cleaned_title": "Individualised white matter abnormality detection through differential quantitative tractography",
+      "original_title": "Individualised white matter abnormality detection through differential quantitative tractography ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1239384,
+      "cleaned_title": "Beyond the Blame Game: Reframing Variability in fMRI Reproducibility and Meta-Analysis",
+      "original_title": "Beyond the Blame Game:  Reframing Variability in fMRI Reproducibility and Meta-Analysis",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1245612,
+      "cleaned_title": "Arousal fluctuations organize dynamic functional connectivity across the adult lifespan",
+      "original_title": " Arousal fluctuations organize dynamic functional connectivity across the adult lifespan",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243645,
+      "cleaned_title": "Brain Correlates of Fear Conditioning and Reversal: Evidence for Anxiety-Related Neural Patterns.",
+      "original_title": "Brain Correlates of Fear Conditioning and Reversal: Evidence for Anxiety-Related Neural Patterns. ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1221156,
+      "cleaned_title": "Allen Mouse Brain Connectome Quality Control and Downstream Impacts on Modelling Neurodegeneration",
+      "original_title": "Allen Mouse Brain Connectome Quality Control and Downstream Impacts on Modelling Neurodegeneration ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241219,
+      "cleaned_title": "Cerebral blood perfusion and its links to multi-scale brain organization across the human lifespan",
+      "original_title": "Cerebral blood perfusion and its links to multi-scale brain organization across the human lifespan ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247950,
+      "cleaned_title": "Mirror and mentalizing network disruptions impair social inference: causal evidence from DES",
+      "original_title": "\u201cMirror and mentalizing network disruptions impair social inference: causal evidence from DES\u201d",
+      "reasons": [
+        "remove_wrapping_quotes"
+      ]
+    },
+    {
+      "abstract_id": 1247959,
+      "cleaned_title": "Classification based on higher-order functional connectivity evoked during human thermoregulation",
+      "original_title": "  Classification based on higher-order functional connectivity evoked during human thermoregulation",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1237142,
+      "cleaned_title": "Evaluating model-based functional magnetic resonance imaging connectomes",
+      "original_title": "Evaluating model-based functional magnetic resonance imaging connectomes ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1236632,
+      "cleaned_title": "Longitudinally mapping environment-brain-behaviour associations across adolescence",
+      "original_title": "Longitudinally mapping environment-brain-behaviour associations across adolescence ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245547,
+      "cleaned_title": "Automated Induction of Standardized Reporting Templates from Fetal Brain MRI Free-Text Corpora",
+      "original_title": "Automated Induction of Standardized Reporting Templates from  Fetal Brain MRI Free-Text Corpora",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1245351,
+      "cleaned_title": "Brain connectivity based on phase synchronization reveals hierarchical organization in fMRI",
+      "original_title": "Brain connectivity based on phase synchronization reveals hierarchical organization in fMRI ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244133,
+      "cleaned_title": "Social cognition in macaques is reflected in white matter projection patterns, not tract anatomy",
+      "original_title": "Social cognition in macaques is reflected in white matter projection patterns, not tract anatomy ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238410,
+      "cleaned_title": "Distinct Neural Coupling in Autistic and Typically Developing Child-Parent Dyads During Cooperation",
+      "original_title": " Distinct Neural Coupling in Autistic and Typically Developing Child-Parent Dyads During Cooperation",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241981,
+      "cleaned_title": "Muscle phenotypes mediate the link between glucose metabolism and white matter hyperintensities",
+      "original_title": "Muscle phenotypes mediate the link between glucose metabolism and white matter hyperintensities ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248644,
+      "cleaned_title": "Genetic Influences on Microstructural Determinants of Axonal Conduction in Human White Matter",
+      "original_title": "Genetic Influences on Microstructural Determinants of Axonal Conduction in Human White Matter ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241056,
+      "cleaned_title": "Lesion-symptom mapping evidence for the causal role of the prefrontal operculum in inner speech.",
+      "original_title": "Lesion-symptom mapping evidence for the causal role of the prefrontal operculum in inner speech. ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244427,
+      "cleaned_title": "Associations between postpartum depression, neonatal functional connectivity and early autism risk",
+      "original_title": "Associations between postpartum depression, neonatal functional connectivity and early autism risk ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1232876,
+      "cleaned_title": "Automated Detection of Generalised Spike-Wave Discharges Across Behavioural States",
+      "original_title": "Automated Detection of Generalised Spike-Wave Discharges Across Behavioural States ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246452,
+      "cleaned_title": "Sex-specific Genomic Associations with Functional Network Connectivity in Schizophrenia",
+      "original_title": "Sex-specific Genomic Associations with Functional Network Connectivity in Schizophrenia ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246080,
+      "cleaned_title": "Studying auditory processing along an extended network with iEEG",
+      "original_title": "Studying auditory processing along an extended network with iEEG ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248853,
+      "cleaned_title": "Modulation of aperiodic and alpha EEG components (Xi-AlphaNET) by NeuroEPO in Parkinson\u2019s patients",
+      "original_title": "Modulation of aperiodic and alpha EEG components (Xi-AlphaNET) by NeuroEPO in Parkinson\u2019s patients ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246190,
+      "cleaned_title": "Systematic Feature-Level Stability Analysis to Guide Multimodal MRI Biomarker Exploration in ALS",
+      "original_title": "Systematic Feature-Level Stability Analysis to Guide Multimodal MRI  Biomarker Exploration in ALS",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1221712,
+      "cleaned_title": "Structural Brain Pathways Linking White Matter Hyperintensities to Pain Sensitivity",
+      "original_title": "Structural Brain Pathways Linking White Matter Hyperintensities to Pain Sensitivity ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246667,
+      "cleaned_title": "Deep-Learning of Mesial Temporal Lobe Atrophy and Cognitive Decline in de-novo Parkinson\u2019s Disease",
+      "original_title": "Deep-Learning of Mesial Temporal Lobe Atrophy and Cognitive Decline in de-novo Parkinson\u2019s Disease ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247126,
+      "cleaned_title": "Investigating network modulation by transcranial and intranasal photobiomodulation",
+      "original_title": "Investigating network modulation by transcranial and intranasal photobiomodulation ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247160,
+      "cleaned_title": "Network-guided deep brain stimulation for children with pharmaco-resistant epilepsy",
+      "original_title": "Network-guided deep brain stimulation for children with pharmaco-resistant epilepsy ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1229319,
+      "cleaned_title": "Functional connectivity changes within and between epilepsy networks: a 7T fMRI study",
+      "original_title": "Functional connectivity changes within and between epilepsy networks: a 7T fMRI study ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1240237,
+      "cleaned_title": "Geometric analysis of maturational transformations in neonatal functional connectome",
+      "original_title": "Geometric analysis of maturational transformations in neonatal functional connectome ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248929,
+      "cleaned_title": "Estimation of Uncertainty of Socio-Affective Stimuli in Individuals with Constricted Affect",
+      "original_title": "Estimation of Uncertainty of Socio-Affective Stimuli in Individuals with Constricted Affect ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1197101,
+      "cleaned_title": "A Map of the Imagined: Topographic Principles of Sensory Simulation in the Human Parietal Cortex",
+      "original_title": "A Map of the Imagined: Topographic Principles of  Sensory Simulation in the Human Parietal Cortex",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1238292,
+      "cleaned_title": "Characterization of Substantia Nigra Spatial Gradients Using Quantitative MRI",
+      "original_title": "Characterization of Substantia Nigra Spatial Gradients Using Quantitative MRI ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1199969,
+      "cleaned_title": "Brain States in Simultaneous EEG-fMRI",
+      "original_title": "Brain States in Simultaneous EEG-fMRI ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1242150,
+      "cleaned_title": "Lifespan evolution of the electrophysiology-derived effective connectivity of the human brain",
+      "original_title": "Lifespan evolution of the electrophysiology-derived effective connectivity of the human brain ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1235063,
+      "cleaned_title": "Thalamic Connectivity Signature Underlying Focal to Bilateral Tonic-Clonic Seizures",
+      "original_title": "Thalamic Connectivity Signature Underlying Focal to Bilateral Tonic-Clonic Seizures ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247623,
+      "cleaned_title": "Large-scale network dynamic connectivity sustaining motor learning in children born very preterm",
+      "original_title": "Large-scale network dynamic connectivity sustaining motor learning in children born very preterm ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247713,
+      "cleaned_title": "Does microstructure reflect language dominance after neonatal brain injury ?",
+      "original_title": "Does microstructure reflect language dominance after neonatal brain injury ? ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247782,
+      "cleaned_title": "Blood-Brain Barrier Leakage in Schizophrenia Spectrum: Investigating Potential Genetic Underpinnings",
+      "original_title": "Blood-Brain Barrier Leakage in Schizophrenia Spectrum: Investigating Potential Genetic Underpinnings ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247810,
+      "cleaned_title": "Functional Connectivity\u2013Based Brain Age Gap in Chronic Migraine and Back Pain: A Preliminary Study",
+      "original_title": "  Functional Connectivity\u2013Based Brain Age Gap in Chronic Migraine and Back Pain: A Preliminary Study",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238236,
+      "cleaned_title": "Functional & Structural Connectivity in Paediatric Post-Stroke Dystonia: An MEG & DTI Study",
+      "original_title": "Functional & Structural Connectivity in Paediatric Post-Stroke Dystonia: An MEG & DTI Study ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243223,
+      "cleaned_title": "Effective Connectivity Versus Functional Connectivity Across Visual Cortical Areas",
+      "original_title": "Effective Connectivity Versus Functional Connectivity Across Visual Cortical Areas ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244293,
+      "cleaned_title": "Brain Atlas-Based Machine Learning for Parkinsonian Disorders Classification",
+      "original_title": " Brain Atlas-Based Machine Learning for Parkinsonian Disorders Classification",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241826,
+      "cleaned_title": "Epigenetic Sensitivity of Cortical Structure Revealed by DNAm-Wide Sparse Pattern Regression",
+      "original_title": " Epigenetic Sensitivity of Cortical Structure Revealed by DNAm-Wide Sparse Pattern Regression",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247534,
+      "cleaned_title": "Representation space mismatch of task- and movie-evoked brain activity and normative mental health",
+      "original_title": "Representation space mismatch of task- and movie-evoked brain activity and normative mental health ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1219804,
+      "cleaned_title": "A Plantar Flexion fMRI Paradigm to study neuromuscular control",
+      "original_title": "A Plantar Flexion fMRI Paradigm to study neuromuscular control ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245455,
+      "cleaned_title": "Working-Memory control in childhood: an effective-connectivity study",
+      "original_title": "Working-Memory control in childhood: an effective-connectivity study ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244882,
+      "cleaned_title": "Brain changes in grey and white matter integrity and sleep structure in breast cancer patients",
+      "original_title": "Brain changes in grey and white matter integrity and sleep structure in breast cancer patients ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1210116,
+      "cleaned_title": "Reproducibility of grey and white matter microstructural metrics across field and gradient strengths",
+      "original_title": "Reproducibility of grey and white matter microstructural metrics across field and gradient strengths ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248472,
+      "cleaned_title": "Increased Habenula-Default Network Connectivity in Adolescents with Diverse Psychiatric Symptoms",
+      "original_title": "Increased Habenula-Default Network Connectivity in  Adolescents with Diverse Psychiatric Symptoms",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1248329,
+      "cleaned_title": "MDD big data-guided individualized targeting accelerated iTBS for treatment-resistant depression",
+      "original_title": "MDD big data-guided individualized targeting accelerated iTBS for treatment-resistant depression ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246242,
+      "cleaned_title": "Prefrontal Grey Matter Volume Predicts tDCS Response in Major Depressive Disorder",
+      "original_title": " Prefrontal Grey Matter Volume Predicts tDCS Response in Major Depressive Disorder",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246386,
+      "cleaned_title": "Functional and behavioral effects of Action Observation Training based on point-light displays",
+      "original_title": "Functional and behavioral effects of Action Observation Training based on point-light displays ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246363,
+      "cleaned_title": "Acute Walking Modulates Resting\u2010State EEG in Adults: Toward Applications for Real-life Studies",
+      "original_title": "Acute Walking Modulates Resting\u2010State EEG in Adults: Toward Applications for Real-life Studies ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246561,
+      "cleaned_title": "A Neuroimaging Paradigm for Assessing Emotion Processing, Ambiguity, and Negativity Bias",
+      "original_title": "A Neuroimaging Paradigm for Assessing Emotion Processing, Ambiguity, and Negativity Bias ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246297,
+      "cleaned_title": "Altered connectivity patterns involved in motor control impact psychomotor behavior in catatonia",
+      "original_title": "  Altered connectivity patterns involved in motor control impact psychomotor behavior in catatonia",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1229509,
+      "cleaned_title": "Neuroanatomical Subtypes of Callous-Unemotional Traits in a Community Sample of Youth",
+      "original_title": "Neuroanatomical Subtypes of Callous-Unemotional Traits in a Community Sample of Youth ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246744,
+      "cleaned_title": "Longitudinal associations of childhood adversity, resilience and adolescent reward responsiveness",
+      "original_title": "Longitudinal associations of childhood adversity, resilience and adolescent reward responsiveness ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247242,
+      "cleaned_title": "Individual-Specific Neural Correlates of Distressing and Persistent Psychotic-Like Experiences",
+      "original_title": "Individual-Specific Neural Correlates of Distressing and Persistent Psychotic-Like Experiences ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1228661,
+      "cleaned_title": "Hidden Pitfalls in Data Harmonization: Failure under Site Effect Heterogeneity.",
+      "original_title": "Hidden Pitfalls in Data Harmonization: Failure under Site Effect Heterogeneity. ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246604,
+      "cleaned_title": "Decoding Misophonia: Multimodal Neural Activation Patterns Distinguish Trigger Responses",
+      "original_title": "   Decoding Misophonia: Multimodal Neural Activation Patterns Distinguish Trigger Responses",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248427,
+      "cleaned_title": "Investigating the Relationship Between EEG Microstate Dynamics and Subclinical Schizotypal Traits",
+      "original_title": "Investigating the Relationship Between EEG Microstate Dynamics and Subclinical Schizotypal Traits ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243484,
+      "cleaned_title": "Pareto task inference reveals neurochemical trade-offs in the macaque brain",
+      "original_title": "Pareto task inference reveals neurochemical trade-offs in the macaque brain ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243924,
+      "cleaned_title": "Multimodal Markers of ACC Connectivity and Neurometabolism in Autism and Early-Onset Psychosis",
+      "original_title": "Multimodal Markers of ACC Connectivity and Neurometabolism in Autism and Early-Onset Psychosis ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238803,
+      "cleaned_title": "Somatotopic Homunculus Profiles of Motor Cortex and Corticospinal Tract in Aging",
+      "original_title": "Somatotopic Homunculus Profiles of Motor Cortex and Corticospinal Tract in Aging ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245365,
+      "cleaned_title": "Updating Spatial Cognitive Maps: The Role of Hippocampal-Cortical Connectivity",
+      "original_title": "Updating Spatial Cognitive Maps:  The Role of Hippocampal-Cortical Connectivity",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1243038,
+      "cleaned_title": "Thalamo-Cortical and Subcortical Connectivity in Gestational Diabetes Mellitus Exposed Fetuses",
+      "original_title": " Thalamo-Cortical and Subcortical Connectivity in Gestational Diabetes Mellitus Exposed Fetuses ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244263,
+      "cleaned_title": "Multi-echo fMRI preprocessing: benchmarking simple echo summation against ICA-based denoising",
+      "original_title": "Multi-echo fMRI preprocessing: benchmarking simple echo summation against ICA-based denoising ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241551,
+      "cleaned_title": "The CentileBrain Initiative: Establishing a Robust Normative Framework for Advancing Brain Health",
+      "original_title": " The CentileBrain Initiative: Establishing a Robust Normative Framework for Advancing Brain Health  ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243087,
+      "cleaned_title": "Simultaneous APT- and Creatine-weighted Imaging In-vivo using Accelerated 3D Radial CEST at 7T",
+      "original_title": "Simultaneous APT- and Creatine-weighted Imaging In-vivo using Accelerated 3D Radial CEST at 7T ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246450,
+      "cleaned_title": "Task-derived Functional Connectivity Captures Individual Differences in Functional Brain Activity",
+      "original_title": "Task-derived Functional Connectivity Captures Individual Differences in Functional Brain Activity ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1240601,
+      "cleaned_title": "Glymphatic Dysfunction linked to Sleep and Cognitive Issues in ME/CFS: Evidence from DTI-ALPS",
+      "original_title": "Glymphatic Dysfunction linked to Sleep and Cognitive Issues in ME/CFS: Evidence from DTI-ALPS ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1242438,
+      "cleaned_title": "Reproducibility of Electroencephalography Biomarkers for Diagnosis of Major Depressive Disorder",
+      "original_title": "Reproducibility of Electroencephalography Biomarkers for Diagnosis of Major Depressive Disorder ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247839,
+      "cleaned_title": "DTI Tractometry Links White Matter and Cognitive Outcomes in Adolescents Born Extremely Preterm",
+      "original_title": "DTI Tractometry Links White Matter and Cognitive Outcomes in Adolescents Born Extremely Preterm ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247880,
+      "cleaned_title": "Mapping Corpus Callosum Architecture: Developmental, Genetic, and Cognitive Correlates in Youth",
+      "original_title": "Mapping Corpus Callosum Architecture: Developmental, Genetic, and Cognitive Correlates in Youth ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238389,
+      "cleaned_title": "Assessing the Functional-Structural Reorganization of Connector Hubs in Temporal Lobe Epilepsy",
+      "original_title": "Assessing the Functional-Structural Reorganization of Connector Hubs in Temporal Lobe Epilepsy ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243754,
+      "cleaned_title": "Can listening to audiobooks after birth affect language discrimination in very preterm infants?",
+      "original_title": "Can listening to audiobooks after birth affect language discrimination in very preterm infants? ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238923,
+      "cleaned_title": "Distinct Dynamic Processing Circuits: iEEG Revealed Neural Pathway Specialization for Mathematics",
+      "original_title": "Distinct Dynamic Processing Circuits: iEEG Revealed Neural Pathway Specialization for  Mathematics",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1247463,
+      "cleaned_title": "Resting-State fMRI Variability in Adults with Dyslexia: Implications for the Neural Noise Hypothesis",
+      "original_title": "Resting-State fMRI Variability in Adults with Dyslexia: Implications for the Neural Noise Hypothesis ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243380,
+      "cleaned_title": "Mapping neuro-molecular profiles of heterogeneity and homogeneity in psychotic disorder",
+      "original_title": "\u2022\tMapping neuro-molecular profiles of heterogeneity and homogeneity in psychotic disorder",
+      "reasons": [
+        "remove_leading_marker"
+      ]
+    },
+    {
+      "abstract_id": 1245322,
+      "cleaned_title": "Neuroanatomical signature of medical history identifies novel risk factors of neurodegeneration.",
+      "original_title": "Neuroanatomical signature of medical history identifies novel risk factors of neurodegeneration. ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245542,
+      "cleaned_title": "Developmental Shift in Cortical NAA Connectivity Gradients from Childhood to Adulthood",
+      "original_title": "Developmental Shift in Cortical NAA Connectivity Gradients from Childhood to Adulthood ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248281,
+      "cleaned_title": "Repetitive Threat-Neutralization Behavior: Frontostriatal Dynamics and Test-Retest Reliability",
+      "original_title": "Repetitive Threat-Neutralization Behavior: Frontostriatal Dynamics and Test-Retest Reliability ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246276,
+      "cleaned_title": "Microstructural diffusion MRI at 28.2T on living cortical brain organoids",
+      "original_title": "Microstructural diffusion MRI at 28.2T on living cortical brain organoids ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248217,
+      "cleaned_title": "Large-scale brain network dynamics across the schizotypy continuum",
+      "original_title": "Large-scale brain network dynamics across the schizotypy continuum ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247215,
+      "cleaned_title": "How realistic are computational models of brain development ? What does \u00ab energy realism \u00bb tell us.",
+      "original_title": "How realistic are computational models of brain development\u00a0? What does \u00ab\u00a0energy realism\u00a0\u00bb tell us. ",
+      "reasons": [
+        "trim_whitespace",
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1232020,
+      "cleaned_title": "Sex-Specific Lifespan Trajectories of Glymphatic Function",
+      "original_title": "Sex-Specific Lifespan Trajectories of Glymphatic Function ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1208949,
+      "cleaned_title": "Pediatric pituitary segmentation via transfer learning: validation and clinical application",
+      "original_title": "Pediatric pituitary segmentation via transfer learning:  validation and clinical application",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1241150,
+      "cleaned_title": "Test\u2013Retest Reliability of rsfMRI Connectivity: Effects of Cohort Size, Scan Length and Denoising",
+      "original_title": "Test\u2013Retest Reliability of rsfMRI Connectivity: Effects of Cohort Size, Scan Length and Denoising ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247453,
+      "cleaned_title": "Transcriptomic Features Underlying the Normative Brain Structure in Late Childhood",
+      "original_title": "Transcriptomic Features Underlying the Normative Brain Structure in Late Childhood ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1239324,
+      "cleaned_title": "Neurochemical Mechanisms of Individualized Alpha Entrainment for Improved Perceptual Decisions",
+      "original_title": "Neurochemical Mechanisms of Individualized Alpha Entrainment for Improved Perceptual Decisions ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1242894,
+      "cleaned_title": "Evaluating the Longitudinal Compatibility of Pediatric and Adult Automated MRI Segmentation Tools",
+      "original_title": "Evaluating the Longitudinal Compatibility of Pediatric and Adult Automated MRI Segmentation Tools ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243551,
+      "cleaned_title": "Methylphenidate reduces subcortical-dominant co-activation states and enhances cortical dynamics",
+      "original_title": "Methylphenidate reduces subcortical-dominant co-activation states and enhances cortical dynamics ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247505,
+      "cleaned_title": "PRISME: A MATLAB Toolbox For Large Data-Driven Multimodal Power Benchmarking",
+      "original_title": "PRISME: A MATLAB Toolbox For Large Data-Driven Multimodal Power Benchmarking   ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1240265,
+      "cleaned_title": "Sleep Disturbances are associated with Brain Structural Covariance Networks in Preadolescence",
+      "original_title": "Sleep Disturbances are associated with  Brain Structural Covariance Networks in Preadolescence",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1239024,
+      "cleaned_title": "Capturing Brain Structural Abnormalities in Relapsing-Remitting Multiple Sclerosis",
+      "original_title": "Capturing Brain Structural Abnormalities in Relapsing-Remitting Multiple Sclerosis ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1240470,
+      "cleaned_title": "Central Sensitization drives Cerebellar and Cortical Pain Phenotypes in Sickle Cell Disease",
+      "original_title": "Central Sensitization drives Cerebellar and Cortical Pain Phenotypes in Sickle Cell Disease ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241594,
+      "cleaned_title": "Forming test composites based on high prediction and cognitive construct network isolation",
+      "original_title": "Forming test composites based on high prediction and cognitive construct network isolation ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246413,
+      "cleaned_title": "Species and modality-agnostic cortical segmentation using U-NET models trained on synthetic data",
+      "original_title": "Species and modality-agnostic cortical segmentation using U-NET models trained on synthetic data ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247722,
+      "cleaned_title": "Anatomical differences associated with the perception of a phantom sound",
+      "original_title": "Anatomical differences associated with the perception of a phantom sound ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1233650,
+      "cleaned_title": "Directional Alterations in Sensorimotor Networks in ALS Assessed via Combined EEG/EMG MVAR Model",
+      "original_title": " Directional Alterations in Sensorimotor Networks in ALS Assessed via Combined EEG/EMG MVAR Model",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247183,
+      "cleaned_title": "Spinal functional MRI to Map Proprioceptive Circuits in Cervical and Lumbar Regions",
+      "original_title": "Spinal functional MRI to Map Proprioceptive Circuits in Cervical and Lumbar Regions ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1239322,
+      "cleaned_title": "Sex-Specific Associations between Brain Dynamics, Control Energies and Psychopathology in Youth",
+      "original_title": "Sex-Specific Associations between Brain Dynamics, Control Energies and Psychopathology in Youth ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241057,
+      "cleaned_title": "White-matter bundle analytics in a large cohort: links to early-life stress",
+      "original_title": "White-matter bundle analytics in a large cohort:  links to early-life stress",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1219151,
+      "cleaned_title": "The association between fractional anisotropy and isotropic stiffness in white and gray matter",
+      "original_title": "The association between fractional anisotropy and isotropic stiffness in white and gray matter ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1239395,
+      "cleaned_title": "Basal Forebrain Control of Large-Scale fMRI Networks",
+      "original_title": "Basal Forebrain Control of Large-Scale fMRI Networks ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1242563,
+      "cleaned_title": "The Motion Sick Brain: Spectral Changes in Electroencephalography during a Rotating Chair Experiment",
+      "original_title": " The Motion Sick Brain: Spectral Changes in Electroencephalography during a Rotating Chair Experiment",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244763,
+      "cleaned_title": "A ventral striatal learning signal reflecting individual differences in success of fear extinction",
+      "original_title": "A ventral striatal learning signal reflecting individual differences in success of fear extinction ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247942,
+      "cleaned_title": "A Bayesian Model for Correcting Attenuation Bias in Brain Age Estimation",
+      "original_title": "A Bayesian Model for Correcting Attenuation Bias in Brain Age Estimation ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244884,
+      "cleaned_title": "Brain Protection Via Low cost 3D Cranial Implants Using Existing Hospital Imaging",
+      "original_title": "Brain Protection Via Low cost 3D Cranial Implants Using Existing Hospital Imaging ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247953,
+      "cleaned_title": "The cortical dynamics of 'statistical deafening'",
+      "original_title": "The cortical dynamics of 'statistical deafening' ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241968,
+      "cleaned_title": "Neural Correlates of Self-Evaluation and Social Comparison: The Role of Perspective-Taking",
+      "original_title": "Neural Correlates of Self-Evaluation and Social Comparison: The Role of Perspective-Taking ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245548,
+      "cleaned_title": "Mapping tumor-induced network changes via TMS-EEG in visual cortex lesions",
+      "original_title": "Mapping tumor-induced network changes via TMS-EEG in visual cortex lesions ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1228257,
+      "cleaned_title": "The epileptogenic zone constrains higher-order information in focal epilepsy",
+      "original_title": "The epileptogenic zone constrains higher-order information in focal epilepsy ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1226951,
+      "cleaned_title": "Voluntary finger movement intensifies proprioceptive processing in the primary sensorimotor cortex",
+      "original_title": "Voluntary finger movement intensifies proprioceptive processing in the primary sensorimotor cortex ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243963,
+      "cleaned_title": "Increased Walking Demands Modulate Early Cognitive Processing and Anxiety in University Students",
+      "original_title": "Increased Walking Demands Modulate Early Cognitive Processing and Anxiety in University Students ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1239769,
+      "cleaned_title": "Nodal analysis of Graph Laplacian model of brain networks",
+      "original_title": "Nodal analysis of Graph Laplacian model of brain networks ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1232444,
+      "cleaned_title": "Towards layer-dependent EEG-fMRI connectomics",
+      "original_title": "Towards layer-dependent EEG-fMRI connectomics ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245756,
+      "cleaned_title": "Diffusion MRI investigation of white-matter training-related plasticity in children and adolescents",
+      "original_title": "Diffusion MRI investigation of white-matter training-related plasticity in children and adolescents ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1242807,
+      "cleaned_title": "GABA and Glx Levels in the Brains of Patients with Somatic and Non-somatic Tinnitus",
+      "original_title": "GABA and Glx Levels in the Brains of Patients with Somatic and Non-somatic Tinnitus ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248761,
+      "cleaned_title": "Neural Inertia: Delayed Hierarchical Event Segmentation in Autism Spectrum Disorder",
+      "original_title": "Neural Inertia: Delayed Hierarchical Event Segmentation  in Autism Spectrum Disorder",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1248940,
+      "cleaned_title": "Development of amygdala-prefrontal functional connectivity in juvenile Macaques revealed by INS-fMRI",
+      "original_title": "Development of amygdala-prefrontal functional connectivity in juvenile Macaques revealed by INS-fMRI ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248059,
+      "cleaned_title": "Network Effects of Frontopolar TMS to Treat Adolescent OCD",
+      "original_title": "Network Effects of Frontopolar TMS to Treat Adolescent OCD ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247475,
+      "cleaned_title": "Combining Fast and Slow fMRI Sampling Rates Can Enhance Predictive Power in Resting-State Data",
+      "original_title": "Combining Fast and Slow fMRI Sampling Rates Can Enhance  Predictive Power in Resting-State Data",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1244826,
+      "cleaned_title": "Nucleus-Specific Trajectories of Thalamocortical Connectivity in the Developing Brain",
+      "original_title": "Nucleus-Specific Trajectories of Thalamocortical Connectivity in the Developing Brain  ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246139,
+      "cleaned_title": "Beyond the classical anatomical concept of Broca's region: new subdivisions and link to function",
+      "original_title": "Beyond the classical anatomical concept of Broca's region: new subdivisions and link to function ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246421,
+      "cleaned_title": "Structural Connectivity Mapping of the Central Amygdala",
+      "original_title": "Structural Connectivity Mapping of the Central Amygdala ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244739,
+      "cleaned_title": "When Melody Meets Meaning: fNIRS Evidence for Dual-Pathway Processing in Cantonese Songs",
+      "original_title": "When Melody Meets Meaning: fNIRS Evidence for Dual-Pathway Processing  in Cantonese Songs",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1246578,
+      "cleaned_title": "Approaches for Inference Testing Densely Sampled Single-Subject Task fMRI Data",
+      "original_title": "Approaches for Inference Testing Densely Sampled Single-Subject Task fMRI Data ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246609,
+      "cleaned_title": "Characterizing Word Processing on the Individual Subject Level with Multi-Echo fMRI",
+      "original_title": "Characterizing Word Processing on the Individual Subject Level with Multi-Echo fMRI ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1242813,
+      "cleaned_title": "The deep winding at the brain surface: Replicating a historical study in more than 1000 brains",
+      "original_title": "The deep winding at the brain surface: Replicating a historical study in more than 1000 brains ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248003,
+      "cleaned_title": "ClinSeg: Robust Brain Segmentation for Clinically Acquired Infant MRI",
+      "original_title": " ClinSeg: Robust Brain Segmentation for Clinically Acquired Infant MRI",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238507,
+      "cleaned_title": "Changes in Maturation of Functional Brain Connectivity in Adolescent Depression",
+      "original_title": "Changes in Maturation of Functional Brain Connectivity in Adolescent Depression ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1212032,
+      "cleaned_title": "Decoding Multi-Class Emotional States from Naturalistic fMRI Using Transformer-Derived Labels",
+      "original_title": " Decoding Multi-Class Emotional States from Naturalistic fMRI Using Transformer-Derived Labels ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238884,
+      "cleaned_title": "Brain\u2019s dynamic functional connectivity predicts general attention",
+      "original_title": "Brain\u2019s dynamic functional connectivity predicts general attention ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243533,
+      "cleaned_title": "Mapping myelin alterations in Neurofibromatosis 1 using quantitative MRI neuroimaging techniques",
+      "original_title": "Mapping myelin alterations in Neurofibromatosis 1 using quantitative MRI neuroimaging techniques ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238888,
+      "cleaned_title": "Distinct and cumulative brain markers of childhood and adulthood trauma in adults with chronic pain",
+      "original_title": "Distinct and cumulative brain markers of childhood and adulthood trauma in adults with chronic pain ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238793,
+      "cleaned_title": "Spatial brain age deviations as a potential biomarker for dementia subtype differentiation",
+      "original_title": "Spatial brain age deviations as a potential biomarker for dementia subtype differentiation ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1242323,
+      "cleaned_title": "Resting-State fMRI and Morphology Markers of Primary Headache and Their Modulation by OMT",
+      "original_title": "Resting-State fMRI and Morphology Markers of Primary Headache and Their Modulation by OMT ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247695,
+      "cleaned_title": "The neural dynamics of artificial script reading",
+      "original_title": "The neural dynamics of artificial script reading ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1230429,
+      "cleaned_title": "The quest for the best: manual, atlas- and spatial prior-based delineation of locus coeruleus",
+      "original_title": "The quest for the best: manual, atlas- and spatial prior-based delineation of  locus coeruleus",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1247797,
+      "cleaned_title": "The creation of sex-specific MRI templates",
+      "original_title": " The creation of sex-specific MRI templates",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245316,
+      "cleaned_title": "Structure-Function Coupling in Binge Eating Disorder: A UK Biobank Neuroimaging Study",
+      "original_title": "Structure-Function Coupling in Binge Eating Disorder: A UK Biobank Neuroimaging Study ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1226856,
+      "cleaned_title": "The Combination of TMS-EEG for Studying Brain Adaptation in Inherited Retinal Dystrophies",
+      "original_title": "The Combination of TMS-EEG for Studying Brain Adaptation in Inherited Retinal Dystrophies  ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248487,
+      "cleaned_title": "Mapping the Human Retinotopic Visual Connectome In Vivo",
+      "original_title": "Mapping the Human Retinotopic Visual Connectome In Vivo ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245060,
+      "cleaned_title": "Changes in Hypothalamic and Brainstem Volume Following Mild Traumatic Brain Injury",
+      "original_title": "Changes in Hypothalamic and Brainstem Volume Following Mild Traumatic Brain Injury ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238067,
+      "cleaned_title": "Effective connectivity dominance whole brain patterns of human insula subregions using CCEPs",
+      "original_title": " Effective connectivity dominance whole brain patterns of human insula subregions using CCEPs",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244113,
+      "cleaned_title": "An fNIRS Study of Socioeconomic Status and Language Processing of Multilingual Speakers in Pakistan",
+      "original_title": "An fNIRS Study of Socioeconomic Status and Language Processing of Multilingual Speakers\u00a0in\u00a0Pakistan",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1243393,
+      "cleaned_title": "Evaluation of the Minimal Motion System For MR (MR-MinMo): Movement Disorder Populations",
+      "original_title": "Evaluation of the Minimal Motion System For MR (MR-MinMo):  Movement Disorder Populations",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1242005,
+      "cleaned_title": "Meta-matching for prediction of consumption in alcohol use disorder based on functional connectivity",
+      "original_title": "Meta-matching for prediction of consumption in alcohol use disorder based on functional connectivity ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1239713,
+      "cleaned_title": "Semi-supervised multimodal fusion for Amyloid-Tau-Neurodegeneration framework in Alzheimer\u2019s disease",
+      "original_title": "Semi-supervised multimodal fusion for Amyloid-Tau-Neurodegeneration framework in Alzheimer\u2019s disease ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245787,
+      "cleaned_title": "Region- and Frequency-Specific Cognitive Processing within Predictive Coding Framework",
+      "original_title": "Region- and Frequency-Specific Cognitive Processing within Predictive Coding Framework ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247117,
+      "cleaned_title": "On the Contrast Mechanism of Zero-TE-fMRI: Sensitivity Enhancement by Inflow-saturation at 3T",
+      "original_title": "On the Contrast Mechanism of Zero-TE-fMRI: Sensitivity Enhancement by Inflow-saturation at 3T ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244384,
+      "cleaned_title": "Distinct Layer-specific Functional Profiles for Human Striate and Extrastriate Cortex",
+      "original_title": "Distinct Layer-specific Functional Profiles for Human Striate and Extrastriate Cortex ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248264,
+      "cleaned_title": "Neural substrates of orthographic coding in skilled deaf readers.",
+      "original_title": "Neural substrates of orthographic\u00a0coding in skilled deaf readers.",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1239455,
+      "cleaned_title": "Intrinsic Brain Activity Alterations in Psychosis: An ENIGMA Schizophrenia Meta-analysis",
+      "original_title": "Intrinsic Brain Activity Alterations in Psychosis: An ENIGMA Schizophrenia Meta-analysis ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248353,
+      "cleaned_title": "Network-level normative modeling across multiple functional connectivity metrics in MEG/EEG",
+      "original_title": "Network-level normative modeling across multiple functional connectivity metrics in MEG/EEG ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248287,
+      "cleaned_title": "Sex-Specific Age-Related Divergence of Structural and Functional Connectivity Across Brain Networks",
+      "original_title": "Sex-Specific Age-Related Divergence of Structural and Functional Connectivity Across Brain Networks ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246586,
+      "cleaned_title": "Aperiodic and periodic EEG activity in preterm infants and relationships with brain microstructure",
+      "original_title": "Aperiodic and periodic EEG activity in preterm infants and relationships with brain microstructure ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1231682,
+      "cleaned_title": "Real-time fMRI self-regulation of ventromedial prefrontal cortex enhances motivation",
+      "original_title": "Real-time fMRI self-regulation of ventromedial prefrontal cortex enhances motivation ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1228818,
+      "cleaned_title": "Frequency-Specific Neural Activation Patterns During Subthalamic Deep Brain Stimulation",
+      "original_title": "Frequency-Specific Neural Activation Patterns During Subthalamic Deep Brain Stimulation ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248401,
+      "cleaned_title": "Attention modulates the alignment between brain and convolutional neural network representations",
+      "original_title": "Attention modulates the alignment between brain and convolutional  neural network representations",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1242173,
+      "cleaned_title": "Experience-dependent granularity of memory representations across hippocampal axes at 7T",
+      "original_title": "Experience-dependent granularity of memory representations across hippocampal axes at 7T ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1215947,
+      "cleaned_title": "Imputation-based harmonization removes batch effects without data leakage",
+      "original_title": "Imputation-based harmonization removes batch effects without data leakage ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1239201,
+      "cleaned_title": "Comparison of functional and effective connectivity in intracranial stereoelectroencephalography",
+      "original_title": "Comparison of functional and effective connectivity in intracranial stereoelectroencephalography ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245480,
+      "cleaned_title": "Structural Connectivity of Noradrenergic-Cholinergic Nuclei Relates to Dual-Task Performance",
+      "original_title": "Structural Connectivity of Noradrenergic-Cholinergic Nuclei  Relates to Dual-Task Performance",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1241624,
+      "cleaned_title": "The Effect of Anorexia Nervosa Severity and High-Dose Psilocybin on Visual Long-Term Potentiation",
+      "original_title": "The Effect of Anorexia Nervosa Severity and High-Dose Psilocybin  on Visual Long-Term Potentiation",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1241632,
+      "cleaned_title": "Predicting Insomnia Using Macroscopic and Microscopic Sleep Features from the Wearable Forehead EEG",
+      "original_title": "Predicting Insomnia Using Macroscopic and Microscopic Sleep Features from the Wearable Forehead EEG ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248587,
+      "cleaned_title": "Effect of multi-echo denoising on the detection of an fMRI biomarker for pain",
+      "original_title": "Effect of multi-echo denoising on the detection of an fMRI biomarker for pain  ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241718,
+      "cleaned_title": "Hippocampal-Cortical Network in Prospective Time Estimation: Multimodal and Clinical Evidence",
+      "original_title": " Hippocampal-Cortical Network in Prospective Time Estimation: Multimodal and Clinical Evidence",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245698,
+      "cleaned_title": "PyDecNef2.0: An open-source framework for fMRI-based co-adapted decoded neurofeedback",
+      "original_title": "PyDecNef2.0: An open-source framework for fMRI-based co-adapted decoded neurofeedback ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244997,
+      "cleaned_title": "Brain Metabolic Alterations Could Predict Visual Hallucinations in Dementia with Lewy Bodies",
+      "original_title": "Brain Metabolic Alterations Could Predict Visual Hallucinations in Dementia with Lewy Bodies ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1240849,
+      "cleaned_title": "Detection of focal cortical dysplasia from MRI using voxel- vs surface-based models: a MELD study",
+      "original_title": "Detection of focal cortical dysplasia from MRI using voxel- vs surface-based models: a MELD study ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243776,
+      "cleaned_title": "Cognitive cartography of mammalian brains using meta-analysis of AI experts",
+      "original_title": "Cognitive  cartography of mammalian brains using meta-analysis of AI experts",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1245984,
+      "cleaned_title": "Age-related changes in anticipatory cognitive control of step initiation",
+      "original_title": "Age-related changes in anticipatory cognitive control of step initiation ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245636,
+      "cleaned_title": "Reliability of Subcortical Shape Measures from Ultra\u2013Low-Field MRI",
+      "original_title": "Reliability of Subcortical Shape Measures from Ultra\u2013Low-Field MRI ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1239776,
+      "cleaned_title": "Multiple-Demand Network Tracks Cognitive Reappraisal of Fearful Events in Naturalistic Settings",
+      "original_title": "Multiple-Demand Network Tracks Cognitive Reappraisal of Fearful Events in Naturalistic Settings ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245421,
+      "cleaned_title": "EEG-based brain age prediction in infants: Validating the brain age model with Singapore data",
+      "original_title": "EEG-based brain age prediction in infants: Validating the brain age model with Singapore data ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1222179,
+      "cleaned_title": "Using predictive coding to model feedback effects during misspelled word reading",
+      "original_title": "Using predictive coding to model feedback effects during misspelled word reading ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1238958,
+      "cleaned_title": "Connectivity signatures of prolonged affect generalize across contexts and track affective symptoms",
+      "original_title": "Connectivity signatures of prolonged affect generalize across contexts and track affective symptoms ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245286,
+      "cleaned_title": "Validation of fast mixed-effects modeling for whole-brain functional connectivity in chronic pain",
+      "original_title": "Validation of fast mixed-effects modeling for whole-brain functional connectivity in chronic pain ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246790,
+      "cleaned_title": "High correspondence of ultra-low field and high field MRI in diverse London memory services",
+      "original_title": "High correspondence of ultra-low field and high field MRI in diverse London memory services                     ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1209705,
+      "cleaned_title": "Poorer Physical Function is Associated with Higher Spatial Entropy in the Aging Brain",
+      "original_title": "Poorer Physical Function is Associated with Higher Spatial Entropy in the Aging Brain ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1232075,
+      "cleaned_title": "The sense of smell is not idiosyncratic",
+      "original_title": "The sense of smell is not idiosyncratic ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247261,
+      "cleaned_title": "Dynamic Brain States During Reasoning: A Co-Activation Pattern (CAP) Analysis",
+      "original_title": " Dynamic Brain States During Reasoning: A Co-Activation Pattern (CAP) Analysis  ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247275,
+      "cleaned_title": "Interactive Associations Between Physical Activity & Sleep Architecture on Regional Tau Pathology",
+      "original_title": "\u202fInteractive\u202fAssociations\u202fBetween Physical Activity\u202f&\u202fSleep Architecture\u202fon Regional Tau Pathology ",
+      "reasons": [
+        "trim_whitespace",
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1245483,
+      "cleaned_title": "Quantifying interhemispheric cortical asymmetry beyond the lesion in focal cortical dysplasia",
+      "original_title": "Quantifying interhemispheric cortical asymmetry beyond the lesion in focal cortical dysplasia  ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243962,
+      "cleaned_title": "Characterize Multi-Organ Relationship Via Shared Neural Circuits Along Brain-Heart-Liver-Kidney Axis",
+      "original_title": "Characterize Multi-Organ Relationship Via Shared Neural Circuits Along  Brain-Heart-Liver-Kidney Axis",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1244458,
+      "cleaned_title": "Frequency-Specific Neural Synchrony Deficit Reveals Multiple Processes In Alzheimer\u2019s Disease",
+      "original_title": "Frequency-Specific Neural Synchrony Deficit Reveals Multiple Processes In Alzheimer\u2019s Disease ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247742,
+      "cleaned_title": "Brain Age as a Diagnostic Tool: Assessing Disease and Socioeconomic Impact in a Brazilian Cohort",
+      "original_title": "Brain Age as a Diagnostic Tool: Assessing Disease and Socioeconomic Impact in a Brazilian Cohort ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243093,
+      "cleaned_title": "Postmortem human brainstem: Imaging its micro-architecture using 3D axis polarization sensitive OCT",
+      "original_title": "Postmortem human brainstem: Imaging its micro-architecture using 3D axis polarization sensitive OCT ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1232166,
+      "cleaned_title": "Semi-automated segmentation of black holes on 3D T1 images in multiple sclerosis",
+      "original_title": "Semi-automated segmentation of black holes on 3D T1 images in multiple sclerosis ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1229845,
+      "cleaned_title": "\u00b5FA with Ultra-High Field MRI Reveals Hippocampal Subfield Abnormalities in Temporal Lobe Epilepsy",
+      "original_title": "\u00b5FA with Ultra-High Field MRI Reveals Hippocampal Subfield Abnormalities in Temporal Lobe Epilepsy ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1236851,
+      "cleaned_title": "The Brain\u2019s Crescendo: How Music Training Enriches Child Neurocognitive Development",
+      "original_title": "The Brain\u2019s Crescendo: How Music Training Enriches Child Neurocognitive Development ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244865,
+      "cleaned_title": "Personalized whole-brain models to investigare combined DBS - L-Dopa therapy in Parkinson's disease",
+      "original_title": "Personalized whole-brain models to investigare combined DBS - L-Dopa therapy in Parkinson's\u00a0disease",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1243752,
+      "cleaned_title": "Group fMRI Revisited - A Computationally Tractable Bayesian Hierarchical Model",
+      "original_title": "Group fMRI Revisited - A Computationally Tractable Bayesian Hierarchical Model ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248673,
+      "cleaned_title": "Mapping the signatures of prediction and prediction errors in the human whole brain",
+      "original_title": "Mapping the signatures of prediction and prediction errors in the human whole brain ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1240793,
+      "cleaned_title": "CNN versus Anatomical Region-based ML Models for Multiple System Atrophy Classification Using MRI",
+      "original_title": "CNN versus Anatomical Region-based ML Models for Multiple System Atrophy Classification Using MRI ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1239175,
+      "cleaned_title": "High-throughput light-sheet 3D microscopy of brain microstructure for integration with diffusion MRI",
+      "original_title": "High-throughput light-sheet 3D microscopy\u202fof\u202fbrain microstructure for integration with\u202fdiffusion\u202fMRI",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1242079,
+      "cleaned_title": "Predicting adolescent changes in cortical thickness from a single timepoint",
+      "original_title": "Predicting adolescent changes in cortical thickness from a single timepoint ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1231294,
+      "cleaned_title": "Convolutional Neural Network Based Spinal Cord Volume Quantification in Fibromyalgia",
+      "original_title": "Convolutional Neural Network Based Spinal Cord Volume Quantification in Fibromyalgia ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245474,
+      "cleaned_title": "Thalamo-Cortical Network Dynamics Underlying Generalized Epilepsy",
+      "original_title": "Thalamo-Cortical Network Dynamics Underlying Generalized Epilepsy ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248692,
+      "cleaned_title": "Characterizing hemodynamic spectral signatures across vigilance states using whole-night EEG/fNIRS",
+      "original_title": "Characterizing hemodynamic spectral signatures across vigilance states using whole-night EEG/fNIRS ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1237661,
+      "cleaned_title": "Tissue-specific age effects of fractal dimensionality in the neonatal brain: a simulation study",
+      "original_title": "Tissue-specific age effects of fractal dimensionality in the neonatal brain: a simulation study ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1225916,
+      "cleaned_title": "White matter differences in adults with developmental language disorder",
+      "original_title": " White matter differences in adults with developmental language disorder",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1228149,
+      "cleaned_title": "Accelerating 3D CEST MRI using Spectral-wise Self-Supervised Deep Learning Reconstruction",
+      "original_title": "Accelerating 3D CEST MRI using Spectral-wise Self-Supervised Deep Learning Reconstruction ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1233192,
+      "cleaned_title": "Evaluating Motion Correction Strategies for fMRI Resting State Networks in Pediatric Epilepsy",
+      "original_title": "Evaluating Motion Correction Strategies for fMRI Resting State Networks in Pediatric Epilepsy ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246164,
+      "cleaned_title": "Associating Interhemispheric Functional Connectivity, Mental Health, and Genetics in a Young Cohort",
+      "original_title": "Associating Interhemispheric Functional Connectivity, Mental Health, and Genetics in a Young Cohort ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248310,
+      "cleaned_title": "HopfRNNs: Whole-Brain Models for Efficient Estimation of Generative Effective Connectivity",
+      "original_title": " HopfRNNs: Whole-Brain Models for Efficient Estimation of Generative Effective Connectivity",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248777,
+      "cleaned_title": "Early Neural Responses to Emotional Speech in Infancy Measured with OPM-MEG",
+      "original_title": "Early Neural Responses to Emotional Speech in Infancy Measured with OPM-MEG ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1236512,
+      "cleaned_title": "Global Challenges and Research Capacity in Neuroimaging",
+      "original_title": "Global Challenges and Research Capacity in Neuroimaging ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245953,
+      "cleaned_title": "Assessing Structural MRI Pipelines for Accurate Ultra-Low-Field Infant Brain Measurements",
+      "original_title": "Assessing Structural MRI Pipelines for Accurate Ultra-Low-Field Infant Brain Measurements ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246531,
+      "cleaned_title": "Load-Dependent Modulation of Emotional Interference: Behavioral and Neural Evidence",
+      "original_title": "Load-Dependent Modulation of Emotional Interference: Behavioral and Neural Evidence ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246720,
+      "cleaned_title": "The contribution of individual echoes in multi-echo fMRI processing",
+      "original_title": "The contribution of individual echoes in multi-echo fMRI processing ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246658,
+      "cleaned_title": "The Neural Correlates of Hand Gesture Planning and Execution in Major Depressive Disorder",
+      "original_title": "The Neural Correlates of Hand Gesture Planning and Execution in Major Depressive Disorder ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1228012,
+      "cleaned_title": "Multivariate Hawkes Process Modeling of MEG-Based Functional Connectivity in Epilepsy",
+      "original_title": "Multivariate Hawkes Process Modeling of MEG-Based Functional Connectivity in Epilepsy ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246335,
+      "cleaned_title": "Functional MRI-informed EEG identification of active cortical regions in a silent naming task",
+      "original_title": "Functional MRI-informed EEG identification of active cortical regions in a silent naming task  ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245706,
+      "cleaned_title": "EEG Features Predict Plasma pTau-217 Positivity in Patients Along the Alzheimer\u2019s Continuum",
+      "original_title": "EEG Features Predict Plasma pTau-217 Positivity in Patients Along the Alzheimer\u2019s Continuum ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1228219,
+      "cleaned_title": "Dorsal attention network plasticity underlies cognitive gain across non-pharmacological intervention",
+      "original_title": "Dorsal attention network plasticity underlies cognitive gain across non-pharmacological intervention ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246892,
+      "cleaned_title": "A dataset to link the dynamics of feelings and brain-body physiology in immersive Virtual Reality",
+      "original_title": "A dataset to link the dynamics of feelings and brain-body physiology in immersive Virtual Reality ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1242811,
+      "cleaned_title": "PSOCT imaging of the infant brainstem: comparison with histology",
+      "original_title": "PSOCT imaging of the infant brainstem: comparison with histology ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248351,
+      "cleaned_title": "Identifying Functional Connectivity Subtypes in the Resting-State Patterns of the Language Network",
+      "original_title": " Identifying Functional Connectivity Subtypes in the Resting-State Patterns of the Language Network",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248422,
+      "cleaned_title": "Effects of load, stimulus domain and cognitive control on working memory memory: an fMRI study",
+      "original_title": "Effects of load, stimulus domain and cognitive control on working memory memory: an fMRI study ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1244283,
+      "cleaned_title": "Functional harmonic reconfiguration during working memory",
+      "original_title": "Functional harmonic reconfiguration during working memory ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1241266,
+      "cleaned_title": "Cannabis Use and Brain Functional Connectome: Inversion of Normative Cognitive Aging Signatures",
+      "original_title": "Cannabis Use and Brain Functional Connectome:  Inversion of Normative Cognitive Aging Signatures",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1247528,
+      "cleaned_title": "Altered grey matter volume linked to early life stress in adolescents.",
+      "original_title": "Altered grey matter volume linked to early life stress in adolescents. ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248443,
+      "cleaned_title": "Impact of Aperiodic Component(1/f) Resting state Functional Connectivity : Method Comparison study",
+      "original_title": "Impact of Aperiodic Component(1/f) Resting state Functional Connectivity :  Method Comparison study",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1247648,
+      "cleaned_title": "Spaced practice potentiates motor skill learning through a mechanism involving the hippocampus.",
+      "original_title": "Spaced practice potentiates motor skill learning through a mechanism involving the hippocampus. ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248515,
+      "cleaned_title": "A Workbench for Parameter Identifiability in Virtual Brain Models of Responses to NIBS",
+      "original_title": "A Workbench for Parameter Identifiability in Virtual Brain Models of Responses to NIBS ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1242381,
+      "cleaned_title": "Duration of South African \u2018nyaope\u2019 use affects cortical scaling and white matter microstructure",
+      "original_title": "Duration of South African \u2018nyaope\u2019 use affects cortical scaling and white matter microstructure ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1243646,
+      "cleaned_title": "Hierarchical decomposition of predictive uncertainty during naturalistic language comprehension",
+      "original_title": "Hierarchical decomposition of predictive uncertainty during naturalistic  language comprehension",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1240075,
+      "cleaned_title": "Human Brain Dynamics Change Across the Lifespan",
+      "original_title": "Human Brain Dynamics Change Across the Lifespan ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1247699,
+      "cleaned_title": "Towards a High Resolution whole-brain Biophysical Model",
+      "original_title": "Towards a High Resolution whole-brain Biophysical Model ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245187,
+      "cleaned_title": "Functional Connectivity disruptions in long COVID and ME/CFS Detected with 7 Tesla MRI",
+      "original_title": "Functional Connectivity disruptions in long COVID and ME/CFS Detected with 7 Tesla MRI ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248641,
+      "cleaned_title": "Sex-dependent relationship between pain and delta power during sleep in osteoarthritis",
+      "original_title": "Sex-dependent relationship between pain and delta power during sleep in osteoarthritis ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1228558,
+      "cleaned_title": "Microstates and connectivity states reveal task-related network reorganization in Alzheimers disease",
+      "original_title": "Microstates and connectivity states reveal task-related network reorganization in Alzheimers disease ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1226493,
+      "cleaned_title": "Machine Learning Performance of sMRI Features to Differentiate Bipolar and Unipolar Depression",
+      "original_title": "Machine Learning Performance of sMRI  Features to Differentiate Bipolar and Unipolar Depression",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1244436,
+      "cleaned_title": "Computational Modeling of Choice Frequency in Habitual Behavior: A Pre-Registered fMRI Study",
+      "original_title": "Computational Modeling of Choice Frequency in Habitual Behavior:  A Pre-Registered fMRI Study",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1248075,
+      "cleaned_title": "Reliable Neuroimaging-Based Diagnosis via Confidence-Calibrated Vision\u2013Language Models",
+      "original_title": "Reliable Neuroimaging-Based Diagnosis via Confidence-Calibrated  Vision\u2013Language Models",
+      "reasons": [
+        "normalize_spacing"
+      ]
+    },
+    {
+      "abstract_id": 1245028,
+      "cleaned_title": "Linking Brain Signal Complexity to Cognitive Capacity in Young Adults",
+      "original_title": "Linking Brain Signal Complexity to Cognitive Capacity in Young Adults ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1245956,
+      "cleaned_title": "Parental Occupation Effects on Neonatal White Matter Microstructure",
+      "original_title": "Parental Occupation Effects on Neonatal White Matter Microstructure ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246021,
+      "cleaned_title": "Using high-field 7T-fMRI to dissect discrete mesolimbic/cortical circuit contributions to depression",
+      "original_title": "Using high-field 7T-fMRI to dissect discrete mesolimbic/cortical circuit contributions to depression ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246130,
+      "cleaned_title": "Linking multiscale structure to function: predictions of EEG and fMRI connectomes from structure",
+      "original_title": "Linking multiscale structure to function: predictions of EEG and fMRI connectomes from structure ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1221567,
+      "cleaned_title": "When Sites Don\u2019t Agree: Optimising ComBat for Harmonisation of Multi-Site EEG Data",
+      "original_title": "When Sites Don\u2019t Agree: Optimising ComBat for Harmonisation of Multi-Site EEG Data ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1246234,
+      "cleaned_title": "White Matter Microstructure in Adolescents Born Extremely Preterm: A DTI Study",
+      "original_title": "White Matter Microstructure in Adolescents Born Extremely Preterm: A DTI Study ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    },
+    {
+      "abstract_id": 1248914,
+      "cleaned_title": "Characterizing functional neurodevelopmental trajectories across late childhood and adolescence",
+      "original_title": "Characterizing functional neurodevelopmental trajectories across late childhood and adolescence ",
+      "reasons": [
+        "trim_whitespace"
+      ]
+    }
+  ],
+  "modified_count": 257
+}

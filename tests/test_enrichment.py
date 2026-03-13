@@ -1,22 +1,33 @@
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
 from ohbm2026.enrichment import (
+    DEFAULT_CLAIM_ANALYSES_OUTPUT,
+    DEFAULT_CLLM_OPENAI_MAX_COMPLETION_TOKENS,
+    DEFAULT_CLLM_OPENAI_MODEL,
+    DEFAULT_CLLM_OPENAI_REASONING_EFFORT,
     DEFAULT_OPENAI_MAX_IMAGES_PER_REQUEST,
     DEFAULT_OPENAI_MAX_REQUEST_BYTES,
     DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS,
     EnrichmentError,
     analyze_figures,
+    build_claim_extraction_parser,
+    build_cllm_environment,
+    build_claim_manuscript_markdown,
     build_enrich_parser,
     build_figure_analysis_parser,
     build_sections_markdown,
     enrich_database,
+    extract_claims_from_cllm_module,
+    extract_claims_with_cllm,
     filter_content_questions_markdown,
     html_to_markdown,
     image_to_data_url,
     is_content_question,
+    load_claim_analysis_cache,
     load_json,
     parse_jsonish_content,
     question_to_section,
@@ -31,7 +42,19 @@ class EnrichmentHelpersTest(unittest.TestCase):
 
         self.assertEqual(args.input, "data/abstracts.json")
         self.assertEqual(args.image_analyses_input, "data/image_analyses_openai.json")
+        self.assertEqual(args.claim_analyses_input, DEFAULT_CLAIM_ANALYSES_OUTPUT)
         self.assertEqual(args.enriched_output, "data/abstracts_enriched.json")
+
+    def test_build_claim_extraction_parser_defaults_to_openai_provider(self) -> None:
+        args = build_claim_extraction_parser().parse_args([])
+
+        self.assertEqual(args.input, "data/abstracts.json")
+        self.assertEqual(args.image_analyses_input, "data/image_analyses_openai.json")
+        self.assertEqual(args.claim_analyses_output, DEFAULT_CLAIM_ANALYSES_OUTPUT)
+        self.assertEqual(args.llm_provider, "openai")
+        self.assertEqual(args.openai_model, DEFAULT_CLLM_OPENAI_MODEL)
+        self.assertEqual(args.openai_max_completion_tokens, DEFAULT_CLLM_OPENAI_MAX_COMPLETION_TOKENS)
+        self.assertEqual(args.openai_reasoning_effort, DEFAULT_CLLM_OPENAI_REASONING_EFFORT)
 
     def test_html_to_markdown_handles_lists_and_emphasis(self) -> None:
         html = "<p>Hello <strong>world</strong></p><ol><li>One</li><li>Two</li></ol>"
@@ -56,13 +79,47 @@ class EnrichmentHelpersTest(unittest.TestCase):
         sections, unmapped = build_sections_markdown(abstract)
         self.assertEqual(sections["introduction"], "Intro text")
         self.assertEqual(sections["methods"], "Methods text")
-        self.assertEqual(unmapped, [{"question_name": "Random", "markdown": "Other text"}])
+        self.assertEqual(unmapped, [{"question_name": "Random", "markdown": "Other text", "response_index": 2}])
 
     def test_render_abstract_markdown_includes_section_headings(self) -> None:
         rendered = render_abstract_markdown("Title", {"introduction": "Intro", "results": "Result"})
         self.assertIn("# Title", rendered)
         self.assertIn("## Introduction", rendered)
         self.assertIn("## Results", rendered)
+
+    def test_build_claim_manuscript_markdown_excludes_references_and_includes_figures(self) -> None:
+        manuscript = build_claim_manuscript_markdown(
+            "Title",
+            {
+                "introduction": "Intro",
+                "references": "Reference block",
+                "acknowledgement": "Thanks to everyone",
+                "results": "Main result",
+            },
+            [{"question_name": "Keywords", "markdown": '["MRI"]'}],
+            [
+                {
+                    "question_name": "Results Figure (Optional)",
+                    "analysis": {
+                        "caption_guess": "Figure caption",
+                        "rich_markdown": "Figure **analysis**",
+                        "ocr_text": "axis labels",
+                        "notes": "Extra note",
+                    },
+                }
+            ],
+        )
+
+        self.assertIn("# Title", manuscript)
+        self.assertIn("## Results", manuscript)
+        self.assertIn("## Figure Analyses", manuscript)
+        self.assertIn("Figure **analysis**", manuscript)
+        self.assertIn("## Additional Content", manuscript)
+        self.assertIn("### Keywords", manuscript)
+        self.assertNotIn("## References", manuscript)
+        self.assertNotIn("Reference block", manuscript)
+        self.assertNotIn("## Acknowledgement", manuscript)
+        self.assertNotIn("Thanks to everyone", manuscript)
 
     def test_parse_jsonish_content_accepts_fenced_json(self) -> None:
         content = "```json\n{\"caption_guess\": \"Example\", \"keywords\": []}\n```"
@@ -75,12 +132,24 @@ class EnrichmentHelpersTest(unittest.TestCase):
         self.assertFalse(is_content_question("Submitter Approval"))
         self.assertFalse(is_content_question("5. Country"))
 
-    def test_filter_content_questions_moves_if_other_after_processing_packages(self) -> None:
+    def test_filter_content_questions_preserves_response_order(self) -> None:
         ordered = filter_content_questions_markdown(
             [
-                {"question_name": "If other, please specify:", "markdown": "CONN"},
-                {"question_name": "Keywords", "markdown": '["MRI"]'},
-                {"question_name": "Which processing packages did you use for your study?", "markdown": '["AFNI","Other"]'},
+                {
+                    "question_name": "Keywords",
+                    "markdown": '["MRI"]',
+                    "response_index": 0,
+                },
+                {
+                    "question_name": "Primary Parent Category & Sub-Category",
+                    "markdown": '["Cognition"]',
+                    "response_index": 1,
+                },
+                {
+                    "question_name": "For human MRI, what field strength scanner do you use?",
+                    "markdown": "3T",
+                    "response_index": 2,
+                },
             ]
         )
 
@@ -88,8 +157,8 @@ class EnrichmentHelpersTest(unittest.TestCase):
             [item["question_name"] for item in ordered],
             [
                 "Keywords",
-                "Which processing packages did you use for your study?",
-                "If other, please specify:",
+                "Primary Parent Category & Sub-Category",
+                "For human MRI, what field strength scanner do you use?",
             ],
         )
 
@@ -130,6 +199,91 @@ class EnrichmentHelpersTest(unittest.TestCase):
             [{"question_name": "Keywords", "markdown": "[\"A\", \"B\"]"}],
         )
 
+    def test_enrich_database_adds_claim_extraction_when_present(self) -> None:
+        base = {
+            "event_ids": [1],
+            "abstracts": [
+                {
+                    "id": 1,
+                    "title": "Example",
+                    "accepted_for": "Poster",
+                    "responses": [],
+                    "local_assets": [],
+                }
+            ],
+        }
+        claim_cache = {
+            "analyses": {
+                "1": {
+                    "status": "ok",
+                    "backend": "cllm",
+                    "llm_provider": "openai",
+                    "llm_model": "gpt-4o-2024-08-06",
+                    "claim_count": 1,
+                    "claims": [
+                        {
+                            "claim_id": "C1",
+                            "claim": "Memory scores improved.",
+                            "claim_type": "result",
+                            "source": "Results",
+                            "source_type": "section",
+                            "evidence": "p < 0.05",
+                            "evidence_type": "statistical",
+                        }
+                    ],
+                    "metrics": {"processing_time_seconds": 1.2},
+                    "updated_at": "2026-03-12T00:00:00+00:00",
+                }
+            }
+        }
+
+        enriched = enrich_database(base, claim_analysis_cache=claim_cache)
+
+        self.assertEqual(enriched["abstracts"][0]["claim_extraction"]["claim_count"], 1)
+        self.assertEqual(enriched["abstracts"][0]["claim_extraction"]["claims"][0]["claim_id"], "C1")
+
+    def test_enrich_database_orders_methods_figures_before_results_figures(self) -> None:
+        base = {
+            "event_ids": [1],
+            "abstracts": [
+                {
+                    "id": 1,
+                    "title": "Example",
+                    "accepted_for": "Poster",
+                    "responses": [],
+                    "local_assets": [
+                        {
+                            "local_path": "/tmp/results.png",
+                            "source_question_name": "Results Figure (Optional)",
+                        },
+                        {
+                            "local_path": "/tmp/methods.png",
+                            "source_question_name": "Methods Figure (Optional)",
+                        },
+                    ],
+                }
+            ],
+        }
+        image_cache = {
+            "analyses": {
+                "/tmp/results.png": {
+                    "question_name": "Results Figure (Optional)",
+                    "analysis": {"caption_guess": "Results caption"},
+                },
+                "/tmp/methods.png": {
+                    "question_name": "Methods Figure (Optional)",
+                    "analysis": {"caption_guess": "Methods caption"},
+                },
+            }
+        }
+
+        enriched = enrich_database(base, image_analysis_cache=image_cache)
+
+        self.assertEqual(
+            [item["question_name"] for item in enriched["abstracts"][0]["figure_analyses"]],
+            ["Methods Figure (Optional)", "Results Figure (Optional)"],
+        )
+
     def test_build_figure_analysis_parser_defaults_to_raw_database(self) -> None:
         parser = build_figure_analysis_parser()
         args = parser.parse_args([])
@@ -151,6 +305,65 @@ class EnrichmentHelpersTest(unittest.TestCase):
 
         self.assertEqual(api_key, "test-key")
 
+    def test_build_cllm_environment_uses_openai_key(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            env_path.write_text("OPENAI_API_KEY=test-key\n", encoding="utf-8")
+
+            environment = build_cllm_environment(
+                env_file=env_path,
+                llm_provider="openai",
+                openai_api_var="OPENAI_API_KEY",
+                openai_model="gpt-4o-2024-08-06",
+                anthropic_api_var="ANTHROPIC_API_KEY",
+                anthropic_model="claude-sonnet",
+            )
+
+        self.assertEqual(environment["LLM_PROVIDER"], "openai")
+        self.assertEqual(environment["OPENAI_API_KEY"], "test-key")
+        self.assertEqual(environment["OPENAI_MODEL"], "gpt-4o-2024-08-06")
+
+    def test_extract_claims_from_cllm_module_passes_openai_reasoning_effort_when_provided(self) -> None:
+        parsed_response = mock.Mock(
+            claims=[
+                mock.Mock(
+                    claim="Claim",
+                    claim_type="EXPLICIT",
+                    source="Source",
+                    source_type=["TEXT"],
+                    evidence="Evidence",
+                    evidence_type=["DATA"],
+                )
+            ]
+        )
+        completion = mock.Mock(
+            choices=[mock.Mock(message=mock.Mock(parsed=parsed_response, refusal=None))],
+            usage=mock.Mock(prompt_tokens=10, completion_tokens=20),
+        )
+        parse_mock = mock.Mock(return_value=completion)
+        fake_client = mock.Mock()
+        fake_client.beta.chat.completions.parse = parse_mock
+        fake_verification = mock.Mock()
+        fake_verification.STAGE1_PROMPT_TEMPLATE = "$MANUSCRIPT_TEXT"
+        fake_verification.MAX_PROMPT_TOKENS = 100000
+        fake_verification.LLMClaimsResponseV3 = object()
+        fake_verification.config.openai_model = "gpt-4o-2024-08-06"
+        fake_verification.get_llm_client.return_value = fake_client
+
+        claims, metrics = extract_claims_from_cllm_module(
+            manuscript_text="Short abstract",
+            cllm_verification=fake_verification,
+            llm_provider="openai",
+            openai_max_completion_tokens=4096,
+            openai_reasoning_effort="minimal",
+        )
+
+        self.assertEqual(claims[0]["claim_id"], "C1")
+        self.assertEqual(metrics["model"], "gpt-4o-2024-08-06")
+        parse_mock.assert_called_once()
+        self.assertEqual(parse_mock.call_args.kwargs["reasoning_effort"], "minimal")
+        self.assertEqual(parse_mock.call_args.kwargs["max_completion_tokens"], 4096)
+
     def test_image_to_data_url_normalizes_jpg_to_jpeg(self) -> None:
         with TemporaryDirectory() as temp_dir:
             image_path = Path(temp_dir) / "figure.jpg"
@@ -159,6 +372,88 @@ class EnrichmentHelpersTest(unittest.TestCase):
             data_url = image_to_data_url(image_path)
 
         self.assertTrue(data_url.startswith("data:image/jpeg;base64,"))
+
+    def test_extract_claims_with_cllm_writes_cache_with_openai_provider(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            env_path = root / ".env"
+            cache_path = root / "claim_analyses.json"
+            env_path.write_text("OPENAI_API_KEY=test-key\n", encoding="utf-8")
+            base_database = {
+                "event_ids": [1],
+                "abstracts": [
+                    {
+                        "id": 1,
+                        "title": "Example",
+                        "accepted_for": "Poster",
+                        "responses": [
+                            {"question_name": "Introduction", "value": "<p>Hello</p>"},
+                            {"question_name": "Results", "value": "<p>Result text</p>"},
+                            {"question_name": "References", "value": "<p>Reference text</p>"},
+                            {"question_name": "Acknowledgement", "value": "<p>Thanks</p>"},
+                        ],
+                        "local_assets": [{"local_path": str(root / "figure.png")}],
+                    }
+                ],
+            }
+            image_analysis_cache = {
+                "analyses": {
+                    str(root / "figure.png"): {
+                        "question_name": "Results Figure (Optional)",
+                        "analysis": {
+                            "caption_guess": "Figure caption",
+                            "rich_markdown": "Figure notes",
+                            "ocr_text": "axis labels",
+                            "notes": "extra note",
+                        },
+                    }
+                }
+            }
+
+            fake_module = mock.Mock()
+            with (
+                mock.patch("ohbm2026.enrichment.load_cllm_verification_module", return_value=fake_module),
+                mock.patch(
+                    "ohbm2026.enrichment.extract_claims_from_cllm_module",
+                    return_value=(
+                        [
+                            {
+                                "claim_id": "C1",
+                                "claim": "Result text",
+                                "claim_type": "result",
+                                "source": "Results",
+                                "source_type": ["TEXT"],
+                                "evidence": "Result text",
+                                "evidence_type": ["DATA"],
+                            }
+                        ],
+                        {"model": "gpt-4o-2024-08-06", "processing_time_seconds": 1.2},
+                    ),
+                ) as extract_mock,
+            ):
+                cache = extract_claims_with_cllm(
+                    base_database=base_database,
+                    cache_path=cache_path,
+                    image_analysis_cache=image_analysis_cache,
+                    env_file=env_path,
+                    llm_provider="openai",
+                    save_every=1,
+                )
+
+            self.assertEqual(cache["completed_count"], 1)
+            self.assertTrue(cache_path.exists())
+            saved_cache = load_claim_analysis_cache(cache_path)
+            entry = saved_cache["analyses"]["1"]
+            self.assertEqual(entry["status"], "ok")
+            self.assertEqual(entry["llm_provider"], "openai")
+            self.assertEqual(entry["claims"][0]["claim_id"], "C1")
+            self.assertEqual(entry["llm_model"], "gpt-4o-2024-08-06")
+            extract_mock.assert_called_once()
+            manuscript_text = extract_mock.call_args.kwargs["manuscript_text"]
+            self.assertIn("## Figure Analyses", manuscript_text)
+            self.assertIn("Figure notes", manuscript_text)
+            self.assertNotIn("Reference text", manuscript_text)
+            self.assertNotIn("Thanks", manuscript_text)
 
     def test_analyze_figures_openai_writes_incremental_cache_and_enriched_output(self) -> None:
         with TemporaryDirectory() as temp_dir:

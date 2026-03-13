@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 
 from ohbm2026.neuroscape import parse_string_list_value
+from ohbm2026.titles import cleaned_abstract_title
 
 DEFAULT_RAW_INPUT = "data/abstracts.json"
 DEFAULT_ENRICHED_INPUT = "data/abstracts_enriched.json"
@@ -40,9 +41,10 @@ SECTION_FIELDS = (
 )
 FACET_GROUPS = (
     "accepted_for",
+    "semantic_25",
     "primary_topic",
+    "secondary_topic",
     "keywords",
-    "figure_keywords",
     "methods",
     "study_type",
     "population",
@@ -52,9 +54,6 @@ FACET_GROUPS = (
     "recording_technology",
     "brain_regions",
     "brain_networks",
-    "semantic_15",
-    "semantic_21",
-    "semantic_25",
 )
 QUESTION_MAP = {
     "methods": "Please indicate which methods were used in your research:",
@@ -63,6 +62,8 @@ QUESTION_MAP = {
     "field_strength": "For human MRI, what field strength scanner do you use?",
     "processing_packages": "Which processing packages did you use for your study?",
 }
+PRIMARY_TOPIC_QUESTION = "Primary Parent Category & Sub-Category"
+SECONDARY_TOPIC_QUESTION = "Secondary Parent Category & Sub-Category"
 BROWSER_SEMANTIC_MODEL = "Xenova/all-MiniLM-L6-v2"
 SEMANTIC_VECTOR_FILENAME = "semantic.vectors.f32"
 SPECIES_PATTERNS = {
@@ -140,14 +141,42 @@ def question_lookup(abstract: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def topic_pair_from_questions(questions: dict[str, Any], question_name: str) -> list[str]:
+    return parse_string_list_value(questions.get(question_name))
+
+
+def topic_parent(topic_values: list[str]) -> str:
+    return topic_values[0] if topic_values else "Unknown"
+
+
+def topic_subcategory(topic_values: list[str]) -> str:
+    if len(topic_values) >= 2:
+        return topic_values[1]
+    if topic_values:
+        return topic_values[0]
+    return "Unknown"
+
+
 def primary_topic_from_questions(questions: dict[str, Any]) -> str:
-    values = parse_string_list_value(questions.get("Primary Parent Category & Sub-Category"))
-    return values[0] if values else "Unknown"
+    return topic_parent(topic_pair_from_questions(questions, PRIMARY_TOPIC_QUESTION))
 
 
 def secondary_topic_from_questions(questions: dict[str, Any]) -> str:
-    values = parse_string_list_value(questions.get("Secondary Parent Category & Sub-Category"))
-    return values[0] if values else "Unknown"
+    primary_values = topic_pair_from_questions(questions, PRIMARY_TOPIC_QUESTION)
+    if primary_values:
+        return topic_subcategory(primary_values)
+    return topic_subcategory(topic_pair_from_questions(questions, SECONDARY_TOPIC_QUESTION))
+
+
+def topic_subcategories_from_questions(questions: dict[str, Any]) -> list[str]:
+    values: list[str] = []
+    for question_name in (PRIMARY_TOPIC_QUESTION, SECONDARY_TOPIC_QUESTION):
+        topic_values = topic_pair_from_questions(questions, question_name)
+        subcategory = topic_subcategory(topic_values)
+        if subcategory == "Unknown" or subcategory in values:
+            continue
+        values.append(subcategory)
+    return values
 
 
 def markdown_to_plain_text(text: str | None) -> str:
@@ -183,6 +212,10 @@ def markdown_to_html(text: str | None) -> str:
         line = raw_line.strip()
         if not line:
             flush_list()
+            continue
+        if line.startswith("#### "):
+            flush_list()
+            blocks.append(f"<h5>{line[5:]}</h5>")
             continue
         if line.startswith("### "):
             flush_list()
@@ -226,19 +259,36 @@ def render_additional_content_markdown(value: Any) -> str:
 
 def simplify_image_analysis(record: dict[str, Any]) -> dict[str, Any]:
     analysis = record.get("analysis") or {}
+    rich_markdown = analysis.get("rich_markdown") or analysis.get("notes") or ""
     return {
         "question_name": record.get("question_name") or "",
         "caption_guess": analysis.get("caption_guess") or "",
         "notes": analysis.get("notes") or "",
         "ocr_text": analysis.get("ocr_text") or "",
-        "rich_html": markdown_to_html(analysis.get("rich_markdown") or ""),
+        "rich_html": markdown_to_html(rich_markdown),
         "keywords": list(analysis.get("keywords") or []),
     }
 
 
+def figure_note_sort_key(record: dict[str, Any]) -> tuple[int, str]:
+    question_name = str(record.get("question_name") or "").strip()
+    normalized = question_name.lower()
+    if "methods" in normalized and "figure" in normalized:
+        group = 0
+    elif "results" in normalized and "figure" in normalized:
+        group = 1
+    else:
+        group = 2
+    return (group, question_name)
+
+
+def order_figure_notes(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(list(records), key=figure_note_sort_key)
+
+
 def build_figure_text_blob(enriched_abstract: dict[str, Any]) -> str:
     parts: list[str] = []
-    for record in enriched_abstract.get("figure_analyses", []) or []:
+    for record in order_figure_notes(enriched_abstract.get("figure_analyses", []) or []):
         analysis = record.get("analysis") or {}
         for value in (
             analysis.get("caption_guess"),
@@ -265,6 +315,8 @@ def load_image_analysis_lookup(path: Path) -> dict[int, list[dict[str, Any]]]:
     for record in analyses.values():
         abstract_id = int(record.get("abstract_id"))
         lookup.setdefault(abstract_id, []).append(simplify_image_analysis(record))
+    for abstract_id, items in lookup.items():
+        lookup[abstract_id] = order_figure_notes(items)
     return lookup
 
 
@@ -357,7 +409,7 @@ def load_umap_projection(path: Path) -> dict[str, Any] | None:
         points.append(
             {
                 "id": int(point["id"]),
-                "title": str(point.get("title") or "").strip(),
+                "title": cleaned_abstract_title(point.get("title")),
                 "accepted_for": point.get("accepted_for") or "",
                 "primary_topic": point.get("primary_topic") or "",
                 "keywords": list(point.get("keywords") or []),
@@ -387,13 +439,12 @@ def build_domain_facets(raw_abstract: dict[str, Any], enriched_abstract: dict[st
     text = "\n".join(
         part
         for part in (
-            raw_abstract.get("title") or "",
+            cleaned_abstract_title(raw_abstract.get("title")),
             enriched_abstract.get("methods_markdown") or "",
             enriched_abstract.get("results_markdown") or "",
             render_additional_content_markdown(enriched_abstract.get("additional_content_questions_markdown")),
             figure_text,
             " ".join(metadata.get("keywords") or []),
-            " ".join(metadata.get("figure_keywords") or []),
             " ".join(metadata.get("methods") or []),
         )
         if part
@@ -412,6 +463,7 @@ def build_metadata(raw_abstract: dict[str, Any], enriched_abstract: dict[str, An
         "accepted_for": raw_abstract.get("accepted_for") or "Unknown",
         "primary_topic": primary_topic_from_questions(questions),
         "secondary_topic": secondary_topic_from_questions(questions),
+        "secondary_topic_facets": topic_subcategories_from_questions(questions),
         "keywords": parse_string_list_value(questions.get("Keywords")),
         "figure_keywords": list(enriched_abstract.get("figure_keywords") or []),
         "methods": parse_string_list_value(questions.get(QUESTION_MAP["methods"])),
@@ -421,12 +473,6 @@ def build_metadata(raw_abstract: dict[str, Any], enriched_abstract: dict[str, An
         "processing_packages": parse_string_list_value(questions.get(QUESTION_MAP["processing_packages"])),
     }
     abstract_id = int(raw_abstract["id"])
-    metadata["semantic_15"] = [
-        normalize_cluster_value(partitions["semantic_15"]["assignments"].get(abstract_id), partitions["semantic_15"])
-    ]
-    metadata["semantic_21"] = [
-        normalize_cluster_value(partitions["semantic_21"]["assignments"].get(abstract_id), partitions["semantic_21"])
-    ]
     metadata["semantic_25"] = [
         normalize_cluster_value(partitions["semantic_25"]["assignments"].get(abstract_id), partitions["semantic_25"])
     ]
@@ -436,7 +482,7 @@ def build_metadata(raw_abstract: dict[str, Any], enriched_abstract: dict[str, An
 def build_search_blob(raw_abstract: dict[str, Any], enriched_abstract: dict[str, Any], metadata: dict[str, Any]) -> str:
     figure_text = build_figure_text_blob(enriched_abstract)
     parts = [
-        raw_abstract.get("title") or "",
+        cleaned_abstract_title(raw_abstract.get("title")),
         enriched_abstract.get("introduction_markdown") or "",
         enriched_abstract.get("methods_markdown") or "",
         enriched_abstract.get("results_markdown") or "",
@@ -446,7 +492,7 @@ def build_search_blob(raw_abstract: dict[str, Any], enriched_abstract: dict[str,
         " ".join(metadata.get("keywords") or []),
         " ".join(metadata.get("figure_keywords") or []),
         metadata.get("primary_topic") or "",
-        metadata.get("secondary_topic") or "",
+        " ".join(metadata.get("secondary_topic_facets") or [metadata.get("secondary_topic") or ""]),
         " ".join(metadata.get("methods") or []),
         " ".join(metadata.get("study_type") or []),
         " ".join(metadata.get("population") or []),
@@ -552,8 +598,6 @@ def build_ui_payload(
     reference_lookup = load_reference_lookup(references_input)
     neighbors = load_neighbors(neighbors_input, top_neighbors)
     partitions = {
-        "semantic_15": load_cluster_partition(cluster_15_dir, "semantic_15"),
-        "semantic_21": load_cluster_partition(cluster_21_dir, "semantic_21"),
         "semantic_25": load_cluster_partition(cluster_25_dir, "semantic_25"),
     }
     umap_projection = load_umap_projection(umap_input)
@@ -568,7 +612,7 @@ def build_ui_payload(
         enriched_abstract = enriched_lookup.get(abstract_id)
         if not enriched_abstract:
             continue
-        title = str(raw_abstract.get("title") or "").strip()
+        title = cleaned_abstract_title(raw_abstract.get("title"))
         metadata = build_metadata(raw_abstract, enriched_abstract, partitions)
         domain_facets = build_domain_facets(raw_abstract, enriched_abstract, metadata)
         abstract_ids.append(abstract_id)
@@ -582,9 +626,10 @@ def build_ui_payload(
             "figure_keywords": metadata["figure_keywords"],
             "facets": {
                 "accepted_for": [metadata["accepted_for"]],
+                "semantic_25": metadata["semantic_25"],
                 "primary_topic": [metadata["primary_topic"]],
+                "secondary_topic": metadata["secondary_topic_facets"],
                 "keywords": metadata["keywords"],
-                "figure_keywords": metadata["figure_keywords"],
                 "methods": metadata["methods"],
                 "study_type": metadata["study_type"],
                 "population": metadata["population"],
@@ -594,14 +639,16 @@ def build_ui_payload(
                 "recording_technology": domain_facets["recording_technology"],
                 "brain_regions": domain_facets["brain_regions"],
                 "brain_networks": domain_facets["brain_networks"],
-                "semantic_15": metadata["semantic_15"],
-                "semantic_21": metadata["semantic_21"],
                 "semantic_25": metadata["semantic_25"],
             },
             "search_blob": build_search_blob(raw_abstract, enriched_abstract, metadata),
         }
         search_records.append(search_record)
 
+        enriched_figure_analyses = [
+            simplify_image_analysis(record)
+            for record in order_figure_notes(enriched_abstract.get("figure_analyses") or [])
+        ]
         detail_records[str(abstract_id)] = {
             "id": abstract_id,
             "title": title,
@@ -620,15 +667,14 @@ def build_ui_payload(
             "brain_regions": domain_facets["brain_regions"],
             "brain_networks": domain_facets["brain_networks"],
             "sections": build_sections(enriched_abstract),
-            "figure_analyses": image_lookup.get(abstract_id, []),
+            "claim_extraction": enriched_abstract.get("claim_extraction"),
+            "figure_analyses": enriched_figure_analyses or image_lookup.get(abstract_id, []),
             "reference_summary": reference_lookup.get(abstract_id, {"matched_count": 0, "unmatched_count": 0, "items": []}),
         }
 
         relations[str(abstract_id)] = {
             "neighbors": neighbors.get(abstract_id, []),
             "clusters": {
-                "semantic_15": partitions["semantic_15"]["assignments"].get(abstract_id),
-                "semantic_21": partitions["semantic_21"]["assignments"].get(abstract_id),
                 "semantic_25": partitions["semantic_25"]["assignments"].get(abstract_id),
             },
         }
@@ -682,8 +728,6 @@ def build_ui_payload(
             "abstract_count": len(search_records),
             "neighbors_source": str(neighbors_input),
             "partitions": {
-                "semantic_15": str(cluster_15_dir),
-                "semantic_21": str(cluster_21_dir),
                 "semantic_25": str(cluster_25_dir),
             },
             "files": files,

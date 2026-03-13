@@ -10,9 +10,10 @@ const DATA_FILES = {
 
 const FACET_LABELS = {
   accepted_for: "Accepted for",
+  semantic_25: "Semantic cluster",
   primary_topic: "Primary topic",
+  secondary_topic: "Subcategory",
   keywords: "Keywords",
-  figure_keywords: "Figure keywords",
   methods: "Methods",
   study_type: "Study type",
   population: "Population",
@@ -22,16 +23,13 @@ const FACET_LABELS = {
   recording_technology: "Recording technology",
   brain_regions: "Brain regions",
   brain_networks: "Brain networks",
-  semantic_15: "Semantic clusters (15)",
-  semantic_21: "Semantic clusters (21)",
-  semantic_25: "Semantic clusters (25)",
 };
 
 const CLUSTER_LAYER_LABELS = {
-  semantic_15: "15-cluster view",
-  semantic_21: "21-cluster view",
   semantic_25: "25-cluster benchmark",
 };
+
+const DEFAULT_CLUSTER_LAYER = "semantic_25";
 
 const SEARCH_MODE_LABELS = {
   lexical: "Lexical",
@@ -47,7 +45,7 @@ const DEFAULT_OPEN_FACETS = new Set();
 const state = {
   query: "",
   selectedId: null,
-  clusterLayer: "semantic_15",
+  clusterLayer: DEFAULT_CLUSTER_LAYER,
   searchMode: "lexical",
   semanticThreshold: 0,
   sidebarCollapsed: false,
@@ -106,7 +104,8 @@ function loadUrlState() {
   const params = new URLSearchParams(window.location.search);
   state.query = params.get("q") || "";
   state.selectedId = params.get("abstract");
-  state.clusterLayer = params.get("clusterView") || "semantic_15";
+  const requestedClusterLayer = params.get("clusterView");
+  state.clusterLayer = CLUSTER_LAYER_LABELS[requestedClusterLayer] ? requestedClusterLayer : DEFAULT_CLUSTER_LAYER;
   state.searchMode = params.get("mode") || "lexical";
   state.semanticThreshold = Number(params.get("semanticThreshold") || "0") || 0;
   for (const group of Object.keys(FACET_LABELS)) {
@@ -123,7 +122,7 @@ function syncUrlState() {
   if (state.selectedId) {
     params.set("abstract", state.selectedId);
   }
-  if (state.clusterLayer !== "semantic_15") {
+  if (state.clusterLayer !== DEFAULT_CLUSTER_LAYER) {
     params.set("clusterView", state.clusterLayer);
   }
   if (state.searchMode !== "lexical") {
@@ -523,10 +522,19 @@ function addFacetChip(label, onClick, extraClass = "") {
   return button;
 }
 
+function addStaticChip(label, extraClass = "") {
+  const chip = document.createElement("span");
+  chip.className = `chip ${extraClass}`.trim();
+  chip.textContent = label;
+  return chip;
+}
+
 function renderClusterToggle() {
   const root = document.getElementById("cluster-toggle");
   root.replaceChildren();
-  for (const [key, label] of Object.entries(CLUSTER_LAYER_LABELS)) {
+  const clusterLayers = Object.entries(CLUSTER_LAYER_LABELS);
+  root.classList.toggle("hidden", clusterLayers.length <= 1);
+  for (const [key, label] of clusterLayers) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = label;
@@ -881,11 +889,63 @@ function renderResults(items) {
 
     const chipRow = node.querySelector(".chip-row");
     chipRow.appendChild(addFacetChip(record.primary_topic, () => toggleFacet("primary_topic", record.primary_topic), "is-topic"));
-    for (const keyword of [...(record.keywords || []), ...(record.figure_keywords || [])].slice(0, 4)) {
+    for (const keyword of (record.keywords || []).slice(0, 4)) {
       chipRow.appendChild(addFacetChip(keyword, () => toggleFacet("keywords", keyword), "is-muted"));
+    }
+    for (const keyword of (record.figure_keywords || []).slice(0, 2)) {
+      chipRow.appendChild(addStaticChip(keyword, "is-cluster"));
     }
     root.appendChild(node);
   }
+}
+
+function readingMeta(markdown) {
+  const words = String(markdown || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  if (!words) {
+    return "";
+  }
+  if (words < 80) {
+    return `${words} words`;
+  }
+  return `${Math.max(1, Math.round(words / 180))} min read`;
+}
+
+function createDisclosureShell(title, options = {}) {
+  const details = document.createElement("details");
+  details.className = "detail-disclosure";
+  if (options.compact) {
+    details.classList.add("is-compact");
+  }
+  details.open = Boolean(options.open);
+
+  const summary = document.createElement("summary");
+  const heading = document.createElement("span");
+  heading.className = "detail-disclosure__title";
+  heading.textContent = title;
+  summary.appendChild(heading);
+  if (options.meta) {
+    const meta = document.createElement("span");
+    meta.className = "detail-disclosure__meta";
+    meta.textContent = options.meta;
+    summary.appendChild(meta);
+  }
+
+  const body = document.createElement("div");
+  body.className = "detail-disclosure__body";
+  if (options.bodyClassName) {
+    body.classList.add(options.bodyClassName);
+  }
+  details.append(summary, body);
+  return { details, body };
+}
+
+function createDisclosureCard(title, bodyHtml, options = {}) {
+  const { details, body } = createDisclosureShell(title, options);
+  body.innerHTML = bodyHtml;
+  return details;
 }
 
 function renderDetail() {
@@ -923,7 +983,7 @@ function renderDetail() {
     chips.appendChild(addFacetChip(keyword, () => toggleFacet("keywords", keyword), "is-muted"));
   }
   for (const keyword of (detail.figure_keywords || []).slice(0, 4)) {
-    chips.appendChild(addFacetChip(keyword, () => toggleFacet("figure_keywords", keyword), "is-cluster"));
+    chips.appendChild(addStaticChip(keyword, "is-cluster"));
   }
   view.appendChild(chips);
 
@@ -950,11 +1010,46 @@ function renderDetail() {
     metadataGrid.appendChild(card);
   }
   metadataBlock.appendChild(metadataGrid);
-  view.appendChild(metadataBlock);
 
+  const claimBlock = document.createElement("section");
+  claimBlock.className = "detail-block";
+  claimBlock.innerHTML = "<h3>Claim extraction</h3>";
+  const claimExtraction = detail.claim_extraction || { claims: [] };
+  if ((claimExtraction.claims || []).length > 0) {
+    const claimNote = document.createElement("p");
+    claimNote.className = "reference-note";
+    claimNote.textContent =
+      `${claimExtraction.claim_count || claimExtraction.claims.length} claims` +
+      (claimExtraction.llm_provider ? ` · ${claimExtraction.llm_provider}` : "") +
+      (claimExtraction.llm_model ? ` · ${claimExtraction.llm_model}` : "");
+    claimBlock.appendChild(claimNote);
+    for (const claim of claimExtraction.claims) {
+      const meta = [claim.claim_type, claim.source_type, claim.evidence_type].filter(Boolean).join(" · ");
+      const bodyHtml = `
+        <p>${escapeHtml(claim.claim || "")}</p>
+        <p class="reference-note"><strong>Source:</strong> ${escapeHtml(claim.source || "Not provided")}</p>
+        <p class="reference-note"><strong>Evidence:</strong> ${escapeHtml(claim.evidence || "Not provided")}</p>
+      `;
+      claimBlock.appendChild(
+        createDisclosureCard(claim.claim_id || "Claim", bodyHtml, {
+          meta,
+          open: false,
+          bodyClassName: "section-html",
+        })
+      );
+    }
+  } else if (claimExtraction.error) {
+    claimBlock.innerHTML += `<div class="empty-state">Claim extraction failed: ${escapeHtml(claimExtraction.error)}</div>`;
+  } else {
+    claimBlock.innerHTML += `<div class="empty-state">No cached claim extraction is available for this abstract.</div>`;
+  }
   const clusterBlock = document.createElement("section");
   clusterBlock.className = "detail-block";
-  clusterBlock.innerHTML = `<h3>Semantic context · ${escapeHtml(CLUSTER_LAYER_LABELS[state.clusterLayer])}</h3>`;
+  clusterBlock.innerHTML = "<h3>Semantic context</h3>";
+  const semanticDisclosure = createDisclosureShell(CLUSTER_LAYER_LABELS[state.clusterLayer], {
+    open: false,
+    meta: activeCluster ? `Cluster ${activeCluster.cluster_id}` : "No assignment",
+  });
   if (activeCluster) {
     const card = document.createElement("div");
     card.className = "detail-card";
@@ -972,15 +1067,20 @@ function renderDetail() {
       representativeList.appendChild(button);
     }
     card.appendChild(representativeList);
-    clusterBlock.appendChild(card);
+    semanticDisclosure.body.appendChild(card);
   } else {
-    clusterBlock.innerHTML += `<div class="empty-state">No cluster assignment found for the active semantic layer.</div>`;
+    semanticDisclosure.body.innerHTML = `<div class="empty-state">No cluster assignment found for the active semantic layer.</div>`;
   }
+  clusterBlock.appendChild(semanticDisclosure.details);
   view.appendChild(clusterBlock);
 
   const relationsBlock = document.createElement("section");
   relationsBlock.className = "detail-block";
   relationsBlock.innerHTML = "<h3>Related abstracts</h3>";
+  const relatedDisclosure = createDisclosureShell("Nearest neighbors", {
+    open: false,
+    meta: `${(relation.neighbors || []).length} abstracts`,
+  });
   if ((relation.neighbors || []).length > 0) {
     const list = document.createElement("div");
     list.className = "link-list";
@@ -996,20 +1096,27 @@ function renderDetail() {
       button.addEventListener("click", () => setSelectedId(neighbor.id));
       list.appendChild(button);
     }
-    relationsBlock.appendChild(list);
+    relatedDisclosure.body.appendChild(list);
   } else {
-    relationsBlock.innerHTML += `<div class="empty-state">No precomputed nearest neighbors available.</div>`;
+    relatedDisclosure.body.innerHTML = `<div class="empty-state">No precomputed nearest neighbors available.</div>`;
   }
+  relationsBlock.appendChild(relatedDisclosure.details);
   view.appendChild(relationsBlock);
 
   const sectionsBlock = document.createElement("section");
   sectionsBlock.className = "detail-block";
   sectionsBlock.innerHTML = "<h3>Abstract content</h3>";
-  for (const section of detail.sections) {
-    const article = document.createElement("article");
-    article.className = "detail-card";
-    article.innerHTML = `<h4>${escapeHtml(section.label)}</h4><div class="section-html">${section.html}</div>`;
-    sectionsBlock.appendChild(article);
+  for (const [index, section] of (detail.sections || []).entries()) {
+    sectionsBlock.appendChild(
+      createDisclosureCard(section.label, section.html, {
+        meta: readingMeta(section.markdown),
+        open: index === 0,
+        bodyClassName: "section-html",
+      })
+    );
+  }
+  if ((detail.sections || []).length === 0) {
+    sectionsBlock.innerHTML += `<div class="empty-state">No abstract markdown sections are available for this abstract.</div>`;
   }
   view.appendChild(sectionsBlock);
 
@@ -1018,19 +1125,23 @@ function renderDetail() {
   figureBlock.innerHTML = "<h3>Figure notes</h3>";
   if ((detail.figure_analyses || []).length > 0) {
     for (const figure of detail.figure_analyses) {
-      const card = document.createElement("article");
-      card.className = "detail-card";
-      card.innerHTML = `
-        <h4>${escapeHtml(figure.question_name || "Figure analysis")}</h4>
-        <p class="section-note">${escapeHtml(figure.caption_guess || "No caption guess")}</p>
-        <div class="section-html">${figure.rich_html || `<p>${escapeHtml(figure.notes || "")}</p>`}</div>
-      `;
-      figureBlock.appendChild(card);
+      figureBlock.appendChild(
+        createDisclosureCard(
+          figure.question_name || "Figure analysis",
+          figure.rich_html || `<p>${escapeHtml(figure.notes || "")}</p>`,
+          {
+            meta: figure.caption_guess || "No caption guess",
+            open: false,
+            bodyClassName: "section-html",
+          }
+        )
+      );
     }
   } else {
     figureBlock.innerHTML += `<div class="empty-state">No cached figure analysis is available for this abstract.</div>`;
   }
   view.appendChild(figureBlock);
+  view.appendChild(claimBlock);
 
   const referencesBlock = document.createElement("section");
   referencesBlock.className = "detail-block";
@@ -1042,19 +1153,22 @@ function renderDetail() {
   referencesBlock.appendChild(headerNote);
   if ((referenceSummary.items || []).length > 0) {
     const list = document.createElement("div");
-    list.className = "link-list";
+    list.className = "link-list is-compact";
     for (const item of referenceSummary.items) {
       const link = item.openalex_id
         ? `<a href="${item.openalex_id}" target="_blank" rel="noreferrer">OpenAlex</a>`
         : "";
-      const container = document.createElement("div");
-      container.className = "detail-card";
-      container.innerHTML = `
-        <h4>${escapeHtml(item.title || "Matched reference")}</h4>
-        <p class="section-note">${escapeHtml([item.journal, item.year].filter(Boolean).join(" · "))}</p>
-        <p class="reference-note">Cited by ${item.cited_by_count ?? "?"} ${link}</p>
-      `;
-      list.appendChild(container);
+      list.appendChild(
+        createDisclosureCard(
+          item.title || "Matched reference",
+          `<p class="reference-note">Cited by ${item.cited_by_count ?? "?"} ${link}</p>`,
+          {
+            meta: [item.journal, item.year].filter(Boolean).join(" · "),
+            open: false,
+            compact: true,
+          }
+        )
+      );
     }
     referencesBlock.appendChild(list);
   } else {
@@ -1065,19 +1179,23 @@ function renderDetail() {
     unmatchedHeading.textContent = "Unmatched references";
     referencesBlock.appendChild(unmatchedHeading);
     const unmatchedList = document.createElement("div");
-    unmatchedList.className = "link-list";
+    unmatchedList.className = "link-list is-compact";
     for (const item of referenceSummary.unmatched_items) {
-      const container = document.createElement("div");
-      container.className = "detail-card";
-      container.innerHTML = `
-        <h4>${escapeHtml(item.title || "Unmatched reference")}</h4>
-        <p class="reference-note">${escapeHtml(item.raw_text || "No reference text available.")}</p>
-      `;
-      unmatchedList.appendChild(container);
+      unmatchedList.appendChild(
+        createDisclosureCard(
+          item.title || "Unmatched reference",
+          `<p class="reference-note">${escapeHtml(item.raw_text || "No reference text available.")}</p>`,
+          {
+            open: false,
+            compact: true,
+          }
+        )
+      );
     }
-    referencesBlock.appendChild(unmatchedList);
+      referencesBlock.appendChild(unmatchedList);
   }
   view.appendChild(referencesBlock);
+  view.appendChild(metadataBlock);
 }
 
 function render() {

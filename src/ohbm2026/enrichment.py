@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import base64
+import importlib
 import json
+import os
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from html.parser import HTMLParser
@@ -16,6 +19,7 @@ from urllib.request import Request, urlopen
 
 from ohbm2026.assets import extract_target_figure_urls
 from ohbm2026.graphql_api import fetch_author_details, get_api_key, load_dotenv
+from ohbm2026.titles import cleaned_abstract_title
 
 SECTION_ORDER = [
     ("introduction", "Introduction"),
@@ -25,6 +29,13 @@ SECTION_ORDER = [
     ("conclusion", "Conclusion"),
     ("references", "References"),
     ("acknowledgement", "Acknowledgement"),
+]
+CLAIM_SECTION_ORDER = [
+    ("introduction", "Introduction"),
+    ("methods", "Methods"),
+    ("results", "Results"),
+    ("discussion", "Discussion"),
+    ("conclusion", "Conclusion"),
 ]
 SECTION_MARKDOWN_KEYS = {section_key: f"{section_key}_markdown" for section_key, _ in SECTION_ORDER}
 CONTENT_QUESTION_NAMES = {
@@ -50,6 +61,12 @@ OPENAI_CHAT_API = "https://api.openai.com/v1/chat/completions"
 DEFAULT_OPENAI_MAX_IMAGES_PER_REQUEST = 48
 DEFAULT_OPENAI_MAX_REQUEST_BYTES = 40_000_000
 DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS = 600
+DEFAULT_CLAIM_ANALYSES_OUTPUT = "data/claim_analyses_cllm.json"
+DEFAULT_CLLM_PROVIDER = "openai"
+DEFAULT_CLLM_OPENAI_MODEL = "gpt-4o-2024-08-06"
+DEFAULT_CLLM_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929"
+DEFAULT_CLLM_OPENAI_MAX_COMPLETION_TOKENS = 4096
+DEFAULT_CLLM_OPENAI_REASONING_EFFORT: str | None = None
 
 
 class EnrichmentError(RuntimeError):
@@ -234,7 +251,7 @@ def build_author_database(base_database: dict[str, Any], api_key: str) -> dict[s
 def build_sections_markdown(abstract: dict[str, Any]) -> tuple[dict[str, str], list[dict[str, str]]]:
     sections: dict[str, list[str]] = {key: [] for key, _ in SECTION_ORDER}
     unmapped: list[dict[str, str]] = []
-    for response in abstract.get("responses", []):
+    for response_index, response in enumerate(abstract.get("responses", [])):
         value = response.get("value")
         if not isinstance(value, str) or not value.strip():
             continue
@@ -243,7 +260,13 @@ def build_sections_markdown(abstract: dict[str, Any]) -> tuple[dict[str, str], l
         if not markdown:
             continue
         if section_key is None:
-            unmapped.append({"question_name": response.get("question_name") or "", "markdown": markdown})
+            unmapped.append(
+                {
+                    "question_name": response.get("question_name") or "",
+                    "markdown": markdown,
+                    "response_index": response_index,
+                }
+            )
         elif section_key != "title":
             sections[section_key].append(markdown)
 
@@ -268,13 +291,10 @@ def build_section_markdown_fields(sections_markdown: dict[str, str]) -> dict[str
 
 
 def content_question_sort_key(item: dict[str, str]) -> tuple[int, str]:
-    question_name = str(item.get("question_name") or "")
-    normalized = normalize_question_name(question_name)
-    if normalized == normalize_question_name("Which processing packages did you use for your study?"):
-        return (100, question_name)
-    if normalized == normalize_question_name("If other, please specify:"):
-        return (101, question_name)
-    return (0, question_name)
+    response_index = item.get("response_index")
+    if isinstance(response_index, int):
+        return (response_index, str(item.get("question_name") or ""))
+    return (10_000, str(item.get("question_name") or ""))
 
 
 def filter_content_questions_markdown(items: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -283,7 +303,34 @@ def filter_content_questions_markdown(items: list[dict[str, str]]) -> list[dict[
         for item in items
         if is_content_question(item.get("question_name")) and item.get("markdown")
     ]
-    return sorted(filtered, key=content_question_sort_key)
+    ordered = sorted(filtered, key=content_question_sort_key)
+    return [
+        {
+            "question_name": str(item.get("question_name") or ""),
+            "markdown": str(item.get("markdown") or "").strip(),
+        }
+        for item in ordered
+    ]
+
+
+def figure_analysis_sort_key(entry: dict[str, Any]) -> tuple[int, str, str]:
+    question_name = str(entry.get("question_name") or entry.get("source_question_name") or "").strip()
+    normalized = normalize_question_name(question_name)
+    if "methods" in normalized and "figure" in normalized:
+        group = 0
+    elif "results" in normalized and "figure" in normalized:
+        group = 1
+    else:
+        group = 2
+    return (
+        group,
+        question_name,
+        str(entry.get("local_path") or ""),
+    )
+
+
+def sort_figure_analysis_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(list(entries), key=figure_analysis_sort_key)
 
 
 def render_abstract_markdown(title: str, sections_markdown: dict[str, str]) -> str:
@@ -293,6 +340,77 @@ def render_abstract_markdown(title: str, sections_markdown: dict[str, str]) -> s
         if section_value:
             parts.append(f"## {heading}\n\n{section_value}")
     return "\n\n".join(parts).strip()
+
+
+def render_claim_section_markdown(title: str, sections_markdown: dict[str, str]) -> str:
+    parts = [f"# {title}"] if title else []
+    for section_key, heading in CLAIM_SECTION_ORDER:
+        section_value = sections_markdown.get(section_key)
+        if section_value:
+            parts.append(f"## {heading}\n\n{section_value}")
+    return "\n\n".join(parts).strip()
+
+
+def render_additional_content_questions_markdown(items: list[dict[str, str]]) -> str:
+    parts: list[str] = []
+    for item in items:
+        question_name = str(item.get("question_name") or "").strip()
+        markdown = str(item.get("markdown") or "").strip()
+        if not markdown:
+            continue
+        if question_name:
+            parts.append(f"### {question_name}\n\n{markdown}")
+        else:
+            parts.append(markdown)
+    return "\n\n".join(parts).strip()
+
+
+def render_figure_analyses_markdown(figure_analyses: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for index, entry in enumerate(sort_figure_analysis_entries(figure_analyses), start=1):
+        analysis = entry.get("analysis") if isinstance(entry, dict) else {}
+        if not isinstance(analysis, dict):
+            analysis = {}
+        subsection_parts: list[str] = []
+        label = str(entry.get("question_name") or "").strip() if isinstance(entry, dict) else ""
+        heading = label or f"Figure {index}"
+        caption_guess = str(analysis.get("caption_guess") or "").strip()
+        rich_markdown = str(analysis.get("rich_markdown") or "").strip()
+        ocr_text = str(analysis.get("ocr_text") or "").strip()
+        notes = str(analysis.get("notes") or "").strip()
+        if caption_guess:
+            subsection_parts.append(f"**Caption guess:** {caption_guess}")
+        if rich_markdown:
+            subsection_parts.append(rich_markdown)
+        if ocr_text:
+            subsection_parts.append(f"**OCR text:** {ocr_text}")
+        if notes:
+            subsection_parts.append(f"**Notes:** {notes}")
+        if subsection_parts:
+            parts.append(f"### {heading}\n\n" + "\n\n".join(subsection_parts))
+    return "\n\n".join(parts).strip()
+
+
+def build_claim_manuscript_markdown(
+    title: str,
+    sections_markdown: dict[str, str],
+    additional_content_questions: list[dict[str, str]],
+    figure_analyses: list[dict[str, Any]] | None = None,
+) -> str:
+    parts: list[str] = []
+    abstract_markdown = render_claim_section_markdown(title, sections_markdown)
+    if abstract_markdown:
+        parts.append(abstract_markdown)
+    elif title:
+        parts.append(f"# {title}")
+    figure_markdown = render_figure_analyses_markdown(list(figure_analyses or []))
+    if figure_markdown:
+        parts.append(f"## Figure Analyses\n\n{figure_markdown}")
+    additional_content_markdown = render_additional_content_questions_markdown(additional_content_questions)
+    if additional_content_markdown:
+        parts.append(f"## Additional Content\n\n{additional_content_markdown}")
+    manuscript = "\n\n".join(part for part in parts if part).strip()
+    return manuscript or (title.strip() if title else "Untitled abstract")
 
 
 def load_image_analysis_cache(path: Path) -> dict[str, Any]:
@@ -306,6 +424,17 @@ def save_image_analysis_cache(path: Path, payload: dict[str, Any]) -> None:
     write_json(path, payload)
 
 
+def load_claim_analysis_cache(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"analyses": {}, "updated_at": None}
+    return load_json(path)
+
+
+def save_claim_analysis_cache(path: Path, payload: dict[str, Any]) -> None:
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    write_json(path, payload)
+
+
 def analysis_entry_succeeded(entry: dict[str, Any] | None) -> bool:
     if not isinstance(entry, dict):
         return False
@@ -313,10 +442,25 @@ def analysis_entry_succeeded(entry: dict[str, Any] | None) -> bool:
     return isinstance(analysis, dict) and bool(analysis)
 
 
+def claim_analysis_entry_completed(entry: dict[str, Any] | None) -> bool:
+    return isinstance(entry, dict) and entry.get("status") == "ok"
+
+
 def refresh_analysis_cache_stats(cache: dict[str, Any]) -> None:
     analyses = cache.get("analyses") or {}
     cache["processed_count"] = len(analyses)
     cache["error_count"] = sum(1 for entry in analyses.values() if isinstance(entry, dict) and entry.get("error"))
+
+
+def refresh_claim_analysis_cache_stats(cache: dict[str, Any]) -> None:
+    analyses = cache.get("analyses") or {}
+    cache["processed_count"] = len(analyses)
+    cache["completed_count"] = sum(
+        1 for entry in analyses.values() if isinstance(entry, dict) and entry.get("status") == "ok"
+    )
+    cache["error_count"] = sum(
+        1 for entry in analyses.values() if isinstance(entry, dict) and entry.get("status") == "error"
+    )
 
 
 def image_to_data_url(image_path: Path) -> str:
@@ -664,6 +808,234 @@ def resolve_openai_api_key(env_file: Path, api_var: str) -> str:
     return api_key
 
 
+def build_cllm_environment(
+    env_file: Path,
+    llm_provider: str,
+    openai_api_var: str,
+    openai_model: str,
+    anthropic_api_var: str,
+    anthropic_model: str,
+) -> dict[str, str]:
+    env_values = load_dotenv(env_file)
+    environment = os.environ.copy()
+    environment["LLM_PROVIDER"] = llm_provider
+    if llm_provider == "openai":
+        api_key = os.environ.get(openai_api_var) or env_values.get(openai_api_var)
+        if not api_key:
+            raise EnrichmentError(f"Missing OpenAI API key '{openai_api_var}' in {env_file}")
+        environment["OPENAI_API_KEY"] = api_key
+        environment["OPENAI_MODEL"] = openai_model
+    elif llm_provider == "anthropic":
+        api_key = os.environ.get(anthropic_api_var) or env_values.get(anthropic_api_var)
+        if not api_key:
+            raise EnrichmentError(f"Missing Anthropic API key '{anthropic_api_var}' in {env_file}")
+        environment["ANTHROPIC_API_KEY"] = api_key
+        environment["ANTHROPIC_MODEL"] = anthropic_model
+    else:
+        raise EnrichmentError(f"Unsupported cllm provider: {llm_provider}")
+    return environment
+
+
+def load_cllm_verification_module(environment: dict[str, str]) -> Any:
+    for key in ("LLM_PROVIDER", "OPENAI_API_KEY", "OPENAI_MODEL", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"):
+        if key in environment:
+            os.environ[key] = environment[key]
+    try:
+        import cllm.config as cllm_config
+        import cllm.verification as cllm_verification
+    except ModuleNotFoundError as exc:
+        raise EnrichmentError(
+            "cllm is not installed in the current environment. "
+            "Install it with: UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python "
+            "git+https://github.com/OpenEvalProject/cllm.git"
+        ) from exc
+    importlib.reload(cllm_config)
+    return importlib.reload(cllm_verification)
+
+
+def extract_claims_from_cllm_module(
+    manuscript_text: str,
+    cllm_verification: Any,
+    llm_provider: str,
+    openai_max_completion_tokens: int,
+    openai_reasoning_effort: str | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    prompt = cllm_verification.STAGE1_PROMPT_TEMPLATE.replace("$MANUSCRIPT_TEXT", manuscript_text)
+    cllm_verification.warn_if_prompt_too_long(
+        prompt,
+        cllm_verification.MAX_PROMPT_TOKENS,
+        "STAGE 1: Extract Claims From Manuscript",
+    )
+    start_time = time.time()
+    if llm_provider == "openai":
+        client = cllm_verification.get_llm_client()
+        request_kwargs: dict[str, Any] = {
+            "model": cllm_verification.config.openai_model,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+            "response_format": cllm_verification.LLMClaimsResponseV3,
+            "max_completion_tokens": openai_max_completion_tokens,
+        }
+        if openai_reasoning_effort:
+            request_kwargs["reasoning_effort"] = openai_reasoning_effort
+        completion = client.beta.chat.completions.parse(**request_kwargs)
+        response = completion.choices[0].message.parsed
+        if response is None:
+            raise EnrichmentError(
+                f"OpenAI returned no parsed response. Refusal: {completion.choices[0].message.refusal}"
+            )
+        usage = {
+            "input_tokens": completion.usage.prompt_tokens,
+            "output_tokens": completion.usage.completion_tokens,
+        }
+    else:
+        client = cllm_verification.get_llm_client()
+        response, usage, _ = cllm_verification.call_llm_structured(
+            client=client,
+            prompt=prompt,
+            response_model=cllm_verification.LLMClaimsResponseV3,
+            max_tokens=64_000,
+        )
+    claims = [
+        {
+            "claim_id": f"C{index}",
+            "claim": claim.claim,
+            "claim_type": claim.claim_type,
+            "source": claim.source,
+            "source_type": list(claim.source_type or []),
+            "evidence": claim.evidence,
+            "evidence_type": list(claim.evidence_type or []),
+        }
+        for index, claim in enumerate(response.claims, start=1)
+    ]
+    model_name = (
+        cllm_verification.config.openai_model
+        if llm_provider == "openai"
+        else cllm_verification.config.anthropic_model
+    )
+    metrics = {
+        "model": model_name,
+        "input_tokens": usage["input_tokens"],
+        "output_tokens": usage["output_tokens"],
+        "num_claims": len(claims),
+        "processing_time_seconds": time.time() - start_time,
+    }
+    return claims, metrics
+
+
+def extract_claims_with_cllm(
+    base_database: dict[str, Any],
+    cache_path: Path,
+    image_analysis_cache: dict[str, Any] | None = None,
+    env_file: Path = Path(".env"),
+    llm_provider: str = DEFAULT_CLLM_PROVIDER,
+    openai_api_var: str = "OPENAI_API_KEY",
+    openai_model: str = DEFAULT_CLLM_OPENAI_MODEL,
+    anthropic_api_var: str = "ANTHROPIC_API_KEY",
+    anthropic_model: str = DEFAULT_CLLM_ANTHROPIC_MODEL,
+    openai_max_completion_tokens: int = DEFAULT_CLLM_OPENAI_MAX_COMPLETION_TOKENS,
+    openai_reasoning_effort: str = DEFAULT_CLLM_OPENAI_REASONING_EFFORT,
+    max_abstracts: int | None = None,
+    save_every: int = 1,
+    force: bool = False,
+) -> dict[str, Any]:
+    image_analysis_cache = image_analysis_cache or {"analyses": {}}
+    image_lookup = image_analysis_cache.get("analyses", {})
+    environment = build_cllm_environment(
+        env_file=env_file,
+        llm_provider=llm_provider,
+        openai_api_var=openai_api_var,
+        openai_model=openai_model,
+        anthropic_api_var=anthropic_api_var,
+        anthropic_model=anthropic_model,
+    )
+    cache = load_claim_analysis_cache(cache_path)
+    analyses = cache.setdefault("analyses", {})
+    refresh_claim_analysis_cache_stats(cache)
+    processed = 0
+    selected_model = openai_model if llm_provider == "openai" else anthropic_model
+    cllm_verification = load_cllm_verification_module(environment)
+
+    def persist_progress() -> None:
+        refresh_claim_analysis_cache_stats(cache)
+        if processed % max(save_every, 1) == 0:
+            cache["backend"] = "cllm"
+            cache["llm_provider"] = llm_provider
+            cache["llm_model"] = selected_model
+            save_claim_analysis_cache(cache_path, cache)
+
+    for abstract in base_database.get("abstracts", []):
+        abstract_id = abstract.get("id")
+        if not isinstance(abstract_id, int):
+            continue
+        cache_key = str(abstract_id)
+        if not force and claim_analysis_entry_completed(analyses.get(cache_key)):
+            continue
+        if max_abstracts is not None and processed >= max_abstracts:
+            break
+
+        sections_markdown, unmapped_responses = build_sections_markdown(abstract)
+        additional_content_questions = filter_content_questions_markdown(unmapped_responses)
+        figure_analyses: list[dict[str, Any]] = []
+        for asset in abstract.get("local_assets", []):
+            local_path = asset.get("local_path")
+            analysis_entry = image_lookup.get(local_path) if local_path else None
+            if analysis_entry:
+                figure_analyses.append(analysis_entry)
+        manuscript_markdown = build_claim_manuscript_markdown(
+            title=cleaned_abstract_title(abstract.get("title")),
+            sections_markdown=sections_markdown,
+            additional_content_questions=additional_content_questions,
+            figure_analyses=sort_figure_analysis_entries(figure_analyses),
+        )
+
+        entry: dict[str, Any] = {
+            "abstract_id": abstract_id,
+            "title": cleaned_abstract_title(abstract.get("title")),
+            "backend": "cllm",
+            "llm_provider": llm_provider,
+            "llm_model": selected_model,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            claims, metrics = extract_claims_from_cllm_module(
+                manuscript_text=manuscript_markdown,
+                cllm_verification=cllm_verification,
+                llm_provider=llm_provider,
+                openai_max_completion_tokens=openai_max_completion_tokens,
+                openai_reasoning_effort=openai_reasoning_effort,
+            )
+        except Exception as exc:
+            entry.update(
+                {
+                    "status": "error",
+                    "claims": [],
+                    "claim_count": 0,
+                    "error": str(exc),
+                }
+            )
+        else:
+            entry.update(
+                {
+                    "status": "ok",
+                    "claims": claims,
+                    "claim_count": len(claims),
+                    "metrics": metrics,
+                    "llm_model": str(metrics.get("model") or selected_model),
+                }
+            )
+        analyses[cache_key] = entry
+
+        processed += 1
+        persist_progress()
+
+    cache["backend"] = "cllm"
+    cache["llm_provider"] = llm_provider
+    cache["llm_model"] = selected_model
+    refresh_claim_analysis_cache_stats(cache)
+    save_claim_analysis_cache(cache_path, cache)
+    return cache
+
+
 def analyze_figures(
     base_database: dict[str, Any],
     analysis_cache_path: Path,
@@ -813,9 +1185,12 @@ def extract_original_keywords(abstract: dict[str, Any]) -> list[str]:
 def enrich_database(
     base_database: dict[str, Any],
     image_analysis_cache: dict[str, Any] | None = None,
+    claim_analysis_cache: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     image_analysis_cache = image_analysis_cache or {"analyses": {}}
     image_lookup = image_analysis_cache.get("analyses", {})
+    claim_analysis_cache = claim_analysis_cache or {"analyses": {}}
+    claim_lookup = claim_analysis_cache.get("analyses", {})
     enriched_abstracts: list[dict[str, Any]] = []
 
     for abstract in base_database.get("abstracts", []):
@@ -831,6 +1206,21 @@ def enrich_database(
             if analysis_entry:
                 figure_analyses.append(analysis_entry)
                 figure_keywords.extend(analysis_entry.get("analysis", {}).get("keywords", []))
+        figure_analyses = sort_figure_analysis_entries(figure_analyses)
+        claim_entry = claim_lookup.get(str(abstract.get("id")))
+        claim_extraction = None
+        if isinstance(claim_entry, dict):
+            claim_extraction = {
+                "status": claim_entry.get("status") or "unknown",
+                "backend": claim_entry.get("backend") or "cllm",
+                "llm_provider": claim_entry.get("llm_provider") or "",
+                "llm_model": claim_entry.get("llm_model") or "",
+                "claim_count": int(claim_entry.get("claim_count") or len(claim_entry.get("claims") or [])),
+                "claims": list(claim_entry.get("claims") or []),
+                "metrics": claim_entry.get("metrics") or {},
+                "error": str(claim_entry.get("error") or "").strip(),
+                "updated_at": claim_entry.get("updated_at"),
+            }
 
         enriched = {
             "id": abstract.get("id"),
@@ -840,6 +1230,8 @@ def enrich_database(
             "figure_analyses": figure_analyses,
             "figure_keywords": unique_preserve_order(figure_keywords),
         }
+        if claim_extraction is not None:
+            enriched["claim_extraction"] = claim_extraction
         enriched_abstracts.append(enriched)
 
     return {
@@ -885,6 +1277,7 @@ def build_enrich_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build enriched OHBM 2026 abstracts from local databases")
     parser.add_argument("--input", default="data/abstracts.json")
     parser.add_argument("--image-analyses-input", default="data/image_analyses_openai.json")
+    parser.add_argument("--claim-analyses-input", default=DEFAULT_CLAIM_ANALYSES_OUTPUT)
     parser.add_argument("--enriched-output", default="data/abstracts_enriched.json")
     return parser
 
@@ -897,15 +1290,82 @@ def enrich_main(argv: list[str] | None = None) -> int:
     args = parse_enrich_args(argv)
     base_database = load_json(Path(args.input))
     image_cache = load_image_analysis_cache(Path(args.image_analyses_input))
-    enriched_database = enrich_database(base_database, image_cache)
+    claim_cache = load_claim_analysis_cache(Path(args.claim_analyses_input))
+    enriched_database = enrich_database(base_database, image_cache, claim_analysis_cache=claim_cache)
     write_json(Path(args.enriched_output), enriched_database)
     print(
         json.dumps(
             {
                 "input": args.input,
                 "image_analyses_input": args.image_analyses_input,
+                "claim_analyses_input": args.claim_analyses_input,
                 "enriched_output": args.enriched_output,
                 "abstract_count": enriched_database["abstract_count"],
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def build_claim_extraction_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Extract claim lists for OHBM 2026 abstracts with cllm")
+    parser.add_argument("--input", default="data/abstracts.json")
+    parser.add_argument("--image-analyses-input", default="data/image_analyses_openai.json")
+    parser.add_argument("--claim-analyses-output", default=DEFAULT_CLAIM_ANALYSES_OUTPUT)
+    parser.add_argument("--env-file", default=".env")
+    parser.add_argument("--llm-provider", choices=["openai", "anthropic"], default=DEFAULT_CLLM_PROVIDER)
+    parser.add_argument("--openai-api-var", default="OPENAI_API_KEY")
+    parser.add_argument("--openai-model", default=DEFAULT_CLLM_OPENAI_MODEL)
+    parser.add_argument("--openai-max-completion-tokens", type=int, default=DEFAULT_CLLM_OPENAI_MAX_COMPLETION_TOKENS)
+    parser.add_argument(
+        "--openai-reasoning-effort",
+        choices=["minimal", "low", "medium", "high"],
+        default=DEFAULT_CLLM_OPENAI_REASONING_EFFORT,
+    )
+    parser.add_argument("--anthropic-api-var", default="ANTHROPIC_API_KEY")
+    parser.add_argument("--anthropic-model", default=DEFAULT_CLLM_ANTHROPIC_MODEL)
+    parser.add_argument("--max-abstracts", type=int, default=None)
+    parser.add_argument("--save-every", type=int, default=1)
+    parser.add_argument("--force", action="store_true")
+    return parser
+
+
+def parse_claim_extraction_args(argv: list[str] | None = None) -> argparse.Namespace:
+    return build_claim_extraction_parser().parse_args(argv)
+
+
+def extract_claims_main(argv: list[str] | None = None) -> int:
+    args = parse_claim_extraction_args(argv)
+    base_database = load_json(Path(args.input))
+    image_cache = load_image_analysis_cache(Path(args.image_analyses_input))
+    claim_cache = extract_claims_with_cllm(
+        base_database=base_database,
+        cache_path=Path(args.claim_analyses_output),
+        image_analysis_cache=image_cache,
+        env_file=Path(args.env_file),
+        llm_provider=args.llm_provider,
+        openai_api_var=args.openai_api_var,
+        openai_model=args.openai_model,
+        anthropic_api_var=args.anthropic_api_var,
+        anthropic_model=args.anthropic_model,
+        openai_max_completion_tokens=args.openai_max_completion_tokens,
+        openai_reasoning_effort=args.openai_reasoning_effort,
+        max_abstracts=args.max_abstracts,
+        save_every=args.save_every,
+        force=args.force,
+    )
+    print(
+        json.dumps(
+            {
+                "input": args.input,
+                "image_analyses_input": args.image_analyses_input,
+                "claim_analyses_output": args.claim_analyses_output,
+                "llm_provider": args.llm_provider,
+                "llm_model": args.openai_model if args.llm_provider == "openai" else args.anthropic_model,
+                "processed_count": claim_cache.get("processed_count", 0),
+                "completed_count": claim_cache.get("completed_count", 0),
+                "error_count": claim_cache.get("error_count", 0),
             },
             indent=2,
         )

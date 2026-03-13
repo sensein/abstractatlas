@@ -20,12 +20,26 @@ from ohbm2026.graphql_api import load_dotenv, urlopen_with_retries
 
 OPENALEX_API = "https://api.openalex.org/works"
 OPENALEX_API_ENV = "OPENALEX_API"
+SEMANTIC_SCHOLAR_API = "https://api.semanticscholar.org/graph/v1/paper/search"
+SEMANTIC_SCHOLAR_API_ENV = "SEMANTIC_SCHOLAR_API_KEY"
+CROSSREF_API = "https://api.crossref.org/works"
 DOI_PATTERN = re.compile(r"(?:https?://(?:dx\.)?doi\.org/|doi:\s*)?(10\.\d{4,9}/[-._;()/:A-Z0-9]+)", re.I)
 PMID_PATTERN = re.compile(r"\bPMID\s*:?\s*(\d+)\b", re.I)
+YEAR_PATTERN = re.compile(r"\b(19|20)\d{2}\b")
 
 
 class OpenAlexError(RuntimeError):
     """Raised when OpenAlex reference enrichment cannot continue."""
+
+
+def default_request_counts() -> dict[str, int]:
+    return {
+        "doi_requests": 0,
+        "pmid_requests": 0,
+        "title_requests": 0,
+        "semantic_scholar_requests": 0,
+        "crossref_requests": 0,
+    }
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -102,6 +116,14 @@ def guess_reference_title(reference_text: str) -> str:
     return normalize_reference_text(reference_text)
 
 
+def extract_reference_year(reference_text: str) -> int | None:
+    matches = YEAR_PATTERN.findall(reference_text)
+    if not matches:
+        return None
+    year_match = re.search(r"\b((?:19|20)\d{2})\b", reference_text)
+    return int(year_match.group(1)) if year_match else None
+
+
 def build_reference_key(reference_text: str, doi: str | None = None, pmid: str | None = None) -> str:
     if doi:
         return f"doi:{doi}"
@@ -126,6 +148,13 @@ def get_openalex_api_key(env_path: str = ".env") -> str | None:
     return api_key or None
 
 
+@lru_cache(maxsize=1)
+def get_semantic_scholar_api_key(env_path: str = ".env") -> str | None:
+    env_values = load_dotenv(Path(env_path))
+    api_key = os.environ.get(SEMANTIC_SCHOLAR_API_ENV) or env_values.get(SEMANTIC_SCHOLAR_API_ENV)
+    return api_key or None
+
+
 def add_query_parameter(url: str, key: str, value: str) -> str:
     parsed = urlparse(url)
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
@@ -133,19 +162,45 @@ def add_query_parameter(url: str, key: str, value: str) -> str:
     return urlunparse(parsed._replace(query=urlencode(query)))
 
 
-def openalex_request(url: str) -> dict[str, Any]:
-    api_key = get_openalex_api_key()
-    if api_key:
-        url = add_query_parameter(url, "api_key", api_key)
-    request = Request(url, headers={"User-Agent": "ohbm2026-reference-enrichment/0.1"})
+def scholarly_request(
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    error_label: str,
+) -> dict[str, Any]:
+    request_headers = {"User-Agent": "ohbm2026-reference-enrichment/0.1", "Accept": "application/json"}
+    if headers:
+        request_headers.update(headers)
+    request = Request(url, headers=request_headers)
     try:
         with urlopen_with_retries(request) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        raise OpenAlexError(f"OpenAlex request failed with HTTP {exc.code}: {body}") from exc
+        raise OpenAlexError(f"{error_label} failed with HTTP {exc.code}: {body}") from exc
     except (URLError, OSError, TimeoutError, ValueError) as exc:
-        raise OpenAlexError(f"OpenAlex request failed: {exc}") from exc
+        raise OpenAlexError(f"{error_label} failed: {exc}") from exc
+
+
+def openalex_request(url: str) -> dict[str, Any]:
+    api_key = get_openalex_api_key()
+    if api_key:
+        url = add_query_parameter(url, "api_key", api_key)
+    return scholarly_request(url, error_label="OpenAlex request")
+
+
+def semantic_scholar_request(url: str) -> dict[str, Any]:
+    headers: dict[str, str] = {}
+    api_key = get_semantic_scholar_api_key()
+    if api_key:
+        headers["x-api-key"] = api_key
+    return scholarly_request(url, headers=headers, error_label="Semantic Scholar request")
+
+
+def crossref_request(url: str, *, mailto: str | None = None) -> dict[str, Any]:
+    if mailto:
+        url = add_query_parameter(url, "mailto", mailto)
+    return scholarly_request(url, error_label="Crossref request")
 
 
 def fetch_openalex_work_by_doi(doi: str) -> dict[str, Any] | None:
@@ -179,6 +234,108 @@ def search_openalex_work_by_title(title: str, min_similarity: float = 0.75) -> d
     return None
 
 
+def extract_semantic_scholar_doi(result: dict[str, Any]) -> str | None:
+    external_ids = result.get("externalIds") or {}
+    for key in ("DOI", "doi"):
+        doi = normalize_doi(external_ids.get(key))
+        if doi:
+            return doi
+    return None
+
+
+def semantic_scholar_year(result: dict[str, Any]) -> int | None:
+    year = result.get("year")
+    return int(year) if isinstance(year, int) else None
+
+
+def semantic_scholar_title_score(result: dict[str, Any], title: str, reference_year: int | None = None) -> float:
+    score = title_similarity(title, str(result.get("title") or ""))
+    result_year = semantic_scholar_year(result)
+    if reference_year is not None and result_year is not None and reference_year == result_year:
+        score += 0.03
+    return score
+
+
+def search_semantic_scholar_doi_by_title(
+    title: str,
+    *,
+    min_similarity: float = 0.8,
+    reference_year: int | None = None,
+) -> tuple[str | None, float]:
+    if not title.strip():
+        return None, 0.0
+    url = (
+        f"{SEMANTIC_SCHOLAR_API}?query={quote(title)}&limit=5"
+        "&fields=title,year,externalIds,venue"
+    )
+    parsed = semantic_scholar_request(url)
+    best_doi: str | None = None
+    best_score = 0.0
+    for result in parsed.get("data", []):
+        doi = extract_semantic_scholar_doi(result)
+        if not doi:
+            continue
+        score = semantic_scholar_title_score(result, title, reference_year=reference_year)
+        if score > best_score:
+            best_score = score
+            best_doi = doi
+    if best_doi and best_score >= min_similarity:
+        return best_doi, best_score
+    return None, best_score
+
+
+def extract_crossref_title(item: dict[str, Any]) -> str:
+    titles = item.get("title") or []
+    if isinstance(titles, list) and titles:
+        return str(titles[0] or "")
+    return str(item.get("title") or "")
+
+
+def extract_crossref_year(item: dict[str, Any]) -> int | None:
+    for field in ("published-print", "published-online", "published"):
+        parts = ((item.get(field) or {}).get("date-parts") or [])
+        if parts and parts[0]:
+            first = parts[0][0]
+            if isinstance(first, int):
+                return first
+    return None
+
+
+def crossref_title_score(item: dict[str, Any], title: str, reference_year: int | None = None) -> float:
+    score = title_similarity(title, extract_crossref_title(item))
+    item_year = extract_crossref_year(item)
+    if reference_year is not None and item_year is not None and reference_year == item_year:
+        score += 0.03
+    return score
+
+
+def search_crossref_doi_by_title(
+    title: str,
+    *,
+    min_similarity: float = 0.8,
+    reference_year: int | None = None,
+    mailto: str | None = None,
+) -> tuple[str | None, float]:
+    if not title.strip():
+        return None, 0.0
+    url = f"{CROSSREF_API}?query.title={quote(title)}&rows=5"
+    parsed = crossref_request(url, mailto=mailto)
+    items = ((parsed.get("message") or {}).get("items") or [])
+    best_doi: str | None = None
+    best_score = 0.0
+    for item in items:
+        doi = normalize_doi(item.get("DOI"))
+        if not doi:
+            continue
+        score = crossref_title_score(item, title, reference_year=reference_year)
+        if score > best_score:
+            best_score = score
+            best_doi = doi
+    if best_doi and best_score >= min_similarity:
+        return best_doi, best_score
+    return None, best_score
+
+
 def normalize_openalex_work(work: dict[str, Any]) -> dict[str, Any]:
     pmid_value = ((work.get("ids") or {}).get("pmid") or "").strip()
     pmid_match = re.search(r"(\d+)", pmid_value)
@@ -210,6 +367,7 @@ def build_reference_record(reference_text: str) -> dict[str, Any]:
         "doi": doi,
         "pmid": pmid,
         "title_guess": title_guess,
+        "reference_year": extract_reference_year(reference_text),
     }
 
 
@@ -234,12 +392,16 @@ def normalize_cached_reference(reference: dict[str, Any]) -> dict[str, Any]:
         "doi": reference.get("doi"),
         "pmid": reference.get("pmid"),
         "title_guess": reference.get("title_guess"),
+        "reference_year": reference.get("reference_year"),
         "matched": bool(reference.get("matched")),
         "match_method": reference.get("match_method") or "pending",
         "openalex": reference.get("openalex"),
         "source_count": 0,
         "raw_text_examples": [],
         "doi_lookup_completed": bool(reference.get("doi_lookup_completed")),
+        "doi_discovery_completed": bool(reference.get("doi_discovery_completed")),
+        "doi_discovery_source": reference.get("doi_discovery_source"),
+        "doi_discovery_title_score": reference.get("doi_discovery_title_score"),
         "pmid_lookup_completed": bool(reference.get("pmid_lookup_completed")),
         "title_lookup_completed": bool(reference.get("title_lookup_completed")),
     }
@@ -311,6 +473,9 @@ def collect_reference_cache(
                     "source_count": 0,
                     "raw_text_examples": [],
                     "doi_lookup_completed": False,
+                    "doi_discovery_completed": False,
+                    "doi_discovery_source": None,
+                    "doi_discovery_title_score": None,
                     "pmid_lookup_completed": False,
                     "title_lookup_completed": False,
                 }
@@ -322,12 +487,17 @@ def collect_reference_cache(
                     cached["pmid"] = reference["pmid"]
                 if not cached.get("title_guess") and reference.get("title_guess"):
                     cached["title_guess"] = reference["title_guess"]
+                if not cached.get("reference_year") and reference.get("reference_year"):
+                    cached["reference_year"] = reference["reference_year"]
                 cached.setdefault("matched", False)
                 cached.setdefault("match_method", "pending")
                 cached.setdefault("openalex", None)
                 cached.setdefault("source_count", 0)
                 cached.setdefault("raw_text_examples", [])
                 cached.setdefault("doi_lookup_completed", False)
+                cached.setdefault("doi_discovery_completed", False)
+                cached.setdefault("doi_discovery_source", None)
+                cached.setdefault("doi_discovery_title_score", None)
                 cached.setdefault("pmid_lookup_completed", False)
                 cached.setdefault("title_lookup_completed", False)
 
@@ -361,9 +531,9 @@ def build_reference_metadata_payload(
                 {
                     "reference_key": resolved["reference_key"],
                     "raw_text": reference["raw_text"],
-                    "doi": reference.get("doi"),
-                    "pmid": reference.get("pmid"),
-                    "title_guess": reference.get("title_guess"),
+                    "doi": resolved.get("doi"),
+                    "pmid": resolved.get("pmid"),
+                    "title_guess": resolved.get("title_guess"),
                     "matched": bool(resolved.get("matched")),
                     "match_method": resolved.get("match_method"),
                     "openalex_id": ((resolved.get("openalex") or {}).get("openalex_id")),
@@ -374,6 +544,7 @@ def build_reference_metadata_payload(
     references = sorted(reference_cache.values(), key=lambda item: item["reference_key"])
     matched_count = sum(1 for reference in references if reference.get("matched"))
     doi_completed = sum(1 for reference in references if reference.get("doi_lookup_completed"))
+    doi_discovery_completed = sum(1 for reference in references if reference.get("doi_discovery_completed"))
     pmid_completed = sum(1 for reference in references if reference.get("pmid_lookup_completed"))
     title_completed = sum(1 for reference in references if reference.get("title_lookup_completed"))
     return {
@@ -385,9 +556,10 @@ def build_reference_metadata_payload(
         "matched_reference_count": matched_count,
         "unmatched_reference_count": len(references) - matched_count,
         "use_title_search": use_title_search,
-        "request_counts": request_counts or {"doi_requests": 0, "pmid_requests": 0, "title_requests": 0},
+        "request_counts": request_counts or default_request_counts(),
         "progress": {
             "doi_lookup_completed_count": doi_completed,
+            "doi_discovery_completed_count": doi_discovery_completed,
             "pmid_lookup_completed_count": pmid_completed,
             "title_lookup_completed_count": title_completed,
         },
@@ -419,6 +591,115 @@ def write_reference_metadata_snapshot(
     )
 
 
+def resolve_reference_cache_doi_discovery(
+    abstract_reference_records: list[dict[str, Any]],
+    reference_cache: dict[str, dict[str, Any]],
+    *,
+    output_path: Path,
+    use_title_search: bool,
+    doi_discovery_similarity_threshold: float = 0.8,
+    delay_seconds: float = 0.0,
+    crossref_mailto: str | None = None,
+    request_counts: dict[str, int] | None = None,
+) -> dict[str, int]:
+    stats = default_request_counts()
+    stats.update(request_counts or {})
+    stats.setdefault("semantic_scholar_errors", 0)
+    stats.setdefault("crossref_errors", 0)
+
+    for reference in reference_cache.values():
+        if reference.get("matched"):
+            reference["doi_discovery_completed"] = True
+            continue
+        if reference.get("doi"):
+            reference["doi_discovery_completed"] = True
+            continue
+        if reference.get("doi_discovery_completed"):
+            continue
+        title_guess = str(reference.get("title_guess") or "").strip()
+        if not title_guess:
+            reference["doi_discovery_completed"] = True
+            continue
+
+        discovered_doi: str | None = None
+        discovery_source: str | None = None
+        discovery_score: float | None = None
+        reference_year = reference.get("reference_year")
+
+        stats["semantic_scholar_requests"] += 1
+        try:
+            discovered_doi, discovery_score = search_semantic_scholar_doi_by_title(
+                title_guess,
+                min_similarity=doi_discovery_similarity_threshold,
+                reference_year=reference_year if isinstance(reference_year, int) else None,
+            )
+        except OpenAlexError as exc:
+            stats["semantic_scholar_errors"] = int(stats.get("semantic_scholar_errors", 0)) + 1
+            reference["last_error"] = str(exc)
+        else:
+            if discovered_doi:
+                discovery_source = "semantic_scholar"
+                reference.pop("last_error", None)
+
+        if not discovered_doi:
+            stats["crossref_requests"] += 1
+            try:
+                discovered_doi, discovery_score = search_crossref_doi_by_title(
+                    title_guess,
+                    min_similarity=doi_discovery_similarity_threshold,
+                    reference_year=reference_year if isinstance(reference_year, int) else None,
+                    mailto=crossref_mailto,
+                )
+            except OpenAlexError as exc:
+                stats["crossref_errors"] = int(stats.get("crossref_errors", 0)) + 1
+                reference["last_error"] = str(exc)
+            else:
+                if discovered_doi:
+                    discovery_source = "crossref"
+                    reference.pop("last_error", None)
+
+        if discovered_doi:
+            reference["doi"] = discovered_doi
+            reference["doi_discovery_source"] = discovery_source
+            reference["doi_discovery_title_score"] = discovery_score
+            stats["doi_requests"] += 1
+            work = fetch_openalex_work_by_doi(discovered_doi)
+            reference["doi_lookup_completed"] = True
+            if work is not None:
+                reference["matched"] = True
+                reference["match_method"] = f"{discovery_source}_doi"
+                reference["openalex"] = normalize_openalex_work(work)
+                reference["pmid_lookup_completed"] = True
+            elif reference.get("pmid_lookup_completed"):
+                reference["match_method"] = "unmatched"
+        reference["doi_discovery_completed"] = True
+
+        if delay_seconds:
+            time.sleep(delay_seconds)
+        completed = stats["semantic_scholar_requests"] + stats["crossref_requests"]
+        if completed % 50 == 0:
+            write_reference_metadata_snapshot(
+                output_path,
+                abstract_reference_records,
+                reference_cache,
+                use_title_search=use_title_search,
+                request_counts=stats,
+                status="running",
+                phase="doi-discovery",
+            )
+            print(
+                json.dumps(
+                    {
+                        "phase": "doi-discovery",
+                        "semantic_scholar_requests": stats["semantic_scholar_requests"],
+                        "crossref_requests": stats["crossref_requests"],
+                    }
+                )
+            )
+
+    return stats
+
+
 def resolve_reference_cache_exact_matches(
     abstract_reference_records: list[dict[str, Any]],
     reference_cache: dict[str, dict[str, Any]],
@@ -429,7 +710,8 @@ def resolve_reference_cache_exact_matches(
     request_counts: dict[str, int] | None = None,
     checkpoint_every_batches: int = 5,
 ) -> dict[str, int]:
-    stats = dict(request_counts or {"doi_requests": 0, "pmid_requests": 0, "title_requests": 0})
+    stats = default_request_counts()
+    stats.update(request_counts or {})
 
     for reference in reference_cache.values():
         if not reference.get("doi"):
@@ -554,7 +836,9 @@ def resolve_reference_cache_title_matches(
     delay_seconds: float = 0.0,
     request_counts: dict[str, int] | None = None,
 ) -> dict[str, int]:
-    stats = dict(request_counts or {"doi_requests": 0, "pmid_requests": 0, "title_requests": 0, "title_errors": 0})
+    stats = default_request_counts()
+    stats.update(request_counts or {})
+    stats.setdefault("title_errors", 0)
     for reference in reference_cache.values():
         if reference.get("title_lookup_completed"):
             continue
@@ -628,14 +912,17 @@ def build_reference_metadata_database(
     abstracts_database: dict[str, Any],
     *,
     output_path: Path,
+    use_doi_discovery: bool = True,
     use_title_search: bool = False,
+    doi_discovery_similarity_threshold: float = 0.8,
+    crossref_mailto: str | None = None,
     title_similarity_threshold: float = 0.75,
     delay_seconds: float = 0.05,
     exact_batch_size: int = 50,
     checkpoint_every_batches: int = 5,
 ) -> dict[str, Any]:
     abstract_reference_records, reference_cache = collect_reference_cache(abstracts_database, output_path)
-    request_counts = {"doi_requests": 0, "pmid_requests": 0, "title_requests": 0}
+    request_counts = default_request_counts()
     write_reference_metadata_snapshot(
         output_path,
         abstract_reference_records,
@@ -654,6 +941,17 @@ def build_reference_metadata_database(
         request_counts=request_counts,
         checkpoint_every_batches=checkpoint_every_batches,
     )
+    if use_doi_discovery:
+        request_counts = resolve_reference_cache_doi_discovery(
+            abstract_reference_records,
+            reference_cache,
+            output_path=output_path,
+            use_title_search=use_title_search,
+            doi_discovery_similarity_threshold=doi_discovery_similarity_threshold,
+            delay_seconds=delay_seconds,
+            crossref_mailto=crossref_mailto,
+            request_counts=request_counts,
+        )
     if use_title_search:
         request_counts.setdefault("title_errors", 0)
         request_counts = resolve_reference_cache_title_matches(
@@ -682,6 +980,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", default="data/reference_metadata.json")
     parser.add_argument("--exact-batch-size", type=int, default=50)
     parser.add_argument("--checkpoint-every-batches", type=int, default=5)
+    parser.add_argument("--no-doi-discovery", action="store_true")
+    parser.add_argument("--doi-discovery-similarity-threshold", type=float, default=0.8)
+    parser.add_argument("--crossref-mailto", default=None)
     parser.add_argument("--use-title-search", action="store_true")
     parser.add_argument("--title-similarity-threshold", type=float, default=0.75)
     parser.add_argument("--delay-seconds", type=float, default=0.05)
@@ -695,7 +996,10 @@ def main(argv: list[str] | None = None) -> int:
     result = build_reference_metadata_database(
         database,
         output_path=output_path,
+        use_doi_discovery=not args.no_doi_discovery,
         use_title_search=args.use_title_search,
+        doi_discovery_similarity_threshold=args.doi_discovery_similarity_threshold,
+        crossref_mailto=args.crossref_mailto,
         title_similarity_threshold=args.title_similarity_threshold,
         delay_seconds=args.delay_seconds,
         exact_batch_size=args.exact_batch_size,
@@ -711,6 +1015,7 @@ def main(argv: list[str] | None = None) -> int:
                 "unique_reference_count": result["unique_reference_count"],
                 "matched_reference_count": result["matched_reference_count"],
                 "unmatched_reference_count": result["unmatched_reference_count"],
+                "use_doi_discovery": not args.no_doi_discovery,
                 "use_title_search": args.use_title_search,
                 "request_counts": result["request_counts"],
             },

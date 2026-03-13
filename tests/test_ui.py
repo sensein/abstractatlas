@@ -10,7 +10,10 @@ from ohbm2026.ui import (
     build_ui_main,
     build_ui_payload,
     markdown_to_html,
+    primary_topic_from_questions,
     render_additional_content_markdown,
+    secondary_topic_from_questions,
+    topic_subcategories_from_questions,
 )
 
 
@@ -22,6 +25,12 @@ class UIHelpersTest(unittest.TestCase):
         self.assertIn("<ul><li>One</li><li>Two</li></ul>", html)
         self.assertIn('href="https://example.com"', html)
 
+    def test_markdown_to_html_renders_four_hash_heading(self) -> None:
+        html = markdown_to_html("#### Top panel\n\n- Point")
+
+        self.assertIn("<h5>Top panel</h5>", html)
+        self.assertNotIn("#### Top panel", html)
+
     def test_render_additional_content_markdown_normalizes_list_payload(self) -> None:
         markdown = render_additional_content_markdown(
             [
@@ -32,6 +41,19 @@ class UIHelpersTest(unittest.TestCase):
 
         self.assertIn("### Keywords", markdown)
         self.assertIn("Functional MRI", markdown)
+
+    def test_topic_helpers_use_parent_and_true_subcategories(self) -> None:
+        questions = {
+            "Primary Parent Category & Sub-Category": '["Modeling and Analysis Methods","Classification and Predictive Modeling"]',
+            "Secondary Parent Category & Sub-Category": '["Neuroinformatics and Data Sharing","Informatics Other"]',
+        }
+
+        self.assertEqual(primary_topic_from_questions(questions), "Modeling and Analysis Methods")
+        self.assertEqual(secondary_topic_from_questions(questions), "Classification and Predictive Modeling")
+        self.assertEqual(
+            topic_subcategories_from_questions(questions),
+            ["Classification and Predictive Modeling", "Informatics Other"],
+        )
 
     def test_build_export_parser_defaults(self) -> None:
         args = build_export_parser().parse_args([])
@@ -76,6 +98,10 @@ class UIHelpersTest(unittest.TestCase):
                                         "value": '["Lifespan Development","Aging"]',
                                     },
                                     {
+                                        "question_name": "Secondary Parent Category & Sub-Category",
+                                        "value": '["Neuroinformatics and Data Sharing","Informatics Other"]',
+                                    },
+                                    {
                                         "question_name": "Please indicate which methods were used in your research:",
                                         "value": '["Functional MRI"]',
                                     },
@@ -101,8 +127,46 @@ class UIHelpersTest(unittest.TestCase):
                                 "methods_markdown": "Human participants were scanned with fMRI.",
                                 "results_markdown": "Hippocampus connectivity increased in the default mode network.",
                                 "conclusion_markdown": "Conclusion text",
+                                "claim_extraction": {
+                                    "status": "ok",
+                                    "backend": "cllm",
+                                    "llm_provider": "openai",
+                                    "llm_model": "gpt-4o-2024-08-06",
+                                    "claim_count": 1,
+                                    "claims": [
+                                        {
+                                            "claim_id": "C1",
+                                            "claim": "Hippocampus connectivity increased.",
+                                            "claim_type": "result",
+                                            "source": "Results",
+                                            "source_type": "section",
+                                            "evidence": "Connectivity increased in the default mode network.",
+                                            "evidence_type": "text",
+                                        }
+                                    ],
+                                },
                                 "figure_keywords": ["Flowchart"],
                                 "figure_analyses": [
+                                    {
+                                        "question_name": "Results Figure (Optional)",
+                                        "analysis": {
+                                            "caption_guess": "Results panel",
+                                            "notes": "Result note",
+                                            "ocr_text": "",
+                                            "rich_markdown": "#### Result panel",
+                                            "keywords": ["result"],
+                                        },
+                                    },
+                                    {
+                                        "question_name": "Methods Figure (Optional)",
+                                        "analysis": {
+                                            "caption_guess": "Methods panel",
+                                            "notes": "Method note",
+                                            "ocr_text": "",
+                                            "rich_markdown": "#### Method panel",
+                                            "keywords": ["method"],
+                                        },
+                                    },
                                     {
                                         "analysis": {
                                             "caption_guess": "Flowchart of hippocampus MRI processing",
@@ -245,14 +309,35 @@ class UIHelpersTest(unittest.TestCase):
         self.assertEqual(payload["manifest"]["abstract_count"], 1)
         self.assertEqual(payload["search"]["abstracts"][0]["title"], "Memory fMRI in aging")
         self.assertEqual(payload["search"]["abstracts"][0]["primary_topic"], "Lifespan Development")
-        self.assertEqual(payload["search"]["abstracts"][0]["facets"]["semantic_15"], ["3: memory, aging, hippocampus"])
+        self.assertEqual(payload["search"]["abstracts"][0]["secondary_topic"], "Aging")
         self.assertEqual(payload["search"]["abstracts"][0]["facets"]["semantic_25"], ["11: memory, aging, hippocampus"])
+        self.assertEqual(
+            payload["search"]["abstracts"][0]["facets"]["secondary_topic"],
+            ["Aging", "Informatics Other"],
+        )
+        self.assertEqual(
+            payload["facets"]["groups"][:4],
+            ["accepted_for", "semantic_25", "primary_topic", "secondary_topic"],
+        )
+        self.assertIn("secondary_topic", payload["facets"]["groups"])
+        self.assertNotIn("semantic_15", payload["search"]["abstracts"][0]["facets"])
+        self.assertNotIn("semantic_21", payload["search"]["abstracts"][0]["facets"])
         self.assertEqual(payload["search"]["abstracts"][0]["facets"]["species"], ["Human"])
         self.assertEqual(payload["search"]["abstracts"][0]["facets"]["brain_regions"], ["Hippocampus"])
         self.assertEqual(payload["search"]["abstracts"][0]["facets"]["brain_networks"], ["Default Mode Network"])
+        self.assertNotIn("figure_keywords", payload["search"]["abstracts"][0]["facets"])
+        self.assertNotIn("figure_keywords", payload["facets"]["groups"])
         self.assertEqual(payload["details"]["abstracts"]["1"]["recording_technology"], ["fMRI"])
+        self.assertEqual(payload["details"]["abstracts"]["1"]["figure_keywords"], ["Flowchart"])
+        self.assertEqual(
+            [item["question_name"] for item in payload["details"]["abstracts"]["1"]["figure_analyses"][:2]],
+            ["Methods Figure (Optional)", "Results Figure (Optional)"],
+        )
+        self.assertEqual(payload["details"]["abstracts"]["1"]["claim_extraction"]["claim_count"], 1)
         self.assertEqual(payload["details"]["abstracts"]["1"]["reference_summary"]["matched_count"], 1)
         self.assertEqual(payload["relations"]["abstracts"]["1"]["neighbors"][0]["id"], 2)
+        self.assertEqual(payload["relations"]["abstracts"]["1"]["clusters"], {"semantic_25": 11})
+        self.assertEqual(payload["manifest"]["partitions"], {"semantic_25": str(cluster_25_dir)})
         self.assertEqual(payload["manifest"]["semantic_search"]["dimension"], 2)
         self.assertEqual(payload["manifest"]["semantic_search"]["browser_model"], "Xenova/all-MiniLM-L6-v2")
         self.assertEqual(payload["projection"]["umap"]["count"], 1)

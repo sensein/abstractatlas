@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ohbm2026 import assets, enrichment, neuroscape, openalex, ui
+from ohbm2026 import assets, enrichment, neuroscape, openalex, titles, ui
 
 
 def _copy_actions(target: argparse.ArgumentParser, source: argparse.ArgumentParser) -> None:
@@ -26,6 +26,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     enrich_parser = subparsers.add_parser("enrich", help="Build enriched abstracts from local databases")
     _copy_actions(enrich_parser, enrichment.build_enrich_parser())
+
+    claims_parser = subparsers.add_parser("extract-claims", help="Extract claim lists from abstracts with cllm")
+    _copy_actions(claims_parser, enrichment.build_claim_extraction_parser())
 
     figure_parser = subparsers.add_parser("analyze-figures", help="Analyze local figures with Ollama")
     _copy_actions(figure_parser, enrichment.build_figure_analysis_parser())
@@ -96,6 +99,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _copy_actions(references_parser, openalex.build_parser())
 
+    title_audit_parser = subparsers.add_parser(
+        "title-audit",
+        help="Write an audit report for cleaned abstract titles",
+    )
+    _copy_actions(title_audit_parser, titles.build_parser())
+
     export_ui_parser = subparsers.add_parser(
         "export-ui",
         help="Build the static JSON data bundle for the standalone abstract search UI",
@@ -136,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
         return enrichment.authors_main(subcommand_argv)
     if command == "enrich":
         return enrichment.enrich_main(subcommand_argv)
+    if command == "extract-claims":
+        return enrichment.extract_claims_main(subcommand_argv)
     if command == "analyze-figures":
         return enrichment.analyze_figures_main(subcommand_argv)
     if command == "embed-minilm":
@@ -164,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         return neuroscape.stage2_analysis_main(subcommand_argv)
     if command == "reference-metadata":
         return openalex.main(subcommand_argv)
+    if command == "title-audit":
+        return titles.main(subcommand_argv)
     if command == "export-ui":
         return ui.export_ui_main(subcommand_argv)
     if command == "build-ui":

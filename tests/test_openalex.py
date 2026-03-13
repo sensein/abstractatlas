@@ -6,15 +6,20 @@ from unittest.mock import patch
 from ohbm2026.openalex import (
     add_query_parameter,
     build_reference_key,
+    build_reference_metadata_payload,
     collect_reference_cache,
     extract_dois,
     extract_pmid,
     extract_reference_entries,
+    extract_reference_year,
     get_openalex_api_key,
     guess_reference_title,
     normalize_doi,
     normalize_openalex_work,
     openalex_request,
+    resolve_reference_cache_doi_discovery,
+    search_crossref_doi_by_title,
+    search_semantic_scholar_doi_by_title,
     title_similarity,
 )
 
@@ -59,6 +64,9 @@ class OpenAlexHelpersTest(unittest.TestCase):
             guess_reference_title(reference),
             "Migraine: disease characterisation, biomarkers, and precision medicine",
         )
+
+    def test_extract_reference_year_reads_four_digit_year(self) -> None:
+        self.assertEqual(extract_reference_year("Example title. Journal. 2021;10(2):1-4."), 2021)
 
     def test_build_reference_key_prefers_doi_then_pmid(self) -> None:
         self.assertEqual(build_reference_key("x", doi="10.1/abc", pmid="123"), "doi:10.1/abc")
@@ -173,6 +181,132 @@ class OpenAlexHelpersTest(unittest.TestCase):
         self.assertTrue(cached["matched"])
         self.assertEqual(cached["source_count"], 1)
         self.assertEqual(cached["raw_text_examples"], ["Smith A. Example title. doi:10.1000/test"])
+
+    def test_search_semantic_scholar_doi_by_title_returns_best_matching_doi(self) -> None:
+        payload = {
+            "data": [
+                {
+                    "title": "Unrelated paper",
+                    "year": 2021,
+                    "externalIds": {"DOI": "10.1/ignore"},
+                },
+                {
+                    "title": "Migraine: disease characterisation, biomarkers, and precision medicine",
+                    "year": 2021,
+                    "externalIds": {"DOI": "10.1/migraine"},
+                },
+            ]
+        }
+
+        with patch("ohbm2026.openalex.semantic_scholar_request", return_value=payload):
+            doi, score = search_semantic_scholar_doi_by_title(
+                "Migraine disease characterisation biomarkers and precision medicine",
+                reference_year=2021,
+            )
+
+        self.assertEqual(doi, "10.1/migraine")
+        self.assertGreaterEqual(score, 0.8)
+
+    def test_search_crossref_doi_by_title_returns_best_matching_doi(self) -> None:
+        payload = {
+            "message": {
+                "items": [
+                    {"title": ["Unrelated paper"], "DOI": "10.1/ignore", "published-print": {"date-parts": [[2021]]}},
+                    {
+                        "title": ["Migraine: disease characterisation, biomarkers, and precision medicine"],
+                        "DOI": "10.1/migraine",
+                        "published-print": {"date-parts": [[2021]]},
+                    },
+                ]
+            }
+        }
+
+        with patch("ohbm2026.openalex.crossref_request", return_value=payload):
+            doi, score = search_crossref_doi_by_title(
+                "Migraine disease characterisation biomarkers and precision medicine",
+                reference_year=2021,
+            )
+
+        self.assertEqual(doi, "10.1/migraine")
+        self.assertGreaterEqual(score, 0.8)
+
+    def test_resolve_reference_cache_doi_discovery_finds_doi_and_matches_openalex(self) -> None:
+        abstract_reference_records = [{"id": 1, "references": [{"reference_key": "text:abc", "raw_text": "Example ref"}]}]
+        reference_cache = {
+            "text:abc": {
+                "reference_key": "text:abc",
+                "raw_text": "Example ref",
+                "doi": None,
+                "pmid": None,
+                "title_guess": "Example reference title",
+                "reference_year": 2024,
+                "matched": False,
+                "match_method": "pending",
+                "openalex": None,
+                "source_count": 1,
+                "raw_text_examples": ["Example ref"],
+                "doi_lookup_completed": False,
+                "doi_discovery_completed": False,
+                "doi_discovery_source": None,
+                "doi_discovery_title_score": None,
+                "pmid_lookup_completed": False,
+                "title_lookup_completed": False,
+            }
+        }
+        openalex_work = {
+            "id": "https://openalex.org/W123",
+            "doi": "https://doi.org/10.1/example",
+            "display_name": "Example reference title",
+            "ids": {},
+            "primary_location": {"source": {"display_name": "NeuroImage"}},
+        }
+
+        with TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "reference_metadata.json"
+            with (
+                patch("ohbm2026.openalex.search_semantic_scholar_doi_by_title", return_value=("10.1/example", 0.93)),
+                patch("ohbm2026.openalex.fetch_openalex_work_by_doi", return_value=openalex_work),
+            ):
+                stats = resolve_reference_cache_doi_discovery(
+                    abstract_reference_records,
+                    reference_cache,
+                    output_path=output_path,
+                    use_title_search=False,
+                    request_counts={"doi_requests": 0, "pmid_requests": 0, "title_requests": 0},
+                )
+
+        resolved = reference_cache["text:abc"]
+        self.assertEqual(resolved["doi"], "10.1/example")
+        self.assertTrue(resolved["matched"])
+        self.assertEqual(resolved["match_method"], "semantic_scholar_doi")
+        self.assertEqual(resolved["doi_discovery_source"], "semantic_scholar")
+        self.assertEqual(resolved["openalex"]["openalex_id"], "https://openalex.org/W123")
+        self.assertEqual(stats["doi_requests"], 1)
+
+    def test_build_reference_metadata_payload_uses_resolved_doi(self) -> None:
+        payload = build_reference_metadata_payload(
+            [{"id": 1, "references": [{"reference_key": "text:abc", "raw_text": "Example ref"}]}],
+            {
+                "text:abc": {
+                    "reference_key": "text:abc",
+                    "raw_text": "Example ref",
+                    "doi": "10.1/example",
+                    "pmid": None,
+                    "title_guess": "Example title",
+                    "matched": True,
+                    "match_method": "semantic_scholar_doi",
+                    "openalex": {"openalex_id": "https://openalex.org/W123"},
+                    "doi_lookup_completed": True,
+                    "doi_discovery_completed": True,
+                    "pmid_lookup_completed": True,
+                    "title_lookup_completed": False,
+                }
+            },
+            use_title_search=False,
+        )
+
+        self.assertEqual(payload["abstracts"][0]["references"][0]["doi"], "10.1/example")
+        self.assertEqual(payload["progress"]["doi_discovery_completed_count"], 1)
 
 
 if __name__ == "__main__":

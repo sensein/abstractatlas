@@ -35,6 +35,13 @@ class CLITest(unittest.TestCase):
         self.assertEqual(result, 11)
         enrich_main.assert_called_once_with(["--enriched-output", "custom.json"])
 
+    def test_extract_claims_subcommand_delegates_to_extract_claims_main(self) -> None:
+        with mock.patch.object(cli.enrichment, "extract_claims_main", return_value=12) as extract_claims_main:
+            result = cli.main(["extract-claims", "--max-abstracts", "5"])
+
+        self.assertEqual(result, 12)
+        extract_claims_main.assert_called_once_with(["--max-abstracts", "5"])
+
     def test_analyze_figures_subcommand_delegates_to_figure_main(self) -> None:
         with mock.patch.object(cli.enrichment, "analyze_figures_main", return_value=13) as figure_main:
             result = cli.main(["analyze-figures", "--vision-max-images", "2"])
@@ -132,6 +139,13 @@ class CLITest(unittest.TestCase):
 
         self.assertEqual(result, 24)
         openalex_main.assert_called_once_with(["--use-title-search"])
+
+    def test_title_audit_subcommand_delegates_to_titles_main(self) -> None:
+        with mock.patch.object(cli.titles, "main", return_value=32) as titles_main:
+            result = cli.main(["title-audit", "--output", "tmp/title_modifications.json"])
+
+        self.assertEqual(result, 32)
+        titles_main.assert_called_once_with(["--output", "tmp/title_modifications.json"])
 
     def test_export_ui_subcommand_delegates_to_ui_export_main(self) -> None:
         with mock.patch.object(cli.ui, "export_ui_main", return_value=29) as export_ui_main:
