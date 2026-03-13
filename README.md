@@ -253,7 +253,6 @@ and normalization reasons.
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli reference-metadata \
   --input data/abstracts.json \
   --output data/reference_metadata.json \
-  --crossref-mailto your-email@example.com \
   --use-title-search
 ```
 
@@ -265,20 +264,29 @@ This file is resumable and checkpoint-friendly.
 
 Reference resolution now follows this order:
 
+- markdown normalization of the raw references field
+- LLM-assisted splitting of the full reference markdown block, validated against the source text
 - exact DOI -> OpenAlex
 - exact PMID -> OpenAlex
-- DOI discovery from Semantic Scholar title search
-- DOI discovery from Crossref title search
-- OpenAlex title search fallback when `--use-title-search` is enabled
+- direct OpenAlex title search for references with a title
+- Semantic Scholar full-reference search only for references that still have neither DOI nor title
 
 Useful options:
 
 - `--no-doi-discovery`
-  - skip Semantic Scholar and Crossref DOI-discovery fallback
+  - skip the Semantic Scholar full-reference DOI-discovery fallback
+- `--no-llm-reference-splitting`
+  - skip the OpenAI/Ollama splitting pass and fall back to local markdown heuristics
+- `--reference-splitting-backend openai`
+  - use OpenAI for the splitting helper
+- `--reference-splitting-model gpt-5-nano`
+  - model used for reference structuring; defaults to `gpt-5-nano`
+  - the OpenAI backend uses the Responses API with a strict JSON schema for `{"references": [{"reference", "title", "doi"}]}` output
+  - extracted `title` and `doi` values are only used downstream if they are lexically present in the returned reference text
 - `--doi-discovery-similarity-threshold 0.8`
   - minimum title similarity required before accepting a discovered DOI
-- `--crossref-mailto your-email@example.com`
-  - polite contact hint for Crossref requests
+- `--delay-seconds 1.05`
+  - default pacing is tuned for a 1 request/second Semantic Scholar key and also spaces direct OpenAlex title lookups
 
 ### 8. Optional Claim Extraction
 
