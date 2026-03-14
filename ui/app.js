@@ -39,8 +39,8 @@ const SEARCH_MODE_LABELS = {
 };
 
 const SEARCH_MODE_DESCRIPTIONS = {
-  lexical: "Quoted phrases, AND by default, OR between clauses, and -term exclusion.",
-  semantic: "Embeds the query in-browser and ranks by vector similarity.",
+  lexical: "AND default · quotes · OR · -term",
+  semantic: "Vector similarity",
 };
 const DEFAULT_OPEN_FACETS = new Set();
 
@@ -269,10 +269,23 @@ function scoreLexicalRecord(record, queryGroups) {
 
 function renderSemanticStatus() {
   const root = document.getElementById("semantic-status");
+  const lexicalHelp = document.getElementById("lexical-help");
+  const semanticThresholdPanel = document.getElementById("semantic-threshold-panel");
   if (!root) {
     return;
   }
-  root.textContent = state.semantic.status || SEARCH_MODE_DESCRIPTIONS[state.searchMode] || "";
+  if (lexicalHelp) {
+    lexicalHelp.classList.toggle("hidden", state.searchMode !== "lexical");
+  }
+  if (semanticThresholdPanel) {
+    semanticThresholdPanel.classList.toggle("hidden", state.searchMode !== "semantic");
+  }
+  root.classList.toggle("hidden", state.searchMode !== "semantic");
+  if (state.searchMode === "semantic") {
+    root.textContent = state.semantic.status || SEARCH_MODE_DESCRIPTIONS.semantic;
+  } else {
+    root.textContent = "";
+  }
 }
 
 function renderSemanticThresholdControl() {
@@ -531,6 +544,38 @@ function addStaticChip(label, extraClass = "") {
   return chip;
 }
 
+function colorForCluster(clusterId, alpha = 0.82) {
+  if (!Number.isFinite(Number(clusterId))) {
+    return `rgba(148, 163, 184, ${alpha})`;
+  }
+  const hue = (Number(clusterId) * 47) % 360;
+  return `hsla(${hue}, 62%, 46%, ${alpha})`;
+}
+
+function setDetailsOpenState(nodes, open) {
+  for (const node of nodes) {
+    node.open = open;
+  }
+}
+
+function nestedDetailsWithin(root) {
+  return [...root.querySelectorAll("details")];
+}
+
+function addToggleAction(buttonRow, label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost-button";
+  button.textContent = label;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onClick();
+  });
+  buttonRow.appendChild(button);
+  return button;
+}
+
 function renderClusterToggle() {
   const root = document.getElementById("cluster-toggle");
   root.replaceChildren();
@@ -663,6 +708,7 @@ function renderProjection() {
   }
 
   const points = projection.points;
+  const relationLookup = store.relations?.abstracts || {};
   const filteredIds = new Set(rankedResults().map(({ record }) => String(record.id)));
   const hasSubsetSelection =
     Boolean(String(state.query || "").trim()) ||
@@ -680,7 +726,7 @@ function renderProjection() {
   meta.textContent =
     state.projectionSelection.size > 0
       ? `${state.projectionSelection.size} abstracts selected from the map`
-      : "Click a point to open an abstract. Box- or lasso-select to create a result subset.";
+      : `Click a point to open an abstract. Colored by ${CLUSTER_LAYER_LABELS[state.clusterLayer].toLowerCase()}.`;
 
   const traces = [{
     type: "scattergl",
@@ -693,7 +739,10 @@ function renderProjection() {
     hoverinfo: "none",
     marker: {
       size: 7,
-      color: "rgba(15, 118, 110, 0.65)",
+      color: points.map((point) => {
+        const clusterId = relationLookup[String(point.id)]?.clusters?.[state.clusterLayer];
+        return colorForCluster(clusterId);
+      }),
       line: { width: 0 },
     },
     selectedpoints: hasSubsetSelection ? selectedIndices : null,
@@ -934,6 +983,14 @@ function createDisclosureShell(title, options = {}) {
     meta.textContent = options.meta;
     summary.appendChild(meta);
   }
+  if (options.actions && options.actions.length) {
+    const actions = document.createElement("span");
+    actions.className = "detail-disclosure__actions";
+    for (const action of options.actions) {
+      addToggleAction(actions, action.label, action.onClick);
+    }
+    summary.appendChild(actions);
+  }
 
   const body = document.createElement("div");
   body.className = "detail-disclosure__body";
@@ -958,10 +1015,29 @@ function createDetailSection(title, options = {}) {
     meta: options.meta,
     compact: options.compact,
     bodyClassName: options.bodyClassName,
+    actions: options.actions,
   });
   disclosure.details.classList.add("is-section-group");
   section.appendChild(disclosure.details);
   return { section, details: disclosure.details, body: disclosure.body };
+}
+
+function attachSectionToggleActions(disclosureDetails) {
+  const summary = disclosureDetails.querySelector(":scope > summary");
+  if (!summary) {
+    return;
+  }
+  const actions = document.createElement("span");
+  actions.className = "detail-disclosure__actions";
+  addToggleAction(actions, "Expand all", () => {
+    disclosureDetails.open = true;
+    setDetailsOpenState(nestedDetailsWithin(disclosureDetails), true);
+  });
+  addToggleAction(actions, "Collapse all", () => {
+    setDetailsOpenState(nestedDetailsWithin(disclosureDetails), false);
+    disclosureDetails.open = false;
+  });
+  summary.appendChild(actions);
 }
 
 function renderDetail() {
@@ -978,9 +1054,6 @@ function renderDetail() {
 
   const detail = store.details.abstracts[state.selectedId];
   const relation = store.relations.abstracts[state.selectedId] || { neighbors: [], clusters: {} };
-  const activePartition = store.clusters.partitions[state.clusterLayer];
-  const activeClusterId = relation.clusters[state.clusterLayer];
-  const activeCluster = activePartition?.clusters.find((cluster) => cluster.cluster_id === activeClusterId);
 
   const header = document.createElement("section");
   header.className = "detail-header";
@@ -1003,7 +1076,17 @@ function renderDetail() {
   }
   view.appendChild(chips);
 
+  const detailToggleBar = document.createElement("div");
+  detailToggleBar.className = "detail-toggle-bar";
+  addToggleAction(detailToggleBar, "Expand all", () => {
+    setDetailsOpenState(view.querySelectorAll("details"), true);
+  });
+  addToggleAction(detailToggleBar, "Collapse all", () => {
+    setDetailsOpenState(view.querySelectorAll("details"), false);
+  });
+
   const metadataBlock = createDetailSection("Metadata", { open: false });
+  attachSectionToggleActions(metadataBlock.details);
   const metadataGrid = document.createElement("div");
   metadataGrid.className = "detail-grid";
   const metadataItems = [
@@ -1026,6 +1109,7 @@ function renderDetail() {
   metadataBlock.body.appendChild(metadataGrid);
 
   const claimBlock = createDetailSection("Claim extraction", { open: false });
+  attachSectionToggleActions(claimBlock.details);
   const claimExtraction = detail.claim_extraction || { claims: [] };
   if ((claimExtraction.claims || []).length > 0) {
     const claimNote = document.createElement("p");
@@ -1056,20 +1140,28 @@ function renderDetail() {
     claimBlock.body.innerHTML = `<div class="empty-state">No cached claim extraction is available for this abstract.</div>`;
   }
   const clusterBlock = createDetailSection("Semantic context", { open: false });
-  const semanticDisclosure = createDisclosureShell(CLUSTER_LAYER_LABELS[state.clusterLayer], {
-    open: false,
-    meta: activeCluster ? `Cluster ${activeCluster.cluster_id}` : "No assignment",
-  });
-  if (activeCluster) {
+  attachSectionToggleActions(clusterBlock.details);
+  let semanticContextCount = 0;
+  for (const [layerKey, partition] of Object.entries(store.clusters.partitions || {})) {
+    const clusterId = relation.clusters?.[layerKey];
+    const cluster = partition?.clusters.find((item) => item.cluster_id === clusterId);
+    if (!cluster) {
+      continue;
+    }
+    semanticContextCount += 1;
+    const semanticDisclosure = createDisclosureShell(CLUSTER_LAYER_LABELS[layerKey] || layerKey, {
+      open: false,
+      meta: `Cluster ${cluster.cluster_id}`,
+    });
     const card = document.createElement("div");
     card.className = "detail-card";
     card.innerHTML = `
-      <h4>Cluster ${activeCluster.cluster_id}: ${escapeHtml(activeCluster.label)}</h4>
-      <p class="section-note">${activeCluster.size.toLocaleString()} abstracts · keywords: ${escapeHtml(activeCluster.keywords.join(", "))}</p>
+      <h4>Cluster ${cluster.cluster_id}: ${escapeHtml(cluster.label)}</h4>
+      <p class="section-note">${cluster.size.toLocaleString()} abstracts · keywords: ${escapeHtml(cluster.keywords.join(", "))}</p>
     `;
     const representativeList = document.createElement("div");
     representativeList.className = "link-list";
-    for (const item of activeCluster.representative_abstracts.slice(0, 4)) {
+    for (const item of cluster.representative_abstracts.slice(0, 4)) {
       const button = document.createElement("button");
       button.type = "button";
       button.innerHTML = `<strong>#${item.id}</strong><br />${escapeHtml(item.title)}`;
@@ -1078,13 +1170,16 @@ function renderDetail() {
     }
     card.appendChild(representativeList);
     semanticDisclosure.body.appendChild(card);
-  } else {
-    semanticDisclosure.body.innerHTML = `<div class="empty-state">No cluster assignment found for the active semantic layer.</div>`;
+    clusterBlock.body.appendChild(semanticDisclosure.details);
   }
-  clusterBlock.body.appendChild(semanticDisclosure.details);
+  if (semanticContextCount === 0) {
+    clusterBlock.body.innerHTML = `<div class="empty-state">No cluster assignments are available for this abstract.</div>`;
+  }
+  view.appendChild(detailToggleBar);
   view.appendChild(clusterBlock.section);
 
   const relationsBlock = createDetailSection("Related abstracts", { open: false });
+  attachSectionToggleActions(relationsBlock.details);
   const relatedDisclosure = createDisclosureShell("Nearest neighbors", {
     open: false,
     meta: `${(relation.neighbors || []).length} abstracts`,
@@ -1111,12 +1206,13 @@ function renderDetail() {
   relationsBlock.body.appendChild(relatedDisclosure.details);
   view.appendChild(relationsBlock.section);
 
-  const sectionsBlock = createDetailSection("Abstract content", { open: true });
-  for (const [index, section] of (detail.sections || []).entries()) {
+  const sectionsBlock = createDetailSection("Abstract content", { open: false });
+  attachSectionToggleActions(sectionsBlock.details);
+  for (const section of detail.sections || []) {
     sectionsBlock.body.appendChild(
       createDisclosureCard(section.label, section.html, {
         meta: readingMeta(section.markdown),
-        open: index === 0,
+        open: false,
         bodyClassName: "section-html",
       })
     );
@@ -1127,6 +1223,7 @@ function renderDetail() {
   view.appendChild(sectionsBlock.section);
 
   const figureBlock = createDetailSection("Figure notes", { open: false });
+  attachSectionToggleActions(figureBlock.details);
   if ((detail.figure_analyses || []).length > 0) {
     for (const figure of detail.figure_analyses) {
       figureBlock.body.appendChild(
@@ -1148,6 +1245,7 @@ function renderDetail() {
   view.appendChild(claimBlock.section);
 
   const referencesBlock = createDetailSection("Reference matches", { open: false });
+  attachSectionToggleActions(referencesBlock.details);
   const referenceSummary = detail.reference_summary || { matched_count: 0, unmatched_count: 0, items: [], unmatched_items: [] };
   const headerNote = document.createElement("p");
   headerNote.className = "reference-note";

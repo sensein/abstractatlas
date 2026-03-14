@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>OHBM 2026 Abstract Atlas</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260314-2" />
   </head>
   <body>
     <div class="app-shell">
@@ -81,33 +81,38 @@
                 <button id="clear-search" class="clear-button" type="button">Clear</button>
               </div>
               <div class="search-tools">
-                <div class="mode-toggle" id="search-mode-toggle"></div>
-                <div class="semantic-threshold">
-                  <label class="search-label" for="semantic-threshold-input">Semantic similarity threshold</label>
-                  <div class="semantic-threshold__row">
-                    <input id="semantic-threshold-input" type="range" min="0" max="1" step="0.01" value="0" />
-                    <span id="semantic-threshold-value" class="semantic-threshold__value">0.00</span>
+                <div class="search-mode-strip">
+                  <div class="mode-toggle" id="search-mode-toggle"></div>
+                  <div class="search-mode-panel" id="search-mode-panel">
+                    <p id="lexical-help" class="search-help search-help--compact">
+                      AND default. Use quotes, <code>OR</code>, and <code>-term</code>.
+                    </p>
+                    <div class="semantic-threshold" id="semantic-threshold-panel">
+                      <label class="search-label search-label--compact" for="semantic-threshold-input">Similarity</label>
+                      <div class="semantic-threshold__row">
+                        <input id="semantic-threshold-input" type="range" min="0" max="1" step="0.01" value="0" />
+                        <span id="semantic-threshold-value" class="semantic-threshold__value">0.00</span>
+                      </div>
+                    </div>
+                    <p id="semantic-status" class="search-help search-help--status search-help--compact"></p>
                   </div>
                 </div>
-                <p class="search-help">
-                  Default lexical search uses AND. Use quotes for phrases, <code>OR</code> between clauses, and
-                  <code>-term</code> to exclude.
-                </p>
-                <p id="semantic-status" class="search-help search-help--status"></p>
               </div>
-              <div class="cluster-toggle" id="cluster-toggle"></div>
             </section>
 
             <section class="results-panel">
               <section class="projection-panel">
-                <div class="results-header">
+                <div class="results-header results-header--compact">
                   <div>
                     <p class="eyebrow">Map</p>
                     <h2>UMAP Projection</h2>
                   </div>
                   <button id="clear-projection-selection" class="ghost-button" type="button">Clear selection</button>
                 </div>
-                <p id="projection-meta" class="results-meta">Loading projection…</p>
+                <div class="projection-toolbar">
+                  <p id="projection-meta" class="results-meta">Loading projection…</p>
+                  <div class="cluster-toggle" id="cluster-toggle"></div>
+                </div>
                 <div id="projection-plot" class="projection-plot"></div>
                 <div id="projection-hover" class="projection-hover">
                   Hover a point to inspect its title, topic, and keywords without covering the plot.
@@ -152,6 +157,6 @@
     </template>
 
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=20260314-2"></script>
   </body>
 </html>
