@@ -31,6 +31,41 @@ const CLUSTER_LAYER_LABELS = {
   claims_28: "Claims 28-cluster benchmark",
 };
 
+const CLUSTER_COLORS = [
+  "#1f77b4",
+  "#d62728",
+  "#2ca02c",
+  "#9467bd",
+  "#ff7f0e",
+  "#17becf",
+  "#8c564b",
+  "#e377c2",
+  "#bcbd22",
+  "#7f7f7f",
+  "#00429d",
+  "#93003a",
+  "#007d34",
+  "#5e4fa2",
+  "#c17d11",
+  "#008b8b",
+  "#7a1f5c",
+  "#6f4e37",
+  "#4daf4a",
+  "#e41a1c",
+  "#377eb8",
+  "#984ea3",
+  "#ff8c00",
+  "#a65628",
+  "#f781bf",
+  "#999999",
+  "#66a61e",
+  "#e6ab02",
+  "#a6761d",
+  "#1b9e77",
+  "#d95f02",
+  "#7570b3",
+];
+
 const DEFAULT_CLUSTER_LAYER = "semantic_25";
 
 const SEARCH_MODE_LABELS = {
@@ -557,8 +592,12 @@ function colorForCluster(clusterId, alpha = 0.82) {
   if (!Number.isFinite(Number(clusterId))) {
     return `rgba(148, 163, 184, ${alpha})`;
   }
-  const hue = (Number(clusterId) * 47) % 360;
-  return `hsla(${hue}, 62%, 46%, ${alpha})`;
+  const normalized = Math.abs(Number(clusterId));
+  const hex = CLUSTER_COLORS[normalized % CLUSTER_COLORS.length];
+  const red = Number.parseInt(hex.slice(1, 3), 16);
+  const green = Number.parseInt(hex.slice(3, 5), 16);
+  const blue = Number.parseInt(hex.slice(5, 7), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function setDetailsOpenState(nodes, open) {
