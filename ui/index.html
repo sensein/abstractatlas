@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>OHBM 2026 Abstract Atlas</title>
-    <link rel="stylesheet" href="./styles.css?v=20260314-2" />
+    <link rel="stylesheet" href="./styles.css?v=20260315-4" />
   </head>
   <body>
     <div class="app-shell">
@@ -38,10 +38,10 @@
                 </span>
               </button>
             </div>
-            <p id="summary-text" class="sidebar-summary">Loading corpus…</p>
+            <p id="summary-text" class="sidebar-summary">Filter the accepted abstract corpus.</p>
+            <div id="active-filters" class="active-filters"></div>
           </div>
           <div class="sidebar-scroll">
-            <div id="active-filters" class="active-filters"></div>
             <div id="facet-groups" class="facet-groups"></div>
           </div>
         </aside>
@@ -94,7 +94,7 @@
                         <span id="semantic-threshold-value" class="semantic-threshold__value">0.00</span>
                       </div>
                     </div>
-                    <p id="semantic-status" class="search-help search-help--status search-help--compact"></p>
+                    <span id="semantic-status" class="semantic-status-indicator" role="status" aria-live="polite" aria-label="Semantic search idle"></span>
                   </div>
                 </div>
               </div>
@@ -157,6 +157,6 @@
     </template>
 
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-    <script type="module" src="./app.js?v=20260314-2"></script>
+    <script type="module" src="./app.js?v=20260315-4"></script>
   </body>
 </html>

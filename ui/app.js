@@ -282,9 +282,18 @@ function renderSemanticStatus() {
   }
   root.classList.toggle("hidden", state.searchMode !== "semantic");
   if (state.searchMode === "semantic") {
-    root.textContent = state.semantic.status || SEARCH_MODE_DESCRIPTIONS.semantic;
+    const statusText = state.semantic.status || SEARCH_MODE_DESCRIPTIONS.semantic;
+    const hasError = statusText.toLowerCase().includes("unavailable");
+    root.classList.toggle("is-ready", Boolean(state.semantic.ready));
+    root.classList.toggle("is-error", hasError);
+    root.textContent = state.semantic.ready ? "\u2713" : hasError ? "!" : "";
+    root.setAttribute("aria-label", statusText);
+    root.setAttribute("title", statusText);
   } else {
+    root.classList.remove("is-ready", "is-error");
     root.textContent = "";
+    root.setAttribute("aria-label", "");
+    root.removeAttribute("title");
   }
 }
 
@@ -1121,11 +1130,11 @@ function renderDetail() {
     claimBlock.body.appendChild(claimNote);
     for (const claim of claimExtraction.claims) {
       const meta = [claim.claim_id, claim.claim_type, claim.source_type, claim.evidence_type].filter(Boolean).join(" · ");
-      const bodyHtml = `
-        <p>${escapeHtml(claim.claim || "")}</p>
-        <p class="reference-note"><strong>Source:</strong> ${escapeHtml(claim.source || "Not provided")}</p>
-        <p class="reference-note"><strong>Evidence:</strong> ${escapeHtml(claim.evidence || "Not provided")}</p>
-      `;
+      const bodyParts = [
+        `<p class="reference-note"><strong>Source:</strong> ${escapeHtml(claim.source || "Not provided")}</p>`,
+        `<p class="reference-note"><strong>Evidence:</strong> ${escapeHtml(claim.evidence || "Not provided")}</p>`,
+      ];
+      const bodyHtml = bodyParts.join("");
       claimBlock.body.appendChild(
         createDisclosureCard(claim.claim || claim.claim_id || "Claim", bodyHtml, {
           meta,
@@ -1300,7 +1309,7 @@ function renderDetail() {
 
 function render() {
   const items = filteredResults();
-  document.getElementById("summary-text").textContent = `${store.manifest.abstract_count.toLocaleString()} abstracts loaded`;
+  document.getElementById("summary-text").textContent = "Filter and refine the accepted abstract corpus.";
   renderSidebarToggle();
   renderSearchModeToggle();
   renderClusterToggle();

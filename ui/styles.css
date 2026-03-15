@@ -157,6 +157,35 @@ label {
   min-width: 0;
 }
 
+.semantic-status-indicator {
+  width: 1.2rem;
+  height: 1.2rem;
+  flex: 0 0 1.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(95, 108, 123, 0.35);
+  border-radius: 999px;
+  background: rgba(95, 108, 123, 0.12);
+  color: transparent;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.semantic-status-indicator.is-ready {
+  border-color: rgba(15, 118, 110, 0.55);
+  background: var(--accent);
+  color: white;
+}
+
+.semantic-status-indicator.is-error {
+  border-color: rgba(185, 28, 28, 0.4);
+  background: rgba(185, 28, 28, 0.14);
+  color: #991b1b;
+}
+
 .search-input {
   flex: 1;
   border: 1px solid var(--line);
@@ -255,6 +284,16 @@ label {
   min-height: 76vh;
   padding: 18px;
   min-width: 0;
+}
+
+.detail-panel {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  max-height: calc(100vh - 32px);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sidebar {
@@ -382,14 +421,16 @@ label {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 4px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .sidebar-section--sticky {
   position: sticky;
   top: 0;
+  display: grid;
+  gap: 10px;
   background: linear-gradient(180deg, rgba(245, 252, 251, 0.98), rgba(240, 249, 248, 0.97));
-  padding-bottom: 10px;
+  padding-bottom: 12px;
   border-bottom: 1px solid rgba(207, 224, 220, 0.9);
   z-index: 2;
 }
@@ -420,6 +461,12 @@ label {
 .section-note,
 .reference-note {
   color: var(--muted);
+}
+
+.sidebar-summary {
+  margin: -2px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .search-help {
@@ -514,6 +561,10 @@ label {
 
 .active-filters:empty {
   display: none;
+}
+
+.active-filters {
+  padding-top: 2px;
 }
 
 .facet-group {
@@ -855,6 +906,12 @@ a {
     position: static;
     min-height: auto;
     max-height: none;
+  }
+
+  .detail-panel {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
   }
 
   .content-shell {
