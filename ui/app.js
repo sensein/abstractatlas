@@ -116,6 +116,27 @@ function clusterLayerLabel(layerKey) {
   return clusterLayerMeta(layerKey)?.toggle_label || clusterLayerMeta(layerKey)?.label || layerKey;
 }
 
+function clusterLayerCompactLabel(layerKey) {
+  const meta = clusterLayerMeta(layerKey);
+  if (!meta) {
+    return layerKey;
+  }
+  if (layerKey === "semantic_25") {
+    return "V25";
+  }
+  if (layerKey === "voyage_spectral_31") {
+    return "V31";
+  }
+  if (layerKey === "claims_28") {
+    return "C28";
+  }
+  const count = meta.cluster_count || meta.best_k;
+  if (count) {
+    return `${String(meta.embedding_name || layerKey).slice(0, 1).toUpperCase()}${count}`;
+  }
+  return meta.toggle_label || meta.label || layerKey;
+}
+
 function facetLabel(group) {
   return store?.facets?.labels?.[group] || BASE_FACET_LABELS[group] || group;
 }
@@ -669,15 +690,27 @@ function addToggleAction(buttonRow, label, onClick) {
 function renderClusterToggle() {
   const root = document.getElementById("cluster-toggle");
   root.replaceChildren();
-  const clusterLayers = clusterLayerConfigs().map((layer) => [layer.key, layer.toggle_label || layer.label || layer.key]);
+  const clusterLayers = clusterLayerConfigs().map((layer) => ({
+    key: layer.key,
+    compactLabel: clusterLayerCompactLabel(layer.key),
+    fullLabel: layer.toggle_label || layer.label || layer.key,
+  }));
   root.classList.toggle("hidden", clusterLayers.length <= 1);
-  for (const [key, label] of clusterLayers) {
+  if (clusterLayers.length > 1) {
+    const label = document.createElement("span");
+    label.className = "cluster-toggle__label";
+    label.textContent = "Colored by:";
+    root.appendChild(label);
+  }
+  for (const layer of clusterLayers) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = label;
-    button.className = key === state.clusterLayer ? "is-active" : "";
+    button.textContent = layer.compactLabel;
+    button.title = layer.fullLabel;
+    button.setAttribute("aria-label", layer.fullLabel);
+    button.className = layer.key === state.clusterLayer ? "is-active" : "";
     button.addEventListener("click", () => {
-      state.clusterLayer = key;
+      state.clusterLayer = layer.key;
       syncUrlState();
       render();
     });
@@ -816,7 +849,7 @@ function renderProjection() {
   meta.textContent =
     state.projectionSelection.size > 0
       ? `${state.projectionSelection.size} abstracts selected from the map`
-      : `Click a point to open an abstract. Colored by ${clusterLayerLabel(state.clusterLayer).toLowerCase()}.`;
+      : "Click a point to open an abstract.";
 
   const traces = [{
     type: "scattergl",
