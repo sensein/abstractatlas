@@ -114,6 +114,14 @@ Claim extraction:
 UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python git+https://github.com/OpenEvalProject/cllm.git
 ```
 
+Headless layout review:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python ".[review]"
+PYTHONPATH=src .venv/bin/python -m playwright install chromium
+PYTHONPATH=src .venv/bin/python scripts/check_layout_review.py
+```
+
 For local figure analysis, confirm Ollama can see the required model:
 
 ```bash

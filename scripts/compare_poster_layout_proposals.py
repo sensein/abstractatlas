@@ -12,20 +12,65 @@ def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _layout_system_display_name(layout_label_system: str) -> str:
+    mapping = {
+        "submitter_primary_secondary": "submitter primary/subcategory taxonomy",
+        "voyage_stage2_kmeans_25": "Voyage Stage 2 k-means (25 clusters)",
+        "voyage_stage2_spectral_31": "Voyage Stage 2 spectral (31 clusters)",
+        "minilm_claims_kmeans_28": "MiniLM claims k-means (28 clusters)",
+    }
+    return mapping.get(layout_label_system, layout_label_system.replace("_", " "))
+
+
+def _top_layout_categories(assignments: list[dict[str, Any]], limit: int = 8) -> list[dict[str, Any]]:
+    counts = Counter(str(item.get("layout_exact_label") or item.get("primary_category") or "Unknown") for item in assignments)
+    rows: list[dict[str, Any]] = []
+    for label, count in counts.most_common(limit):
+        accepted_for_counts = Counter(
+            str(item.get("accepted_for") or "Unknown")
+            for item in assignments
+            if str(item.get("layout_exact_label") or item.get("primary_category") or "Unknown") == label
+        )
+        primary_counts = Counter(
+            str(item.get("primary_category") or "Unknown")
+            for item in assignments
+            if str(item.get("layout_exact_label") or item.get("primary_category") or "Unknown") == label
+        )
+        rows.append(
+            {
+                "label": label,
+                "count": int(count),
+                "accepted_for_counts": dict(accepted_for_counts),
+                "top_primary_categories": [
+                    {"label": category, "count": int(category_count)}
+                    for category, category_count in primary_counts.most_common(5)
+                ],
+            }
+        )
+    return rows
+
+
 def summarize_proposal_dir(proposal_dir: Path) -> dict[str, Any]:
     proposal = load_json(proposal_dir / "proposal.json")
     analysis = load_json(proposal_dir / "analysis.json")
     assignments = list(proposal.get("assignments", []))
+    metadata = dict(proposal.get("metadata") or {})
+    layout_label_system = str(metadata.get("layout_label_system") or "submitter_primary_secondary")
 
     category_spread: dict[str, dict[str, Any]] = defaultdict(lambda: {"sessions": set(), "blocks": set(), "count": 0})
+    submitter_category_spread: dict[str, dict[str, Any]] = defaultdict(lambda: {"sessions": set(), "blocks": set(), "count": 0})
     session_counts = Counter()
     for item in assignments:
-        category = str(item.get("primary_category") or "Unknown")
+        category = str(item.get("layout_exact_label") or item.get("primary_category") or "Unknown")
+        submitter_category = str(item.get("primary_category") or "Unknown")
         session_id = int(item.get("standby_session"))
         block_id = int(item.get("block_id"))
         category_spread[category]["sessions"].add(session_id)
         category_spread[category]["blocks"].add(block_id)
         category_spread[category]["count"] += 1
+        submitter_category_spread[submitter_category]["sessions"].add(session_id)
+        submitter_category_spread[submitter_category]["blocks"].add(block_id)
+        submitter_category_spread[submitter_category]["count"] += 1
         session_counts[session_id] += 1
 
     block_locality = analysis.get("block_analysis", {})
@@ -40,9 +85,12 @@ def summarize_proposal_dir(proposal_dir: Path) -> dict[str, Any]:
     return {
         "proposal_dir": str(proposal_dir),
         "proposal_name": proposal_dir.name,
-        "weights": dict(proposal.get("metadata", {}).get("weights") or {}),
+        "weights": dict(metadata.get("weights") or {}),
+        "layout_label_system": layout_label_system,
+        "layout_exact_label_count": int(metadata.get("layout_exact_label_count") or 0),
+        "layout_parent_label_count": int(metadata.get("layout_parent_label_count") or 0),
         "session_counts": {str(session_id): session_counts.get(session_id, 0) for session_id in (1, 2, 3, 4)},
-        "accepted_count": int(proposal.get("metadata", {}).get("accepted_count") or len(assignments)),
+        "accepted_count": int(metadata.get("accepted_count") or len(assignments)),
         "poster_count": int(accepted_for_counts.get("Poster") or 0),
         "oral_count": int(accepted_for_counts.get("Oral") or 0),
         "author_conflict_total": conflict_total,
@@ -54,6 +102,10 @@ def summarize_proposal_dir(proposal_dir: Path) -> dict[str, Any]:
         "exact_categories_all_four_sessions": sum(1 for data in category_spread.values() if len(data["sessions"]) == 4),
         "exact_categories_three_plus_sessions": sum(
             1 for data in category_spread.values() if len(data["sessions"]) >= 3
+        ),
+        "submitter_exact_category_count": len(submitter_category_spread),
+        "submitter_exact_categories_single_block_multi_poster": sum(
+            1 for data in submitter_category_spread.values() if len(data["blocks"]) == 1 and int(data["count"]) > 1
         ),
         "block_adjacent_mean_semantic_distance": float(
             (
@@ -96,8 +148,9 @@ def summarize_proposal_dir(proposal_dir: Path) -> dict[str, Any]:
         ),
         "top_claims_clusters_overall": list(claims_category_analysis.get("top_clusters_overall") or []),
         "session_top_claims_clusters": dict(claims_category_analysis.get("session_top_clusters") or {}),
-        "proposal_kind": str(proposal.get("metadata", {}).get("proposal_kind") or "weighted_assignment"),
-        "proposal_method": str(proposal.get("metadata", {}).get("proposal_method") or proposal_dir.name),
+        "proposal_kind": str(metadata.get("proposal_kind") or "weighted_assignment"),
+        "proposal_method": str(metadata.get("proposal_method") or proposal_dir.name),
+        "top_layout_categories_overall": _top_layout_categories(assignments, limit=10),
     }
 
 
@@ -114,6 +167,9 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     fieldnames = [
         "proposal_name",
         "proposal_dir",
+        "layout_label_system",
+        "layout_parent_label_count",
+        "layout_exact_label_count",
         "accepted_count",
         "poster_count",
         "oral_count",
@@ -123,6 +179,8 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "exact_categories_single_block_multi_poster",
         "exact_categories_all_four_sessions",
         "exact_categories_three_plus_sessions",
+        "submitter_exact_category_count",
+        "submitter_exact_categories_single_block_multi_poster",
         "claims_cluster_count",
         "claims_clusters_used_by_posters",
         "claims_clusters_single_block",
@@ -169,12 +227,17 @@ def _proposal_emphasis(row: dict[str, Any]) -> str:
     proposal_name = str(row.get("proposal_name") or "")
     proposal_kind = str(row.get("proposal_kind") or "")
     proposal_method = str(row.get("proposal_method") or "")
+    layout_label_system = str(row.get("layout_label_system") or "")
     if proposal_name == "session_balance_baseline":
         return "Balance sessions and keep nearby posters closely related"
     if proposal_name == "block_spread_soft":
         return "Spread categories across blocks with a light touch"
     if proposal_name == "block_spread_strong":
         return "Spread categories across blocks more aggressively"
+    if proposal_name.startswith("semantic_layout_") or (
+        proposal_kind == "weighted_assignment" and layout_label_system != "submitter_primary_secondary"
+    ):
+        return f"Use learned semantic clusters from {layout_label_system} as the main layout taxonomy"
     if proposal_kind == "semantic_path":
         if "+" in proposal_method:
             return "Build one semantic path using both embedding spaces, then split it across blocks"
@@ -191,9 +254,10 @@ def build_markdown_summary(rows: list[dict[str, Any]]) -> str:
         return "# Poster Layout Proposal Summary\n\nNo proposal summaries were generated.\n"
 
     recommendation = _best_recommendation(rows)
-    baseline = next((row for row in rows if row.get("proposal_name") == "session_balance_baseline"), rows[0])
+    baseline = next((row for row in rows if row.get("proposal_name") == "session_balance_baseline"), None)
     soft = next((row for row in rows if row.get("proposal_name") == "block_spread_soft"), None)
     strong = next((row for row in rows if row.get("proposal_name") == "block_spread_strong"), None)
+    categorical_reference = soft or baseline or rows[0]
     source = recommendation if recommendation is not None else rows[0]
 
     lines = ["# Poster Layout Proposal Summary", ""]
@@ -204,13 +268,16 @@ def build_markdown_summary(rows: list[dict[str, Any]]) -> str:
             "It keeps sessions balanced, preserves strong topical grouping on the floor, and avoids the main weakness "
             "of the baseline approach by reducing meaningful one-block category concentration."
         )
+        lines.append(
+            f"It uses `{_layout_system_display_name(str(recommendation.get('layout_label_system') or ''))}` as the organizing taxonomy."
+        )
     lines.append("")
     lines.append("## What All Proposals Share")
     shared_session_counts = ", ".join(
-        f"session {session_id}: {baseline['session_counts'][str(session_id)]}" for session_id in (1, 2, 3, 4)
+        f"session {session_id}: {categorical_reference['session_counts'][str(session_id)]}" for session_id in (1, 2, 3, 4)
     )
     lines.append(
-        f"Each proposal assigns all `{baseline['accepted_count']}` accepted abstracts, including `{baseline['oral_count']}` oral presentations, across the four standby sessions: {shared_session_counts}."
+        f"Each proposal assigns all `{categorical_reference['accepted_count']}` accepted abstracts, including `{categorical_reference['oral_count']}` oral presentations, across the four standby sessions: {shared_session_counts}."
     )
     if all(int(row.get("author_conflict_total") or 0) == 0 for row in rows):
         lines.append("Every proposal produces zero first-author conflicts.")
@@ -225,12 +292,17 @@ def build_markdown_summary(rows: list[dict[str, Any]]) -> str:
         lines.append(f"`{row['proposal_name']}`: {_proposal_emphasis(row)}.")
     lines.append("")
     lines.append("## Where They Critically Differ")
-    lines.append(
-        f"The baseline proposal leaves `{baseline['exact_categories_single_block_multi_poster']}` multi-poster exact categories confined to a single block."
-    )
-    if soft is not None:
+    if baseline is not None:
+        lines.append(
+            f"The baseline proposal leaves `{baseline['exact_categories_single_block_multi_poster']}` multi-poster exact categories confined to a single block."
+        )
+    if soft is not None and baseline is not None:
         lines.append(
             f"The soft block-spread proposal reduces that to `{soft['exact_categories_single_block_multi_poster']}`, which means it removes the meaningful cases where a category with multiple posters is trapped in one block."
+        )
+    elif soft is not None:
+        lines.append(
+            f"The categorical reference proposal `{soft['proposal_name']}` leaves `{soft['exact_categories_single_block_multi_poster']}` multi-poster exact categories confined to a single block."
         )
     if strong is not None:
         lines.append(
@@ -254,6 +326,21 @@ def build_markdown_summary(rows: list[dict[str, Any]]) -> str:
     lines.append("")
     lines.append("The main practical takeaway is that the spread-oriented and path-based proposals improve cross-day discoverability in different ways, while the strongest options still preserve local coherence in the poster hall.")
     lines.append("")
+    lines.append("## Active Layout Taxonomy")
+    lines.append(
+        f"The recommended proposal is driven by `{_layout_system_display_name(str(source.get('layout_label_system') or ''))}`, "
+        f"with `{int(source.get('layout_exact_label_count') or 0)}` layout categories."
+    )
+    lines.append(
+        f"About {_format_percent(float(source['block_adjacent_exact_category_match_rate']))} of adjacent posters stay within the same active layout category."
+    )
+    top_layout = list(source.get("top_layout_categories_overall") or [])[:8]
+    if top_layout:
+        lines.append("")
+        lines.append("Largest layout categories in the recommended proposal:")
+        for category in top_layout:
+            lines.append(f"- `{category['label']}`: {int(category.get('count') or 0)} abstracts.")
+    lines.append("")
     lines.append("## Claims-Based Category View")
     lines.append(
         f"The claims-based semantic clustering view contains `{source['claims_cluster_count']}` clusters, with "
@@ -262,13 +349,18 @@ def build_markdown_summary(rows: list[dict[str, Any]]) -> str:
     lines.append(
         "These are content-driven themes derived from the claims embeddings rather than from the submitter-selected submission categories."
     )
-    lines.append(
-        f"In the baseline proposal, `{baseline['claims_clusters_single_block_multi_poster']}` multi-poster claims clusters "
-        "are concentrated in a single block."
-    )
-    if soft is not None:
+    if baseline is not None:
+        lines.append(
+            f"In the baseline proposal, `{baseline['claims_clusters_single_block_multi_poster']}` multi-poster claims clusters "
+            "are concentrated in a single block."
+        )
+    if soft is not None and baseline is not None:
         lines.append(
             f"In the soft block-spread proposal, that falls to `{soft['claims_clusters_single_block_multi_poster']}`."
+        )
+    elif soft is not None:
+        lines.append(
+            f"In the categorical reference proposal, `{soft['claims_clusters_single_block_multi_poster']}` multi-poster claims clusters are concentrated in a single block."
         )
     if strong is not None:
         lines.append(
@@ -277,7 +369,7 @@ def build_markdown_summary(rows: list[dict[str, Any]]) -> str:
     lines.append(
         f"In the recommended proposal, about {_format_percent(float(source['claims_adjacent_same_cluster_rate']))} "
         "of adjacent posters remain in the same claims-derived cluster, which means the optimizer is still preserving "
-        "strong semantic neighborhoods."
+        "strong semantic neighborhoods as a secondary content check."
     )
     lines.append("")
     lines.append("## Recommendation")
@@ -411,9 +503,10 @@ def build_organizer_memo_markdown(rows: list[dict[str, Any]]) -> str:
         return "# Organizer Memo\n\nNo proposal summaries were generated.\n"
 
     recommendation = _best_recommendation(rows)
-    baseline = next((row for row in rows if row.get("proposal_name") == "session_balance_baseline"), rows[0])
+    baseline = next((row for row in rows if row.get("proposal_name") == "session_balance_baseline"), None)
     soft = next((row for row in rows if row.get("proposal_name") == "block_spread_soft"), None)
     strong = next((row for row in rows if row.get("proposal_name") == "block_spread_strong"), None)
+    categorical_reference = soft or baseline or rows[0]
     source = recommendation if recommendation is not None else rows[0]
 
     lines = ["# Organizer Memo: Poster Layout Proposals", ""]
@@ -423,27 +516,32 @@ def build_organizer_memo_markdown(rows: list[dict[str, Any]]) -> str:
             f"Use `{recommendation['proposal_name']}` as the working recommendation for organizer review."
         )
         lines.append(
-            "It preserves the operational strengths of the baseline approach while improving distribution of related topics across the two physical blocks."
+            f"It uses `{_layout_system_display_name(str(recommendation.get('layout_label_system') or ''))}` as the main layout taxonomy and preserves the operational strengths of the categorical reference approach."
         )
     lines.append("")
     lines.append("## Why This Recommendation")
     lines.append(
-        f"All proposals assign all `{baseline['accepted_count']}` accepted abstracts and keep the schedule balanced across the four standby sessions "
-        f"({baseline['session_counts']['1']}/{baseline['session_counts']['2']}/"
-        f"{baseline['session_counts']['3']}/{baseline['session_counts']['4']})."
+        f"All proposals assign all `{categorical_reference['accepted_count']}` accepted abstracts and keep the schedule balanced across the four standby sessions "
+        f"({categorical_reference['session_counts']['1']}/{categorical_reference['session_counts']['2']}/"
+        f"{categorical_reference['session_counts']['3']}/{categorical_reference['session_counts']['4']})."
     )
     lines.append(
-        f"That includes `{baseline['poster_count']}` poster-selected abstracts and `{baseline['oral_count']}` oral-selected abstracts."
+        f"That includes `{categorical_reference['poster_count']}` poster-selected abstracts and `{categorical_reference['oral_count']}` oral-selected abstracts."
     )
     if all(int(row.get("author_conflict_total") or 0) == 0 for row in rows):
         lines.append("All proposals produce zero first-author conflicts.")
-    lines.append(
-        f"The baseline leaves `{baseline['exact_categories_single_block_multi_poster']}` multi-poster submission categories "
-        "confined to a single block."
-    )
-    if soft is not None:
+    if baseline is not None:
+        lines.append(
+            f"The baseline leaves `{baseline['exact_categories_single_block_multi_poster']}` multi-poster layout categories "
+            "confined to a single block."
+        )
+    if soft is not None and baseline is not None:
         lines.append(
             f"The soft block-spread version reduces that to `{soft['exact_categories_single_block_multi_poster']}`."
+        )
+    elif soft is not None:
+        lines.append(
+            f"The categorical reference proposal `{soft['proposal_name']}` also keeps multi-poster category concentration at `{soft['exact_categories_single_block_multi_poster']}`."
         )
     if strong is not None:
         lines.append(
@@ -452,9 +550,8 @@ def build_organizer_memo_markdown(rows: list[dict[str, Any]]) -> str:
         )
     lines.append(
         f"Local floor coherence remains strong in the recommended proposal: "
-        f"{_format_percent(float(source['block_adjacent_exact_category_match_rate']))} of adjacent posters match on exact submission category, "
-        f"{_format_percent(float(source['block_adjacent_parent_category_match_rate']))} match on parent category, and "
-        f"{_format_percent(float(source['claims_adjacent_same_cluster_rate']))} stay within the same claims-derived semantic cluster."
+        f"{_format_percent(float(source['block_adjacent_exact_category_match_rate']))} of adjacent posters match on the active layout category, "
+        f"and {_format_percent(float(source['claims_adjacent_same_cluster_rate']))} stay within the same claims-derived semantic cluster."
     )
     lines.append("")
     lines.append(f"## What The {len(rows)} Proposals Emphasize")
@@ -465,15 +562,39 @@ def build_organizer_memo_markdown(rows: list[dict[str, Any]]) -> str:
     lines.append("- Even distribution across sessions.")
     lines.append("- Zero first-author conflicts.")
     lines.append("- Strong local topical grouping once posters are numbered in the hall.")
-    lines.append("- Broad distribution of claims-derived semantic themes across sessions.")
+    lines.append("- Broad distribution of related work across standby sessions.")
     lines.append("")
-    lines.append("## Claims-Based Content Themes")
+    lines.append("## Active Layout System")
+    lines.append(
+        f"The recommended proposal is organized around `{_layout_system_display_name(str(source.get('layout_label_system') or ''))}`."
+    )
+    lines.append(
+        f"This produces `{int(source.get('layout_exact_label_count') or 0)}` organizer-facing layout categories."
+    )
+    top_layout_categories = list(source.get("top_layout_categories_overall") or [])[:8]
+    if top_layout_categories:
+        lines.append("")
+        lines.append("Largest layout categories in the recommended proposal:")
+        for category in top_layout_categories:
+            label = category.get("label") or "Unknown"
+            count = int(category.get("count") or 0)
+            top_primary = ", ".join(
+                item.get("label", "")
+                for item in list(category.get("top_primary_categories") or [])[:3]
+                if item.get("label")
+            )
+            if top_primary:
+                lines.append(f"- `{label}`: {count} abstracts. Main submitter categories represented: {top_primary}.")
+            else:
+                lines.append(f"- `{label}`: {count} abstracts.")
+    lines.append("")
+    lines.append("## Claims-Based Cross-Check")
+    lines.append(
+        "As a secondary content check, we also evaluate the recommended proposal against the claims-derived semantic themes."
+    )
     lines.append(
         "Using the claims embeddings, the accepted abstracts fall into 28 semantic content clusters. "
         "All 28 appear among posters, and in the recommended proposal all 28 appear in all four standby sessions."
-    )
-    lines.append(
-        "The largest claims-derived themes in the corpus include functional connectivity/network studies, memory and visual task work, depression and treatment connectivity studies, fMRI/data/modeling work, and language/auditory processing."
     )
     lines.append("")
     lines.append("Largest claims-derived themes in the recommended proposal:")
@@ -494,7 +615,7 @@ def build_organizer_memo_markdown(rows: list[dict[str, Any]]) -> str:
     lines.append("")
     lines.append("## Suggested Next Step")
     lines.append(
-        "Review the recommended proposal together with the UMAP day/session plot and the proposal CSV, then spot-check a few large categories and a few claims-derived themes to confirm the balance feels reasonable from a program-planning perspective."
+        "Review the recommended proposal together with the UMAP day/session plot and the proposal CSV, then spot-check a few large voyage-derived layout categories and use the claims-derived themes as a secondary content sanity check."
     )
     lines.append("")
     return "\n".join(lines) + "\n"

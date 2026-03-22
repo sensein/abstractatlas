@@ -3,6 +3,7 @@
   --ink: #1f2933;
   --muted: #5f6c7b;
   --line: #cfe0dc;
+  --line-strong: #b9d1cc;
   --card: #f9fdfc;
   --accent: #0f766e;
   --accent-soft: #dff4f0;
@@ -103,15 +104,23 @@ label {
 .search-row {
   display: flex;
   gap: 12px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(185, 209, 204, 0.95);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .search-tools {
-  margin-top: 12px;
+  margin-top: 4px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 10px;
   flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid rgba(207, 224, 220, 0.9);
 }
 
 .search-mode-strip {
@@ -120,6 +129,11 @@ label {
   gap: 10px;
   flex-wrap: nowrap;
   min-width: 0;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(185, 209, 204, 0.9);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 251, 250, 0.9));
 }
 
 .semantic-threshold {
@@ -188,11 +202,15 @@ label {
 
 .search-input {
   flex: 1;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 999px;
-  padding: 14px 18px;
-  background: white;
+  padding: 10px 12px;
+  background: transparent;
   font-size: 1rem;
+}
+
+.search-input:focus {
+  outline: none;
 }
 
 .clear-button,
@@ -429,9 +447,9 @@ label {
   top: 0;
   display: grid;
   gap: 10px;
-  background: linear-gradient(180deg, rgba(245, 252, 251, 0.98), rgba(240, 249, 248, 0.97));
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(207, 224, 220, 0.9);
+  background: linear-gradient(180deg, rgba(245, 252, 251, 0.99), rgba(240, 249, 248, 0.97));
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(185, 209, 204, 0.95);
   z-index: 2;
 }
 
@@ -450,6 +468,8 @@ label {
   justify-content: space-between;
   gap: 12px;
   align-items: start;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(207, 224, 220, 0.9);
 }
 
 .sidebar-summary,
@@ -507,13 +527,17 @@ label {
 }
 
 .projection-panel {
-  border-bottom: 1px solid rgba(207, 224, 220, 0.9);
-  margin-bottom: 12px;
-  padding-bottom: 12px;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(185, 209, 204, 0.9);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(243, 250, 249, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .results-header--compact {
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 
 .projection-toolbar {
@@ -522,25 +546,27 @@ label {
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(207, 224, 220, 0.9);
+  border-radius: 14px;
+  background: rgba(250, 253, 252, 0.92);
 }
 
 .projection-plot {
   width: 100%;
   height: 340px;
-  border: 1px solid rgba(207, 224, 220, 0.9);
+  border: 1px solid rgba(185, 209, 204, 0.95);
   border-radius: 16px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .projection-hover {
-  margin-top: 8px;
   min-height: 4.5rem;
   padding: 12px 14px;
-  border: 1px solid rgba(207, 224, 220, 0.9);
+  border: 1px solid rgba(185, 209, 204, 0.9);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.82);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 250, 249, 0.9));
   color: var(--muted);
   line-height: 1.45;
 }
@@ -559,6 +585,21 @@ label {
   margin: 0;
 }
 
+.results-browser {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(185, 209, 204, 0.9);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(245, 251, 250, 0.88));
+}
+
+.results-panel > .results-header {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(207, 224, 220, 0.9);
+}
+
 .active-filters:empty {
   display: none;
 }
@@ -568,8 +609,10 @@ label {
 }
 
 .facet-group {
-  border-top: 1px solid rgba(215, 207, 191, 0.75);
-  padding-top: 14px;
+  padding: 14px 14px 0;
+  border: 1px solid rgba(207, 224, 220, 0.92);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .facet-group__toggle {
@@ -637,9 +680,9 @@ label {
 }
 
 .result-card {
-  border: 1px solid rgba(215, 207, 191, 0.85);
+  border: 1px solid rgba(207, 224, 220, 0.95);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.92);
   overflow: hidden;
 }
 
@@ -743,7 +786,7 @@ label {
 }
 
 .detail-block {
-  border-top: 1px solid rgba(215, 207, 191, 0.75);
+  border-top: 1px solid rgba(207, 224, 220, 0.92);
   padding-top: 16px;
   min-width: 0;
 }

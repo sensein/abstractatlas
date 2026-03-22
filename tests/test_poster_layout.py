@@ -33,6 +33,16 @@ def _abstract(
 
 
 class PosterLayoutTest(unittest.TestCase):
+    @staticmethod
+    def _collapse_label_runs(records: list[poster_layout.AcceptedAbstract], ordered_indices: list[int]) -> list[str]:
+        records_by_embedding = {record.embedding_index: record for record in records}
+        labels = [records_by_embedding[index].layout_exact_label for index in ordered_indices]
+        collapsed: list[str] = []
+        for label in labels:
+            if not collapsed or collapsed[-1] != label:
+                collapsed.append(label)
+        return collapsed
+
     def _build_fixture(self, root: Path) -> tuple[Path, Path]:
         abstracts = [
             _abstract(1, "Poster", "A1 poster 1", "Systems", "Memory", 100),
@@ -92,6 +102,93 @@ class PosterLayoutTest(unittest.TestCase):
         self.assertEqual(len(inputs.oral_records), 2)
         self.assertEqual(inputs.poster_records[0].primary_parent_category, "Systems")
         self.assertEqual(inputs.poster_records[0].primary_subcategory, "Memory")
+        self.assertEqual(inputs.poster_records[0].layout_parent_label, "Systems")
+        self.assertEqual(inputs.poster_records[0].layout_exact_label, "Systems :: Memory")
+        self.assertEqual(inputs.layout_label_system, "submitter_primary_secondary")
+
+    def test_load_layout_inputs_can_swap_in_semantic_layout_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            raw_input, embeddings_dir = self._build_fixture(root)
+            assignments_path = root / "semantic_assignments.json"
+            summaries_path = root / "semantic_summaries.json"
+            assignments_path.write_text(
+                json.dumps({"assignments": {str(abstract_id): 0 if abstract_id <= 5 else 1 for abstract_id in range(1, 11)}}),
+                encoding="utf-8",
+            )
+            summaries_path.write_text(
+                json.dumps(
+                    {
+                        "clusters": [
+                            {"cluster_id": 0, "label": "semantic cluster alpha"},
+                            {"cluster_id": 1, "label": "semantic cluster beta"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            inputs = poster_layout.load_layout_inputs(
+                raw_input,
+                embeddings_dir,
+                layout_cluster_assignments=assignments_path,
+                layout_cluster_summaries=summaries_path,
+                layout_label_system="semantic_fixture",
+            )
+
+        self.assertEqual(inputs.layout_label_system, "semantic_fixture")
+        self.assertEqual(inputs.poster_records[0].layout_exact_label, "semantic cluster alpha")
+        self.assertEqual(inputs.poster_records[-1].layout_exact_label, "semantic cluster beta")
+
+    def test_build_block_numeric_order_can_share_category_order_across_blocks(self) -> None:
+        records = [
+            poster_layout.AcceptedAbstract(1, "Poster", "Alpha one", "Systems", "Memory", "Systems :: Memory", "Systems", "Systems :: Memory", "submitter_primary_secondary", 11, 0, None, None),
+            poster_layout.AcceptedAbstract(2, "Poster", "Alpha two", "Systems", "Memory", "Systems :: Memory", "Systems", "Systems :: Memory", "submitter_primary_secondary", 12, 1, None, None),
+            poster_layout.AcceptedAbstract(3, "Poster", "Beta one", "Systems", "Language", "Systems :: Language", "Systems", "Systems :: Language", "submitter_primary_secondary", 13, 2, None, None),
+            poster_layout.AcceptedAbstract(4, "Poster", "Gamma one", "Methods", "Modeling", "Methods :: Modeling", "Methods", "Methods :: Modeling", "submitter_primary_secondary", 14, 3, None, None),
+            poster_layout.AcceptedAbstract(5, "Poster", "Delta one", "Methods", "Connectivity", "Methods :: Connectivity", "Methods", "Methods :: Connectivity", "submitter_primary_secondary", 15, 4, None, None),
+            poster_layout.AcceptedAbstract(6, "Poster", "Gamma two", "Methods", "Modeling", "Methods :: Modeling", "Methods", "Methods :: Modeling", "submitter_primary_secondary", 16, 5, None, None),
+            poster_layout.AcceptedAbstract(7, "Poster", "Beta two", "Systems", "Language", "Systems :: Language", "Systems", "Systems :: Language", "submitter_primary_secondary", 17, 6, None, None),
+            poster_layout.AcceptedAbstract(8, "Poster", "Delta two", "Methods", "Connectivity", "Methods :: Connectivity", "Methods", "Methods :: Connectivity", "submitter_primary_secondary", 18, 7, None, None),
+        ]
+        normalized_matrix = np.asarray(
+            [
+                [1.0, 0.0],
+                [0.99, 0.01],
+                [0.9, 0.1],
+                [0.0, 1.0],
+                [0.1, 0.9],
+                [0.02, 0.98],
+                [0.88, 0.12],
+                [0.12, 0.88],
+            ],
+            dtype=np.float32,
+        )
+        normalized_matrix = poster_layout._normalize_rows(normalized_matrix)
+        shared_parent_order, shared_subcategory_order = poster_layout.build_shared_layout_group_order(
+            records,
+            normalized_matrix,
+        )
+        block_one_records = [records[index] for index in (0, 2, 3, 4)]
+        block_two_records = [records[index] for index in (1, 6, 5, 7)]
+
+        block_one_order = poster_layout.build_block_numeric_order(
+            block_one_records,
+            normalized_matrix,
+            shared_parent_order=shared_parent_order,
+            shared_subcategory_order=shared_subcategory_order,
+        )
+        block_two_order = poster_layout.build_block_numeric_order(
+            block_two_records,
+            normalized_matrix,
+            shared_parent_order=shared_parent_order,
+            shared_subcategory_order=shared_subcategory_order,
+        )
+
+        self.assertEqual(
+            self._collapse_label_runs(block_one_records, block_one_order),
+            self._collapse_label_runs(block_two_records, block_two_order),
+        )
 
     def test_optimize_main_writes_balanced_conflict_free_assignment(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -217,22 +314,22 @@ class PosterLayoutTest(unittest.TestCase):
         self.assertEqual(sixtieth["hall_segment"], 6)
         self.assertEqual(sixtieth["hall_face_position"], 10)
 
-        self.assertEqual(sixty_first["board_number"], 1)
+        self.assertEqual(sixty_first["board_number"], 60)
         self.assertEqual(sixty_first["board_side"], "B")
         self.assertEqual(sixty_first["hall_row"], 1)
-        self.assertEqual(sixty_first["hall_segment"], 1)
-        self.assertEqual(sixty_first["hall_face_position"], 1)
+        self.assertEqual(sixty_first["hall_segment"], 6)
+        self.assertEqual(sixty_first["hall_face_position"], 10)
 
-        self.assertEqual(one_hundred_twentieth["board_number"], 60)
+        self.assertEqual(one_hundred_twentieth["board_number"], 1)
         self.assertEqual(one_hundred_twentieth["hall_row"], 1)
-        self.assertEqual(one_hundred_twentieth["hall_segment"], 6)
-        self.assertEqual(one_hundred_twentieth["hall_face_position"], 10)
+        self.assertEqual(one_hundred_twentieth["hall_segment"], 1)
+        self.assertEqual(one_hundred_twentieth["hall_face_position"], 1)
         self.assertEqual(one_hundred_twentieth["board_side"], "B")
 
-        self.assertEqual(one_hundred_twenty_first["board_number"], 61)
+        self.assertEqual(one_hundred_twenty_first["board_number"], 120)
         self.assertEqual(one_hundred_twenty_first["hall_row"], 2)
-        self.assertEqual(one_hundred_twenty_first["hall_segment"], 6)
-        self.assertEqual(one_hundred_twenty_first["hall_face_position"], 10)
+        self.assertEqual(one_hundred_twenty_first["hall_segment"], 1)
+        self.assertEqual(one_hundred_twenty_first["hall_face_position"], 1)
         self.assertEqual(one_hundred_twenty_first["hall_row_direction"], "right_to_left")
         self.assertEqual(one_hundred_twenty_first["board_side"], "A")
 
@@ -242,14 +339,14 @@ class PosterLayoutTest(unittest.TestCase):
 
     def test_assign_block_sequences_to_sessions_prefers_alternating_within_block(self) -> None:
         records_by_id = {
-            1: poster_layout.AcceptedAbstract(1, 0, "Poster", "One", "A", "A1", "A :: A1", 11, None, None),
-            2: poster_layout.AcceptedAbstract(2, 1, "Poster", "Two", "A", "A1", "A :: A1", 12, None, None),
-            3: poster_layout.AcceptedAbstract(3, 2, "Poster", "Three", "A", "A1", "A :: A1", 13, None, None),
-            4: poster_layout.AcceptedAbstract(4, 3, "Poster", "Four", "A", "A1", "A :: A1", 14, None, None),
-            5: poster_layout.AcceptedAbstract(5, 4, "Poster", "Five", "B", "B1", "B :: B1", 15, None, None),
-            6: poster_layout.AcceptedAbstract(6, 5, "Poster", "Six", "B", "B1", "B :: B1", 16, None, None),
-            7: poster_layout.AcceptedAbstract(7, 6, "Poster", "Seven", "B", "B1", "B :: B1", 17, None, None),
-            8: poster_layout.AcceptedAbstract(8, 7, "Poster", "Eight", "B", "B1", "B :: B1", 18, None, None),
+            1: poster_layout.AcceptedAbstract(1, "Poster", "One", "A", "A1", "A :: A1", "A", "A :: A1", "submitter_primary_secondary", 11, 0, None, None),
+            2: poster_layout.AcceptedAbstract(2, "Poster", "Two", "A", "A1", "A :: A1", "A", "A :: A1", "submitter_primary_secondary", 12, 1, None, None),
+            3: poster_layout.AcceptedAbstract(3, "Poster", "Three", "A", "A1", "A :: A1", "A", "A :: A1", "submitter_primary_secondary", 13, 2, None, None),
+            4: poster_layout.AcceptedAbstract(4, "Poster", "Four", "A", "A1", "A :: A1", "A", "A :: A1", "submitter_primary_secondary", 14, 3, None, None),
+            5: poster_layout.AcceptedAbstract(5, "Poster", "Five", "B", "B1", "B :: B1", "B", "B :: B1", "submitter_primary_secondary", 15, 4, None, None),
+            6: poster_layout.AcceptedAbstract(6, "Poster", "Six", "B", "B1", "B :: B1", "B", "B :: B1", "submitter_primary_secondary", 16, 5, None, None),
+            7: poster_layout.AcceptedAbstract(7, "Poster", "Seven", "B", "B1", "B :: B1", "B", "B :: B1", "submitter_primary_secondary", 17, 6, None, None),
+            8: poster_layout.AcceptedAbstract(8, "Poster", "Eight", "B", "B1", "B :: B1", "B", "B :: B1", "submitter_primary_secondary", 18, 7, None, None),
         }
 
         assignments = poster_layout.assign_block_sequences_to_sessions(

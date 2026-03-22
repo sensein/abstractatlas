@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>OHBM 2026 Abstract Atlas</title>
-    <link rel="stylesheet" href="./styles.css?v=20260315-4" />
+    <link rel="stylesheet" href="./styles.css?v=20260321-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -118,14 +118,16 @@
                   Hover a point to inspect its title, topic, and keywords without covering the plot.
                 </div>
               </section>
-              <div class="results-header">
-                <div>
-                  <p class="eyebrow">Results</p>
-                  <h2 id="results-title">Loading…</h2>
+              <section class="results-browser">
+                <div class="results-header">
+                  <div>
+                    <p class="eyebrow">Results</p>
+                    <h2 id="results-title">Loading…</h2>
+                  </div>
+                  <p id="results-meta" class="results-meta"></p>
                 </div>
-                <p id="results-meta" class="results-meta"></p>
-              </div>
-              <div id="results-list" class="results-list"></div>
+                <div id="results-list" class="results-list"></div>
+              </section>
             </section>
           </div>
           <section class="detail-panel">
@@ -157,6 +159,6 @@
     </template>
 
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-    <script type="module" src="./app.js?v=20260315-4"></script>
+    <script type="module" src="./app.js?v=20260321-1"></script>
   </body>
 </html>

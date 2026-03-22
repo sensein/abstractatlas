@@ -48,6 +48,9 @@ class AcceptedAbstract:
     primary_parent_category: str
     primary_subcategory: str
     primary_category: str
+    layout_parent_label: str
+    layout_exact_label: str
+    layout_label_system: str
     first_author_id: int | None
     embedding_index: int
     claims_cluster_id: int | None
@@ -62,6 +65,10 @@ class LayoutInputs:
     oral_records: list[AcceptedAbstract]
     claims_cluster_by_id: dict[int, int]
     claims_cluster_summaries: dict[int, dict[str, Any]]
+    layout_label_system: str
+    layout_label_source: str
+    layout_parent_count: int
+    layout_exact_count: int
 
 
 @dataclass(frozen=True)
@@ -84,6 +91,7 @@ class PathProposalConfig:
 
 DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS = "data/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_assignments.json"
 DEFAULT_CLAIMS_CLUSTER_SUMMARIES = "data/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_summaries.json"
+DEFAULT_LAYOUT_LABEL_SYSTEM = "submitter_primary_secondary"
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -91,7 +99,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def load_claims_cluster_inputs(
+def load_cluster_inputs(
     assignments_path: Path | None,
     summaries_path: Path | None,
 ) -> tuple[dict[int, int], dict[int, dict[str, Any]]]:
@@ -116,6 +124,13 @@ def load_claims_cluster_inputs(
                 if isinstance(item, dict) and isinstance(item.get("cluster_id"), int)
             }
     return assignments, summaries
+
+
+def load_claims_cluster_inputs(
+    assignments_path: Path | None,
+    summaries_path: Path | None,
+) -> tuple[dict[int, int], dict[int, dict[str, Any]]]:
+    return load_cluster_inputs(assignments_path, summaries_path)
 
 
 def _normalize_rows(matrix: np.ndarray) -> np.ndarray:
@@ -150,12 +165,27 @@ def _record_from_abstract(
     embedding_index: int,
     claims_cluster_by_id: dict[int, int],
     claims_cluster_summaries: dict[int, dict[str, Any]],
+    layout_cluster_by_id: dict[int, int] | None = None,
+    layout_cluster_summaries: dict[int, dict[str, Any]] | None = None,
+    layout_label_system: str = DEFAULT_LAYOUT_LABEL_SYSTEM,
 ) -> AcceptedAbstract:
     abstract_id = abstract.get("id")
     if not isinstance(abstract_id, int):
         raise PosterLayoutError("Accepted abstract is missing an integer id")
     accepted_for = str(abstract.get("accepted_for") or "Unknown").strip() or "Unknown"
     parent, subcategory = _extract_primary_category_parts(abstract)
+    primary_category = f"{parent} :: {subcategory}"
+    layout_parent_label = parent
+    layout_exact_label = primary_category
+    effective_layout_label_system = DEFAULT_LAYOUT_LABEL_SYSTEM
+    if layout_cluster_by_id:
+        layout_cluster_id = layout_cluster_by_id.get(abstract_id)
+        if layout_cluster_id is None:
+            raise PosterLayoutError(f"Accepted abstract {abstract_id} is missing from the selected layout label system")
+        layout_summary = (layout_cluster_summaries or {}).get(layout_cluster_id, {})
+        layout_exact_label = str(layout_summary.get("label") or f"Semantic cluster {layout_cluster_id}")
+        layout_parent_label = str(layout_summary.get("parent_label") or layout_exact_label)
+        effective_layout_label_system = layout_label_system or "semantic_cluster"
     claims_cluster_id = claims_cluster_by_id.get(abstract_id)
     claims_cluster_label = None
     if claims_cluster_id is not None:
@@ -168,7 +198,10 @@ def _record_from_abstract(
         title=cleaned_abstract_title(abstract.get("title") or ""),
         primary_parent_category=parent,
         primary_subcategory=subcategory,
-        primary_category=f"{parent} :: {subcategory}",
+        primary_category=primary_category,
+        layout_parent_label=layout_parent_label,
+        layout_exact_label=layout_exact_label,
+        layout_label_system=effective_layout_label_system,
         first_author_id=_extract_first_author_id(abstract),
         embedding_index=int(embedding_index),
         claims_cluster_id=claims_cluster_id,
@@ -181,6 +214,9 @@ def load_layout_inputs(
     embeddings_dir: Path,
     claims_cluster_assignments: Path | None = None,
     claims_cluster_summaries: Path | None = None,
+    layout_cluster_assignments: Path | None = None,
+    layout_cluster_summaries: Path | None = None,
+    layout_label_system: str = DEFAULT_LAYOUT_LABEL_SYSTEM,
 ) -> LayoutInputs:
     raw_database = json.loads(raw_input.read_text(encoding="utf-8"))
     bundle = load_embedding_bundle(embeddings_dir)
@@ -191,6 +227,10 @@ def load_layout_inputs(
 
     embedding_index_by_id = {int(abstract_id): index for index, abstract_id in enumerate(ids)}
     cluster_by_id, cluster_summaries = load_claims_cluster_inputs(claims_cluster_assignments, claims_cluster_summaries)
+    layout_cluster_by_id, layout_cluster_summary_map = load_cluster_inputs(layout_cluster_assignments, layout_cluster_summaries)
+    effective_layout_label_system = (
+        layout_label_system if layout_cluster_by_id else DEFAULT_LAYOUT_LABEL_SYSTEM
+    )
     records: list[AcceptedAbstract] = []
     for abstract in raw_database.get("abstracts", []):
         abstract_id = abstract.get("id")
@@ -207,12 +247,17 @@ def load_layout_inputs(
                 embedding_index_by_id[abstract_id],
                 cluster_by_id,
                 cluster_summaries,
+                layout_cluster_by_id if layout_cluster_by_id else None,
+                layout_cluster_summary_map if layout_cluster_summary_map else None,
+                effective_layout_label_system,
             )
         )
 
     normalized_matrix = _normalize_rows(matrix)
     poster_records = [record for record in records if record.accepted_for == "Poster"]
     oral_records = [record for record in records if record.accepted_for == "Oral"]
+    layout_parent_count = len({record.layout_parent_label for record in records})
+    layout_exact_count = len({record.layout_exact_label for record in records})
     return LayoutInputs(
         records=records,
         normalized_matrix=normalized_matrix,
@@ -220,6 +265,14 @@ def load_layout_inputs(
         oral_records=oral_records,
         claims_cluster_by_id=cluster_by_id,
         claims_cluster_summaries=cluster_summaries,
+        layout_label_system=effective_layout_label_system,
+        layout_label_source=(
+            str(layout_cluster_assignments)
+            if layout_cluster_by_id and layout_cluster_assignments is not None
+            else "submitter primary parent/subcategory responses"
+        ),
+        layout_parent_count=layout_parent_count,
+        layout_exact_count=layout_exact_count,
     )
 
 
@@ -249,7 +302,7 @@ def _author_groups(records: list[AcceptedAbstract]) -> list[list[AcceptedAbstrac
     grouped.sort(
         key=lambda group: (
             -len(group),
-            min(record.primary_category for record in group),
+            min(record.layout_exact_label for record in group),
             min(record.abstract_id for record in group),
         )
     )
@@ -279,14 +332,14 @@ def _assignment_delta(
         return float("inf")
 
     block_id = SESSION_TO_BLOCK[session_id]
-    exact_counts = exact_session_counts[record.primary_category]
-    parent_counts = parent_session_counts[record.primary_parent_category]
-    exact_block_count_map = exact_block_counts[record.primary_category]
-    parent_block_count_map = parent_block_counts[record.primary_parent_category]
-    exact_target = exact_targets[record.primary_category]
-    parent_target = parent_targets[record.primary_parent_category]
-    exact_block_target = exact_block_targets[record.primary_category]
-    parent_block_target = parent_block_targets[record.primary_parent_category]
+    exact_counts = exact_session_counts[record.layout_exact_label]
+    parent_counts = parent_session_counts[record.layout_parent_label]
+    exact_block_count_map = exact_block_counts[record.layout_exact_label]
+    parent_block_count_map = parent_block_counts[record.layout_parent_label]
+    exact_target = exact_targets[record.layout_exact_label]
+    parent_target = parent_targets[record.layout_parent_label]
+    exact_block_target = exact_block_targets[record.layout_exact_label]
+    parent_block_target = parent_block_targets[record.layout_parent_label]
     claims_before = 0.0
     claims_after = 0.0
     claims_block_before = 0.0
@@ -336,19 +389,19 @@ def optimize_session_assignment(
     session_targets = _session_targets(len(records))
     exact_targets = {
         category: count / len(SESSION_IDS)
-        for category, count in Counter(record.primary_category for record in records).items()
+        for category, count in Counter(record.layout_exact_label for record in records).items()
     }
     parent_targets = {
         category: count / len(SESSION_IDS)
-        for category, count in Counter(record.primary_parent_category for record in records).items()
+        for category, count in Counter(record.layout_parent_label for record in records).items()
     }
     exact_block_targets = {
         category: count / len(BLOCK_TO_SESSIONS)
-        for category, count in Counter(record.primary_category for record in records).items()
+        for category, count in Counter(record.layout_exact_label for record in records).items()
     }
     parent_block_targets = {
         category: count / len(BLOCK_TO_SESSIONS)
-        for category, count in Counter(record.primary_parent_category for record in records).items()
+        for category, count in Counter(record.layout_parent_label for record in records).items()
     }
     claims_session_targets = {
         int(cluster_id): count / len(SESSION_IDS)
@@ -379,7 +432,7 @@ def optimize_session_assignment(
 
         best_cost: float | None = None
         best_assignment: list[tuple[AcceptedAbstract, int]] | None = None
-        ordered_group = sorted(group, key=lambda record: (record.primary_category, record.abstract_id))
+        ordered_group = sorted(group, key=lambda record: (record.layout_exact_label, record.abstract_id))
         for candidate_sessions in itertools.permutations(available_sessions, len(ordered_group)):
             temp_exact = {key: value.copy() for key, value in exact_session_counts.items()}
             temp_parent = {key: value.copy() for key, value in parent_session_counts.items()}
@@ -414,11 +467,11 @@ def optimize_session_assignment(
                     feasible = False
                     break
                 total_cost += delta
-                temp_exact.setdefault(record.primary_category, {session: 0 for session in SESSION_IDS})[session_id] += 1
-                temp_parent.setdefault(record.primary_parent_category, {session: 0 for session in SESSION_IDS})[session_id] += 1
+                temp_exact.setdefault(record.layout_exact_label, {session: 0 for session in SESSION_IDS})[session_id] += 1
+                temp_parent.setdefault(record.layout_parent_label, {session: 0 for session in SESSION_IDS})[session_id] += 1
                 block_id = SESSION_TO_BLOCK[session_id]
-                temp_exact_blocks.setdefault(record.primary_category, {block: 0 for block in BLOCK_TO_SESSIONS})[block_id] += 1
-                temp_parent_blocks.setdefault(record.primary_parent_category, {block: 0 for block in BLOCK_TO_SESSIONS})[
+                temp_exact_blocks.setdefault(record.layout_exact_label, {block: 0 for block in BLOCK_TO_SESSIONS})[block_id] += 1
+                temp_parent_blocks.setdefault(record.layout_parent_label, {block: 0 for block in BLOCK_TO_SESSIONS})[
                     block_id
                 ] += 1
                 if record.claims_cluster_id is not None:
@@ -438,11 +491,11 @@ def optimize_session_assignment(
 
         for record, session_id in best_assignment:
             assignments[record.abstract_id] = session_id
-            exact_session_counts[record.primary_category][session_id] += 1
-            parent_session_counts[record.primary_parent_category][session_id] += 1
+            exact_session_counts[record.layout_exact_label][session_id] += 1
+            parent_session_counts[record.layout_parent_label][session_id] += 1
             block_id = SESSION_TO_BLOCK[session_id]
-            exact_block_counts[record.primary_category][block_id] += 1
-            parent_block_counts[record.primary_parent_category][block_id] += 1
+            exact_block_counts[record.layout_exact_label][block_id] += 1
+            parent_block_counts[record.layout_parent_label][block_id] += 1
             if record.claims_cluster_id is not None:
                 claims_cluster_id = int(record.claims_cluster_id)
                 claims_session_counts[claims_cluster_id][session_id] += 1
@@ -461,8 +514,8 @@ def _cosine_distance(matrix: np.ndarray, left_index: int, right_index: int) -> f
 
 
 def category_distance(left: AcceptedAbstract, right: AcceptedAbstract) -> float:
-    if left.primary_parent_category == right.primary_parent_category:
-        if left.primary_subcategory == right.primary_subcategory:
+    if left.layout_parent_label == right.layout_parent_label:
+        if left.layout_exact_label == right.layout_exact_label:
             return 0.0
         return 0.5
     return 1.0
@@ -491,16 +544,24 @@ def _nearest_neighbor_order(indices: list[int], normalized_matrix: np.ndarray) -
     return [indices[position] for position in order_positions]
 
 
-def build_block_numeric_order(
+def _ordered_label_subset(preferred_labels: list[str], available_labels: list[str]) -> list[str]:
+    available = set(available_labels)
+    ordered = [label for label in preferred_labels if label in available]
+    seen = set(ordered)
+    ordered.extend(label for label in available_labels if label not in seen)
+    return ordered
+
+
+def build_shared_layout_group_order(
     records: list[AcceptedAbstract],
     normalized_matrix: np.ndarray,
-) -> list[int]:
+) -> tuple[list[str], dict[str, list[str]]]:
     if not records:
-        return []
+        return [], {}
 
     grouped_by_parent: dict[str, list[AcceptedAbstract]] = defaultdict(list)
     for record in records:
-        grouped_by_parent[record.primary_parent_category].append(record)
+        grouped_by_parent[record.layout_parent_label].append(record)
 
     parent_names = sorted(grouped_by_parent)
     parent_centroids: list[np.ndarray] = []
@@ -509,14 +570,17 @@ def build_block_numeric_order(
         centroid = normalized_matrix[group_indices].mean(axis=0)
         centroid_norm = np.linalg.norm(centroid)
         parent_centroids.append(centroid / centroid_norm if centroid_norm > 0.0 else centroid)
-    parent_order_positions = _nearest_neighbor_order(list(range(len(parent_names))), np.asarray(parent_centroids, dtype=np.float32))
+    parent_order_positions = _nearest_neighbor_order(
+        list(range(len(parent_names))),
+        np.asarray(parent_centroids, dtype=np.float32),
+    )
     ordered_parent_names = [parent_names[position] for position in parent_order_positions]
 
-    ordered_embedding_indices: list[int] = []
+    ordered_subcategories_by_parent: dict[str, list[str]] = {}
     for parent_name in ordered_parent_names:
         grouped_by_subcategory: dict[str, list[AcceptedAbstract]] = defaultdict(list)
         for record in grouped_by_parent[parent_name]:
-            grouped_by_subcategory[record.primary_subcategory].append(record)
+            grouped_by_subcategory[record.layout_exact_label].append(record)
 
         subcategory_names = sorted(grouped_by_subcategory)
         subcategory_centroids: list[np.ndarray] = []
@@ -529,7 +593,45 @@ def build_block_numeric_order(
             list(range(len(subcategory_names))),
             np.asarray(subcategory_centroids, dtype=np.float32),
         )
-        ordered_subcategories = [subcategory_names[position] for position in subcategory_order_positions]
+        ordered_subcategories_by_parent[parent_name] = [
+            subcategory_names[position] for position in subcategory_order_positions
+        ]
+
+    return ordered_parent_names, ordered_subcategories_by_parent
+
+
+def build_block_numeric_order(
+    records: list[AcceptedAbstract],
+    normalized_matrix: np.ndarray,
+    shared_parent_order: list[str] | None = None,
+    shared_subcategory_order: dict[str, list[str]] | None = None,
+) -> list[int]:
+    if not records:
+        return []
+
+    grouped_by_parent: dict[str, list[AcceptedAbstract]] = defaultdict(list)
+    for record in records:
+        grouped_by_parent[record.layout_parent_label].append(record)
+
+    if shared_parent_order:
+        ordered_parent_names = _ordered_label_subset(shared_parent_order, sorted(grouped_by_parent))
+    else:
+        ordered_parent_names, _ = build_shared_layout_group_order(records, normalized_matrix)
+
+    ordered_embedding_indices: list[int] = []
+    for parent_name in ordered_parent_names:
+        grouped_by_subcategory: dict[str, list[AcceptedAbstract]] = defaultdict(list)
+        for record in grouped_by_parent[parent_name]:
+            grouped_by_subcategory[record.layout_exact_label].append(record)
+
+        if shared_subcategory_order and parent_name in shared_subcategory_order:
+            ordered_subcategories = _ordered_label_subset(
+                shared_subcategory_order[parent_name],
+                sorted(grouped_by_subcategory),
+            )
+        else:
+            _, ordered_subcategories_by_parent = build_shared_layout_group_order(grouped_by_parent[parent_name], normalized_matrix)
+            ordered_subcategories = ordered_subcategories_by_parent[parent_name]
 
         for subcategory_name in ordered_subcategories:
             poster_indices = [record.embedding_index for record in grouped_by_subcategory[subcategory_name]]
@@ -710,8 +812,12 @@ def _session_summary(records: list[AcceptedAbstract], assignments: dict[int, int
             "block_id": SESSION_TO_BLOCK[session_id],
             "block_label": BLOCK_LABELS[SESSION_TO_BLOCK[session_id]],
             "poster_count": len(session_records),
-            "parent_category_counts": dict(sorted(Counter(record.primary_parent_category for record in session_records).items())),
-            "subcategory_counts": dict(sorted(Counter(record.primary_category for record in session_records).items())),
+            "layout_parent_label_counts": dict(sorted(Counter(record.layout_parent_label for record in session_records).items())),
+            "layout_exact_label_counts": dict(sorted(Counter(record.layout_exact_label for record in session_records).items())),
+            "submitter_parent_category_counts": dict(
+                sorted(Counter(record.primary_parent_category for record in session_records).items())
+            ),
+            "submitter_subcategory_counts": dict(sorted(Counter(record.primary_category for record in session_records).items())),
         }
     return summaries
 
@@ -853,12 +959,20 @@ def _layout_face_sequence() -> list[dict[str, Any]]:
 
     sequence: list[dict[str, Any]] = []
     for hall_row in sorted(boards_by_row):
-        row_boards = sorted(boards_by_row[hall_row], key=lambda item: int(item["board_number"]))
-        for board_side, face_x_key, face_y_key in (
-            ("A", "hall_face_a_x", "hall_face_a_y"),
-            ("B", "hall_face_b_x", "hall_face_b_y"),
+        # Use physical left-to-right board order within each row so the overall
+        # face traversal snakes continuously through space rather than jumping
+        # to the numbering-origin side of the next row.
+        row_boards = sorted(
+            boards_by_row[hall_row],
+            key=lambda item: float(item.get("hall_edge_mid_x") or item.get("hall_face_a_x") or 0.0),
+        )
+        for board_side, face_x_key, face_y_key, side_boards in (
+            ("A", "hall_face_a_x", "hall_face_a_y", row_boards),
+            # Walk back along the opposite face so the full row traversal snakes
+            # instead of jumping back to the far-left board before continuing.
+            ("B", "hall_face_b_x", "hall_face_b_y", list(reversed(row_boards))),
         ):
-            for board in row_boards:
+            for board in side_boards:
                 sequence.append(
                     {
                         **board,
@@ -896,6 +1010,10 @@ def build_layout_proposal(
     session_assignments = optimize_session_assignment(assigned_records, weights=weights)
     records_by_id = {record.abstract_id: record for record in assigned_records}
     embedding_to_id = {record.embedding_index: record.abstract_id for record in assigned_records}
+    shared_parent_order, shared_subcategory_order = build_shared_layout_group_order(
+        assigned_records,
+        inputs.normalized_matrix,
+    )
 
     poster_numbers: dict[int, int] = {}
     block_positions: dict[int, int] = {}
@@ -906,7 +1024,12 @@ def build_layout_proposal(
             for record in assigned_records
             if SESSION_TO_BLOCK[session_assignments[record.abstract_id]] == block_id
         ]
-        ordered_indices = build_block_numeric_order(block_records, inputs.normalized_matrix)
+        ordered_indices = build_block_numeric_order(
+            block_records,
+            inputs.normalized_matrix,
+            shared_parent_order=shared_parent_order,
+            shared_subcategory_order=shared_subcategory_order,
+        )
         for block_position, embedding_index in enumerate(ordered_indices, start=1):
             abstract_id = embedding_to_id[int(embedding_index)]
             poster_numbers[abstract_id] = current_number
@@ -927,6 +1050,9 @@ def build_layout_proposal(
                 "primary_parent_category": record.primary_parent_category,
                 "primary_subcategory": record.primary_subcategory,
                 "primary_category": record.primary_category,
+                "layout_parent_label": record.layout_parent_label,
+                "layout_exact_label": record.layout_exact_label,
+                "layout_label_system": record.layout_label_system,
                 "first_author_id": record.first_author_id,
                 "claims_cluster_id": record.claims_cluster_id,
                 "claims_cluster_label": record.claims_cluster_label,
@@ -942,10 +1068,17 @@ def build_layout_proposal(
 
     return {
         "metadata": {
+            "proposal_kind": "weighted_assignment",
+            "proposal_method": inputs.layout_label_system,
             "poster_count": len(assigned_records),
             "oral_count": len(inputs.oral_records),
             "accepted_count": len(inputs.records),
             "claims_cluster_count": len(inputs.claims_cluster_summaries),
+            "layout_label_system": inputs.layout_label_system,
+            "layout_label_source": inputs.layout_label_source,
+            "layout_parent_label_count": inputs.layout_parent_count,
+            "layout_exact_label_count": inputs.layout_exact_count,
+            "layout_has_distinct_parent_labels": inputs.layout_parent_count != inputs.layout_exact_count,
             "session_targets": _session_targets(len(assigned_records)),
             "layout_rows_per_hall": layout_metadata.get("row_count"),
             "layout_segments_per_row": layout_metadata.get("units_per_row"),
@@ -1032,6 +1165,9 @@ def build_semantic_path_proposal(
                 "primary_parent_category": record.primary_parent_category,
                 "primary_subcategory": record.primary_subcategory,
                 "primary_category": record.primary_category,
+                "layout_parent_label": record.layout_parent_label,
+                "layout_exact_label": record.layout_exact_label,
+                "layout_label_system": record.layout_label_system,
                 "first_author_id": record.first_author_id,
                 "claims_cluster_id": record.claims_cluster_id,
                 "claims_cluster_label": record.claims_cluster_label,
@@ -1053,6 +1189,11 @@ def build_semantic_path_proposal(
             "oral_count": len(inputs.oral_records),
             "accepted_count": len(inputs.records),
             "claims_cluster_count": len(inputs.claims_cluster_summaries),
+            "layout_label_system": inputs.layout_label_system,
+            "layout_label_source": inputs.layout_label_source,
+            "layout_parent_label_count": inputs.layout_parent_count,
+            "layout_exact_label_count": inputs.layout_exact_count,
+            "layout_has_distinct_parent_labels": inputs.layout_parent_count != inputs.layout_exact_count,
             "session_targets": _session_targets(len(assigned_records)),
             "layout_rows_per_hall": layout_metadata.get("row_count"),
             "layout_segments_per_row": layout_metadata.get("units_per_row"),
@@ -1079,6 +1220,8 @@ def _window_distances(
     records: list[AcceptedAbstract],
     normalized_matrix: np.ndarray,
     window_size: int,
+    exact_label_attr: str = "layout_exact_label",
+    parent_label_attr: str = "layout_parent_label",
 ) -> dict[str, Any]:
     if len(records) <= 1:
         return {
@@ -1106,19 +1249,33 @@ def _window_distances(
     window_parent_matches: list[float] = []
     for index, record in enumerate(records[:-1]):
         next_record = records[index + 1]
+        record_exact_label = str(getattr(record, exact_label_attr))
+        next_exact_label = str(getattr(next_record, exact_label_attr))
+        record_parent_label = str(getattr(record, parent_label_attr))
+        next_parent_label = str(getattr(next_record, parent_label_attr))
         adjacent_semantic.append(_cosine_distance(normalized_matrix, record.embedding_index, next_record.embedding_index))
-        adjacent_category.append(category_distance(record, next_record))
-        adjacent_exact_matches.append(1.0 if record.primary_category == next_record.primary_category else 0.0)
-        adjacent_parent_matches.append(1.0 if record.primary_parent_category == next_record.primary_parent_category else 0.0)
+        if record_parent_label == next_parent_label:
+            adjacent_category.append(0.0 if record_exact_label == next_exact_label else 0.5)
+        else:
+            adjacent_category.append(1.0)
+        adjacent_exact_matches.append(1.0 if record_exact_label == next_exact_label else 0.0)
+        adjacent_parent_matches.append(1.0 if record_parent_label == next_parent_label else 0.0)
 
     for index, record in enumerate(records):
         upper_bound = min(len(records), index + window_size + 1)
         for neighbor_index in range(index + 1, upper_bound):
             other = records[neighbor_index]
+            record_exact_label = str(getattr(record, exact_label_attr))
+            other_exact_label = str(getattr(other, exact_label_attr))
+            record_parent_label = str(getattr(record, parent_label_attr))
+            other_parent_label = str(getattr(other, parent_label_attr))
             window_semantic.append(_cosine_distance(normalized_matrix, record.embedding_index, other.embedding_index))
-            window_category.append(category_distance(record, other))
-            window_exact_matches.append(1.0 if record.primary_category == other.primary_category else 0.0)
-            window_parent_matches.append(1.0 if record.primary_parent_category == other.primary_parent_category else 0.0)
+            if record_parent_label == other_parent_label:
+                window_category.append(0.0 if record_exact_label == other_exact_label else 0.5)
+            else:
+                window_category.append(1.0)
+            window_exact_matches.append(1.0 if record_exact_label == other_exact_label else 0.0)
+            window_parent_matches.append(1.0 if record_parent_label == other_parent_label else 0.0)
 
     return {
         "count": len(records),
@@ -1147,10 +1304,19 @@ def _paired_session(session_id: int) -> int:
 
 
 def _discoverability_metrics(records: list[AcceptedAbstract], assignments: dict[int, int]) -> dict[str, Any]:
-    exact_totals = Counter(record.primary_category for record in records)
-    parent_totals = Counter(record.primary_parent_category for record in records)
-    exact_session_totals = Counter((record.primary_category, assignments[record.abstract_id]) for record in records)
-    parent_session_totals = Counter((record.primary_parent_category, assignments[record.abstract_id]) for record in records)
+    return _discoverability_metrics_for_labels(records, assignments, "layout_exact_label", "layout_parent_label")
+
+
+def _discoverability_metrics_for_labels(
+    records: list[AcceptedAbstract],
+    assignments: dict[int, int],
+    exact_label_attr: str,
+    parent_label_attr: str,
+) -> dict[str, Any]:
+    exact_totals = Counter(str(getattr(record, exact_label_attr)) for record in records)
+    parent_totals = Counter(str(getattr(record, parent_label_attr)) for record in records)
+    exact_session_totals = Counter((str(getattr(record, exact_label_attr)), assignments[record.abstract_id]) for record in records)
+    parent_session_totals = Counter((str(getattr(record, parent_label_attr)), assignments[record.abstract_id]) for record in records)
 
     by_session: dict[str, Any] = {}
     for session_id in SESSION_IDS:
@@ -1161,12 +1327,14 @@ def _discoverability_metrics(records: list[AcceptedAbstract], assignments: dict[
         parent_paired_counts: list[int] = []
         for record in session_records:
             paired_session_id = _paired_session(session_id)
-            same_exact_in_session = exact_session_totals[(record.primary_category, session_id)]
-            same_parent_in_session = parent_session_totals[(record.primary_parent_category, session_id)]
-            exact_other_counts.append(exact_totals[record.primary_category] - same_exact_in_session)
-            exact_paired_counts.append(exact_session_totals[(record.primary_category, paired_session_id)])
-            parent_other_counts.append(parent_totals[record.primary_parent_category] - same_parent_in_session)
-            parent_paired_counts.append(parent_session_totals[(record.primary_parent_category, paired_session_id)])
+            exact_label = str(getattr(record, exact_label_attr))
+            parent_label = str(getattr(record, parent_label_attr))
+            same_exact_in_session = exact_session_totals[(exact_label, session_id)]
+            same_parent_in_session = parent_session_totals[(parent_label, session_id)]
+            exact_other_counts.append(exact_totals[exact_label] - same_exact_in_session)
+            exact_paired_counts.append(exact_session_totals[(exact_label, paired_session_id)])
+            parent_other_counts.append(parent_totals[parent_label] - same_parent_in_session)
+            parent_paired_counts.append(parent_session_totals[(parent_label, paired_session_id)])
 
         by_session[str(session_id)] = {
             "session_id": session_id,
@@ -1414,12 +1582,21 @@ def analyze_layout_proposal(
             "block_id": SESSION_TO_BLOCK[session_id],
             "counts": {
                 "posters": len(records),
-                "parent_categories": len({record.primary_parent_category for record in records}),
-                "subcategories": len({record.primary_category for record in records}),
+                "layout_parent_labels": len({record.layout_parent_label for record in records}),
+                "layout_exact_labels": len({record.layout_exact_label for record in records}),
+                "submitter_parent_categories": len({record.primary_parent_category for record in records}),
+                "submitter_subcategories": len({record.primary_category for record in records}),
                 "accepted_for_counts": dict(sorted(Counter(record.accepted_for for record in records).items())),
             },
             "author_conflicts": _author_conflicts(records),
             "locality": _window_distances(records, inputs.normalized_matrix, window_size=window_size),
+            "submitter_locality": _window_distances(
+                records,
+                inputs.normalized_matrix,
+                window_size=window_size,
+                exact_label_attr="primary_category",
+                parent_label_attr="primary_parent_category",
+            ),
             "top_claims_clusters": _top_claims_clusters(records, inputs.claims_cluster_summaries, limit=8),
             "nearest_oral_presentations": _centroid_oral_matches(
                 records,
@@ -1437,11 +1614,20 @@ def analyze_layout_proposal(
             "block_label": BLOCK_LABELS[block_id],
             "counts": {
                 "posters": len(records),
-                "parent_categories": len({record.primary_parent_category for record in records}),
-                "subcategories": len({record.primary_category for record in records}),
+                "layout_parent_labels": len({record.layout_parent_label for record in records}),
+                "layout_exact_labels": len({record.layout_exact_label for record in records}),
+                "submitter_parent_categories": len({record.primary_parent_category for record in records}),
+                "submitter_subcategories": len({record.primary_category for record in records}),
                 "accepted_for_counts": dict(sorted(Counter(record.accepted_for for record in records).items())),
             },
             "locality": _window_distances(records, inputs.normalized_matrix, window_size=window_size),
+            "submitter_locality": _window_distances(
+                records,
+                inputs.normalized_matrix,
+                window_size=window_size,
+                exact_label_attr="primary_category",
+                parent_label_attr="primary_parent_category",
+            ),
             "top_claims_clusters": _top_claims_clusters(records, inputs.claims_cluster_summaries, limit=10),
             "nearest_oral_presentations": _centroid_oral_matches(
                 records,
@@ -1464,6 +1650,8 @@ def analyze_layout_proposal(
                 "title": oral.title,
                 "primary_parent_category": oral.primary_parent_category,
                 "primary_subcategory": oral.primary_subcategory,
+                "layout_parent_label": oral.layout_parent_label,
+                "layout_exact_label": oral.layout_exact_label,
                 "assigned_session_id": assigned_session_id,
                 "assigned_session_label": None if assigned_session_id is None else SESSION_LABELS[assigned_session_id],
                 "assigned_block_id": None if assigned_session_id is None else SESSION_TO_BLOCK[assigned_session_id],
@@ -1475,8 +1663,10 @@ def analyze_layout_proposal(
             "window_size": window_size,
             "oral_top_k": oral_top_k,
             "accepted_count": len(inputs.records),
-            "poster_count": len(inputs.records),
+            "poster_count": len(inputs.poster_records),
             "oral_count": len(inputs.oral_records),
+            "layout_label_system": inputs.layout_label_system,
+            "layout_label_source": inputs.layout_label_source,
         },
         "author_conflicts_by_session": all_conflicts,
         "block_analysis": block_analysis,
@@ -1487,6 +1677,12 @@ def analyze_layout_proposal(
             inputs.claims_cluster_summaries,
         ),
         "discoverability": _discoverability_metrics(inputs.records, assignments_by_id),
+        "submitter_discoverability": _discoverability_metrics_for_labels(
+            inputs.records,
+            assignments_by_id,
+            "primary_category",
+            "primary_parent_category",
+        ),
         "session_analysis": session_analysis,
         "oral_presentations": oral_assignments,
     }
@@ -1528,6 +1724,9 @@ def write_layout_csv(path: Path, proposal: dict[str, Any]) -> None:
         "primary_parent_category",
         "primary_subcategory",
         "primary_category",
+        "layout_parent_label",
+        "layout_exact_label",
+        "layout_label_system",
         "first_author_id",
         "claims_cluster_id",
         "claims_cluster_label",
@@ -1549,6 +1748,9 @@ def build_optimize_parser() -> argparse.ArgumentParser:
     parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_claims")
     parser.add_argument("--claims-cluster-assignments", default=DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS)
     parser.add_argument("--claims-cluster-summaries", default=DEFAULT_CLAIMS_CLUSTER_SUMMARIES)
+    parser.add_argument("--layout-cluster-assignments")
+    parser.add_argument("--layout-cluster-summaries")
+    parser.add_argument("--layout-label-system", default=DEFAULT_LAYOUT_LABEL_SYSTEM)
     parser.add_argument("--output-dir", default="data/poster_layout")
     parser.add_argument("--exact-session-weight", type=float, default=OptimizationWeights.exact_session_weight)
     parser.add_argument("--parent-session-weight", type=float, default=OptimizationWeights.parent_session_weight)
@@ -1572,6 +1774,9 @@ def optimize_main(argv: list[str] | None = None) -> int:
         Path(args.embeddings_dir),
         Path(args.claims_cluster_assignments) if args.claims_cluster_assignments else None,
         Path(args.claims_cluster_summaries) if args.claims_cluster_summaries else None,
+        Path(args.layout_cluster_assignments) if args.layout_cluster_assignments else None,
+        Path(args.layout_cluster_summaries) if args.layout_cluster_summaries else None,
+        str(args.layout_label_system or DEFAULT_LAYOUT_LABEL_SYSTEM),
     )
     proposal = build_layout_proposal(
         inputs,
@@ -1598,6 +1803,9 @@ def build_analysis_parser() -> argparse.ArgumentParser:
     parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_claims")
     parser.add_argument("--claims-cluster-assignments", default=DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS)
     parser.add_argument("--claims-cluster-summaries", default=DEFAULT_CLAIMS_CLUSTER_SUMMARIES)
+    parser.add_argument("--layout-cluster-assignments")
+    parser.add_argument("--layout-cluster-summaries")
+    parser.add_argument("--layout-label-system", default=DEFAULT_LAYOUT_LABEL_SYSTEM)
     parser.add_argument("--output", default="data/poster_layout/analysis.json")
     parser.add_argument("--window-size", type=int, default=5)
     parser.add_argument("--oral-top-k", type=int, default=10)
@@ -1615,6 +1823,9 @@ def analyze_main(argv: list[str] | None = None) -> int:
         Path(args.embeddings_dir),
         Path(args.claims_cluster_assignments) if args.claims_cluster_assignments else None,
         Path(args.claims_cluster_summaries) if args.claims_cluster_summaries else None,
+        Path(args.layout_cluster_assignments) if args.layout_cluster_assignments else None,
+        Path(args.layout_cluster_summaries) if args.layout_cluster_summaries else None,
+        str(args.layout_label_system or DEFAULT_LAYOUT_LABEL_SYSTEM),
     )
     proposal = load_proposal(Path(args.assignment))
     analysis = analyze_layout_proposal(
