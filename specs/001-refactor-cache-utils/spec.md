@@ -124,9 +124,9 @@ regeneration route that preserves unaffected authoritative outputs.
   repeated behaviors that are currently rediscovered across in-scope cleanup
   targets.
 - **FR-003**: The system MUST identify the in-scope artifact classes for
-  expensive workflows, including authoritative outputs, resumable caches,
-  disposable scratch artifacts, and explicit output families for experiments,
-  exported sites, and proposals.
+  expensive workflows, including inputs, authoritative outputs, resumable
+  caches, and disposable scratch artifacts, and MUST identify explicit output
+  families for experiments, exported sites, and proposals.
 - **FR-004**: If `data/` is the parent directory for local artifact storage, the
   system MUST reserve `data/inputs/` for GraphQL-fetched abstract inputs so
   fetched source data is distinct from caches and derived outputs.
@@ -158,8 +158,10 @@ regeneration route that preserves unaffected authoritative outputs.
 - **Cleanup Slice**: A bounded maintenance target within an expensive workflow
   that can be reviewed and verified independently.
 - **Artifact Class**: A named category that distinguishes canonical outputs,
-  resumable caches, disposable scratch products, experiments, exported sites,
-  and proposals.
+  resumable caches, disposable scratch products, and output-bearing workflows at
+  the top level.
+- **Output Family**: A named subdivision of outputs used to distinguish
+  experiments, exported sites, and proposals.
 - **Input Snapshot**: A stored GraphQL-fetched abstract dataset under
   `data/inputs/` that acts as the fetched source input for downstream work.
 - **Dependency Basis**: The upstream inputs, defaults, or metadata conditions
@@ -188,7 +190,7 @@ regeneration route that preserves unaffected authoritative outputs.
 
 - **SC-001**: Operators can classify 100% of the expensive artifact classes in
   scope as canonical, resumable cache, or disposable scratch using checked-in
-  project outputs alone.
+  documentation plus local artifact metadata alone.
 - **SC-002**: For every in-scope expensive workflow, an operator can identify
   the correct invalidation and regeneration route in under 5 minutes without
   consulting commit history.

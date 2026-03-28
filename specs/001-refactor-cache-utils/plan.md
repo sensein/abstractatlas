@@ -28,7 +28,7 @@ embedding-manifest, exported-site, and proposal-adjacent flows.
 **Project Type**: Python CLI/data-pipeline project with operator-facing filesystem contracts  
 **Performance Goals**: Compute cache/output paths directly from artifact family and state key without directory scans; resume expensive work without recomputing unaffected artifacts; keep lookup overhead negligible relative to the expensive workflow itself  
 **Constraints**: Preserve canonical raw-data traceability while introducing `data/inputs/` for GraphQL-fetched abstract snapshots; do not commit `data/inputs/`, `data/cache/`, `data/outputs/`, `export/`, or scratch outputs to git; keep credentials out of cache metadata; keep current CLI behavior backward-compatible or documented when defaults move; use `.venv` for all Python execution  
-**Scale/Scope**: First slice covers shared artifact utilities and the highest-leverage expensive workflows currently centered in `enrichment.py`, `openalex.py`, `neuroscape.py`, and `ui.py`, with matching test and doc updates
+**Scale/Scope**: First slice covers shared artifact utilities and the highest-leverage expensive workflows currently centered in `assets.py`, `enrichment.py`, `openalex.py`, `neuroscape.py`, `poster_layout.py`, `poster_sequencing.py`, and `ui.py`, with matching test and doc updates
 
 ## Constitution Check
 
@@ -76,18 +76,24 @@ specs/001-refactor-cache-utils/
 
 ```text
 src/ohbm2026/
+├── assets.py
 ├── cli.py
 ├── enrichment.py
 ├── openalex.py
 ├── neuroscape.py
+├── poster_layout.py
+├── poster_sequencing.py
 ├── ui.py
 └── artifacts.py              # new shared artifact/cache/input/output utility module
 
 tests/
 ├── test_artifacts.py         # new shared utility and path-resolution coverage
+├── test_assets.py
 ├── test_enrichment.py
 ├── test_openalex.py
 ├── test_neuroscape.py
+├── test_poster_layout.py
+├── test_poster_sequencing.py
 └── test_ui.py
 
 docs/

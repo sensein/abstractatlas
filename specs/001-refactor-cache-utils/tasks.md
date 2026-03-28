@@ -101,13 +101,15 @@ correct output family (`experiments`, `exported-sites`, or `proposals`).
 - [ ] T014 [P] [US2] Add input snapshot and asset refresh coverage for `data/inputs/` in `tests/test_assets.py`
 - [ ] T015 [P] [US2] Add output-family path coverage for exported sites and experiments in `tests/test_neuroscape.py` and `tests/test_ui.py`
 - [ ] T016 [P] [US2] Add proposal output-family path coverage in `tests/test_poster_layout.py` and `tests/test_poster_sequencing.py`
+- [ ] T017 [P] [US2] Add exported-site publish compatibility coverage for `data/outputs/exported-sites/` and `export/` in `tests/test_ui.py`
 
 ### Implementation for User Story 2
 
-- [ ] T017 [US2] Update `src/ohbm2026/assets.py` to store GraphQL-fetched source snapshots under `data/inputs/` while preserving canonical normalized outputs
-- [ ] T018 [US2] Update default cache paths in `src/ohbm2026/enrichment.py` and `src/ohbm2026/openalex.py` to resolve under `data/cache/`
-- [ ] T019 [US2] Update exported-site and experiment output paths in `src/ohbm2026/neuroscape.py` and `src/ohbm2026/ui.py` to resolve under `data/outputs/exported-sites/` and `data/outputs/experiments/`
-- [ ] T020 [US2] Update proposal output writers in `src/ohbm2026/poster_layout.py` and `src/ohbm2026/poster_sequencing.py` to resolve under `data/outputs/proposals/`
+- [ ] T018 [US2] Update `src/ohbm2026/assets.py` to store GraphQL-fetched source snapshots under `data/inputs/` while preserving canonical normalized outputs
+- [ ] T019 [US2] Update default cache paths in `src/ohbm2026/enrichment.py` and `src/ohbm2026/openalex.py` to resolve under `data/cache/`
+- [ ] T020 [US2] Update exported-site and experiment output paths in `src/ohbm2026/neuroscape.py` and `src/ohbm2026/ui.py` to resolve under `data/outputs/exported-sites/` and `data/outputs/experiments/`
+- [ ] T021 [US2] Update proposal output writers in `src/ohbm2026/poster_layout.py` and `src/ohbm2026/poster_sequencing.py` to resolve under `data/outputs/proposals/`
+- [ ] T022 [US2] Update `src/ohbm2026/ui.py` to preserve or explicitly redefine the publish step from `data/outputs/exported-sites/` into `export/`
 
 **Checkpoint**: Operators can distinguish fetched inputs, caches, and each
 output family by location alone, with tests confirming the contract.
@@ -126,15 +128,15 @@ inputs or outputs.
 
 ### Tests for User Story 3 (REQUIRED FOR BEHAVIOR CHANGES) ⚠️
 
-- [ ] T021 [P] [US3] Add invalidation and state-key regeneration tests in `tests/test_artifacts.py`
-- [ ] T022 [P] [US3] Add resume and regeneration regression tests in `tests/test_enrichment.py` and `tests/test_openalex.py`
-- [ ] T023 [P] [US3] Add output regeneration regression tests in `tests/test_ui.py` and `tests/test_neuroscape.py`
+- [ ] T023 [P] [US3] Add invalidation and state-key regeneration tests in `tests/test_artifacts.py`
+- [ ] T024 [P] [US3] Add resume and regeneration regression tests in `tests/test_enrichment.py` and `tests/test_openalex.py`
+- [ ] T025 [P] [US3] Add output regeneration regression tests in `tests/test_ui.py` and `tests/test_neuroscape.py`
 
 ### Implementation for User Story 3
 
-- [ ] T024 [US3] Implement dependency-basis invalidation and resume policy helpers in `src/ohbm2026/artifacts.py`
-- [ ] T025 [US3] Wire regeneration metadata and stale-detection behavior through `src/ohbm2026/enrichment.py` and `src/ohbm2026/openalex.py`
-- [ ] T026 [US3] Wire regeneration metadata and stale-detection behavior through `src/ohbm2026/neuroscape.py`, `src/ohbm2026/ui.py`, `src/ohbm2026/poster_layout.py`, and `src/ohbm2026/poster_sequencing.py`
+- [ ] T026 [US3] Implement dependency-basis invalidation and resume policy helpers in `src/ohbm2026/artifacts.py`
+- [ ] T027 [US3] Wire regeneration metadata and stale-detection behavior through `src/ohbm2026/enrichment.py` and `src/ohbm2026/openalex.py`
+- [ ] T028 [US3] Wire regeneration metadata and stale-detection behavior through `src/ohbm2026/neuroscape.py`, `src/ohbm2026/ui.py`, `src/ohbm2026/poster_layout.py`, and `src/ohbm2026/poster_sequencing.py`
 
 **Checkpoint**: Stale or interrupted expensive workflows can be resumed or
 rebuilt predictably from explicit metadata and regeneration rules.
@@ -146,10 +148,10 @@ rebuilt predictably from explicit metadata and regeneration rules.
 **Purpose**: Sync operator docs, review secret safety, and validate the planned
 workflow end to end.
 
-- [ ] T027 [P] Update operator docs for `data/inputs/`, `data/cache/`, and `data/outputs/` in `README.md`, `docs/README.md`, and `docs/reproducibility-vision.md`
-- [ ] T028 [P] Update workflow guidance for output families and git-ignore expectations in `experiments/README.md` and `AGENTS.md`
-- [ ] T029 Review secret exposure and metadata redaction behavior in `src/ohbm2026/artifacts.py`, `src/ohbm2026/enrichment.py`, `src/ohbm2026/openalex.py`, `src/ohbm2026/neuroscape.py`, and `src/ohbm2026/ui.py`
-- [ ] T030 Run the verification flow documented in `specs/001-refactor-cache-utils/quickstart.md`
+- [ ] T029 [P] Update operator docs for `data/inputs/`, `data/cache/`, and `data/outputs/` in `README.md`, `docs/README.md`, and `docs/reproducibility-vision.md`
+- [ ] T030 [P] Update workflow guidance for output families and git-ignore expectations in `experiments/README.md` and `AGENTS.md`
+- [ ] T031 Review secret exposure and metadata redaction behavior in `src/ohbm2026/artifacts.py`, `src/ohbm2026/enrichment.py`, `src/ohbm2026/openalex.py`, `src/ohbm2026/neuroscape.py`, and `src/ohbm2026/ui.py`
+- [ ] T032 Run the verification flow documented in `specs/001-refactor-cache-utils/quickstart.md`
 
 ---
 
@@ -182,8 +184,8 @@ workflow end to end.
 - T003, T006, and T008 can run in parallel once Phase 1 scaffolding exists
 - T009 and T010 can run in parallel for User Story 1
 - T014, T015, and T016 can run in parallel for User Story 2 because they target different test files
-- T021, T022, and T023 can run in parallel for User Story 3
-- T027 and T028 can run in parallel during polish
+- T023, T024, and T025 can run in parallel for User Story 3
+- T029 and T030 can run in parallel during polish
 
 ---
 
@@ -233,10 +235,10 @@ With multiple developers:
 
 ## Notes
 
-- Total tasks: 30
+- Total tasks: 32
 - User Story task counts:
   - US1: 5 tasks
-  - US2: 7 tasks
+  - US2: 9 tasks
   - US3: 6 tasks
 - Setup/foundational/polish tasks: 12 tasks
 - Suggested MVP scope: Phase 1 + Phase 2 + User Story 1
