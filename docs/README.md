@@ -1,0 +1,59 @@
+# Documentation Guide
+
+## Start Here
+
+If you are new to the repository, read these first:
+
+1. [reproducibility-vision.md](/Users/satra/software/temp/ohbm2026/docs/reproducibility-vision.md)
+2. [README.md](/Users/satra/software/temp/ohbm2026/README.md)
+3. [CONSTITUTION.md](/Users/satra/software/temp/ohbm2026/CONSTITUTION.md)
+4. [memory/summary.md](/Users/satra/software/temp/ohbm2026/memory/summary.md)
+
+The vision document explains what the repo is for. The README explains how to
+run the current canonical pipeline. The constitution explains what should not be
+broken while changing it.
+
+## Planning Documents By Topic
+
+### Core pipeline and reproducibility
+
+- [ohbm26-plan.md](/Users/satra/software/temp/ohbm2026/docs/ohbm26-plan.md)
+  - original combined pipeline plan
+- [title-reference-cleanup-plan.md](/Users/satra/software/temp/ohbm2026/docs/title-reference-cleanup-plan.md)
+  - title normalization and reference-resolution changes
+- [cllm-claims-plan.md](/Users/satra/software/temp/ohbm2026/docs/cllm-claims-plan.md)
+  - claim extraction workflow and UI exposure
+- [clustering-analysis-plan.md](/Users/satra/software/temp/ohbm2026/docs/clustering-analysis-plan.md)
+  - unsupervised clustering benchmark
+- [static-ui-plan.md](/Users/satra/software/temp/ohbm2026/docs/static-ui-plan.md)
+  - static search UI goals and data contract
+
+### Semantic category and analysis work
+
+- [claims-semantic-clustering-plan.md](/Users/satra/software/temp/ohbm2026/docs/claims-semantic-clustering-plan.md)
+  - claim-only embedding and clustering track
+- [semantic-category-evaluation-plan.md](/Users/satra/software/temp/ohbm2026/docs/semantic-category-evaluation-plan.md)
+  - compare learned semantic taxonomies with submitter categories
+- [poster-semantic-category-experiments-plan.md](/Users/satra/software/temp/ohbm2026/docs/poster-semantic-category-experiments-plan.md)
+  - poster-facing semantic-category experiments
+
+### Poster layout and sequencing work
+
+- [poster-layout-optimizer-plan.md](/Users/satra/software/temp/ohbm2026/docs/poster-layout-optimizer-plan.md)
+  - optimizer goals, outputs, and metrics
+- [poster-sequencing-benchmark-plan.md](/Users/satra/software/temp/ohbm2026/docs/poster-sequencing-benchmark-plan.md)
+  - stronger 1D ordering methods for poster numbering
+
+## Review And Debt Tracking
+
+- [repo-review-2026-03-28.md](/Users/satra/software/temp/ohbm2026/docs/repo-review-2026-03-28.md)
+  - software-engineering and technical-management inspection of the current repo
+
+## How To Use These Docs
+
+- treat `README.md` as the current operational runbook
+- treat plan docs as design history plus intent
+- treat experiment READMEs under `experiments/` as the source of truth for a
+  recorded experiment’s scope and rerun instructions
+- when a doc conflicts with current code behavior, fix the doc or the code in
+  the same change rather than letting the mismatch persist

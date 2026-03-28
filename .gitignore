@@ -11,7 +11,8 @@ export/
 
 # Local experiment and scratch outputs
 .matplotlib-cache/
-experiments/
+experiments/*
+!experiments/README.md
 logs/
 tmp/
 
