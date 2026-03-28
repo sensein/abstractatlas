@@ -157,9 +157,9 @@ regeneration route that preserves unaffected authoritative outputs.
 
 - **Cleanup Slice**: A bounded maintenance target within an expensive workflow
   that can be reviewed and verified independently.
-- **Artifact Class**: A named category that distinguishes canonical outputs,
-  resumable caches, disposable scratch products, and output-bearing workflows at
-  the top level.
+- **Artifact Class**: A named top-level category that distinguishes inputs,
+  caches, outputs, and disposable scratch artifacts in the repository
+  lifecycle.
 - **Output Family**: A named subdivision of outputs used to distinguish
   experiments, exported sites, and proposals.
 - **Input Snapshot**: A stored GraphQL-fetched abstract dataset under
