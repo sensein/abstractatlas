@@ -7,7 +7,9 @@ corpus and embedding artifacts. Experiments are evidence, not silent defaults.
 
 Read the root
 [CONSTITUTION.md](/Users/satra/software/temp/ohbm2026/CONSTITUTION.md) before
-adding or rerunning anything here.
+adding or rerunning anything here, especially the rules around fresh output
+directories, `.venv`-scoped Python execution, and keeping secrets out of logs
+or committed artifacts.
 
 ## Current Experiment Index
 
@@ -45,6 +47,8 @@ adding or rerunning anything here.
 - include a `README.md` that states the purpose, inputs, outputs, and repeat
   command
 - keep recorded runs immutable
+- run Python commands through `.venv/bin/python` or `uv` targeting `.venv`
 - write the comparison artifacts needed to interpret the result later
+- do not expose API keys or tokens in experiment notes, outputs, or logs
 - do not silently replace active organizer-facing proposals with experiment
   outputs

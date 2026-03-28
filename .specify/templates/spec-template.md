@@ -100,6 +100,17 @@
 - **[Entity 1]**: [What it represents, key attributes without implementation]
 - **[Entity 2]**: [What it represents, relationships to other entities]
 
+### Constitution Alignment *(mandatory)*
+
+- **CA-001**: All Python execution for this feature MUST use the repository-local
+  `.venv/bin/python` interpreter or `uv` targeting that interpreter.
+- **CA-002**: The spec MUST identify the tests or verification steps that are
+  added or updated before implementation for each behavior-changing story.
+- **CA-003**: Any change to canonical defaults, inputs, outputs, or review
+  surfaces MUST list the docs that need to be updated in the same change.
+- **CA-004**: Any integration that uses credentials MUST name the env vars or
+  secret boundary and MUST NOT require checked-in tokens or copied secrets.
+
 ## Success Criteria *(mandatory)*
 
 <!--

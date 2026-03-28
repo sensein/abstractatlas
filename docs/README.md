@@ -11,7 +11,8 @@ If you are new to the repository, read these first:
 
 The vision document explains what the repo is for. The README explains how to
 run the current canonical pipeline. The constitution explains what should not be
-broken while changing it.
+broken while changing it, including `.venv`-only Python execution,
+plan-first/test-driven delivery, auditability, and secret hygiene.
 
 ## Planning Documents By Topic
 

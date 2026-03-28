@@ -72,6 +72,8 @@ The project constitution lives in
 [CONSTITUTION.md](/Users/satra/software/temp/ohbm2026/CONSTITUTION.md). The
 practical commitments future operators should internalize are:
 
+- all Python execution must use the repository-local `.venv` via
+  `.venv/bin/python` or `uv` targeting that interpreter, never system Python
 - recorded experiment outputs are immutable and must go into fresh run
   directories
 - `data/abstracts.json` is the canonical normalized raw corpus and should not
@@ -83,6 +85,10 @@ practical commitments future operators should internalize are:
 - `ohbmcli` is the canonical interface for the main pipeline
 - organizer-facing review outputs must preserve machine-readable provenance
   alongside summaries and HTML views
+- behavior-changing work should update the nearest plan or spec and define
+  verification before implementation begins
+- secrets must remain in `.env` or local environment variables and never be
+  copied into committed files or logs
 - when canonical defaults change, the docs must change with them
 
 These commitments matter because the repo is simultaneously a data pipeline, an
@@ -120,7 +126,7 @@ Useful when the data products already exist locally and you need confidence that
 the code still matches the documented pipeline.
 
 1. Create or refresh `.venv` with `uv`.
-2. Run the test suite.
+2. Run the test suite through `.venv/bin/python`.
 3. Review `README.md` for the latest canonical step ordering.
 4. Inspect `memory/summary.md` and the relevant experiment README before
    changing defaults.
@@ -269,9 +275,11 @@ If your change affects canonical outputs, also ask:
 ## Practical Guidance For Future Operators
 
 - prefer `ohbmcli` when working on the canonical pipeline
+- use `.venv/bin/python` or `uv` targeting `.venv` for every Python command
 - treat `scripts/` as focused workflow entrypoints, especially for experiments
   and organizer tooling
 - keep experiment runs fresh and non-destructive
+- keep secrets out of committed files, docs, and logs
 - assume `memory/` is context, not canon
 - when in doubt, optimize for traceability over convenience
 

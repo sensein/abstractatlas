@@ -31,7 +31,19 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- Python execution uses the repository-local `.venv/bin/python` interpreter, or
+  `uv` explicitly targeting that interpreter; no system Python steps appear.
+- The plan names the verification to add first for any behavior, pipeline,
+  contract, or UI change, and that verification is expected to fail or be
+  missing before implementation begins.
+- Output paths preserve auditability: canonical raw data is not silently
+  rewritten, and recorded experiments or proposal outputs use fresh directories.
+- Secrets stay outside the repo; required credentials are referenced by env var
+  name only and redaction expectations are stated where relevant.
+- README/docs/plan updates are included whenever defaults, commands, inputs,
+  outputs, or review surfaces change.
+- The delivery plan ends with local verification, a descriptive commit, and a
+  push unless the requester explicitly asks to keep the change unpublished.
 
 ## Project Structure
 

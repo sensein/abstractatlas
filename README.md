@@ -7,7 +7,12 @@ matching, embeddings, clustering, and a static search UI.
 This README is the runbook for a person or an agent that needs to go from the
 original abstract download to the current latest step.
 
-Project conventions that should not be violated live in [CONSTITUTION.md](/Users/satra/software/temp/ohbm2026/CONSTITUTION.md), including the rule that recorded experiment runs must write to fresh directories and never overwrite prior outputs.
+Project conventions that should not be violated live in
+[CONSTITUTION.md](/Users/satra/software/temp/ohbm2026/CONSTITUTION.md),
+including the rules that Python work stays inside the repository-local `.venv`,
+recorded experiment runs write to fresh directories instead of overwriting prior
+outputs, behavior-changing work stays plan-first and test-driven, and secrets
+never get copied into the repo or logs.
 
 For the repo-level intent, reproducibility model, key decisions, and experiment
 history, start with
@@ -105,12 +110,20 @@ Common keys:
 
 No API key is needed for local Ollama figure analysis.
 
+Treat `.env` and shell environment variables as the only valid homes for these
+secrets. Do not commit tokens, paste them into docs, or leave them in command
+logs.
+
 ## Setup
+
+Do not use system Python in this repo. Create or refresh `.venv` with `uv`, and
+run Python commands through `.venv/bin/python` or `uv` targeting that
+interpreter.
 
 Create the virtual environment and run tests:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv venv --python /opt/homebrew/bin/python3 .venv
+UV_CACHE_DIR=.uv-cache uv venv --python 3.11 .venv
 PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
 ```
 
