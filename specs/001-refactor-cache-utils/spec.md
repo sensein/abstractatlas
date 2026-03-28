@@ -8,6 +8,16 @@ shared utils as much as possible. consider what data and cache look like based
 on expensive (time/cost/resource) operations look like and routes to
 invalidate/regenerate cache"
 
+## Clarifications
+
+### Session 2026-03-28
+
+- Q: Which output families must be modeled explicitly in the artifact layout? →
+  A: experiments, exported sites, and proposals
+- Q: If `data/` is the parent for caches and outputs, where should fetched
+  source abstracts live? → A: `data/inputs/` stores GraphQL-fetched abstract
+  data
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Clean Up Repeated Maintenance Work (Priority: P1)
@@ -54,7 +64,9 @@ caches, and which can be regenerated from upstream artifacts.
 
 1. **Given** an operator is preparing to rerun an expensive workflow, **When**
    they inspect the documented artifact set, **Then** they can tell which files
-   must be preserved and which can be regenerated.
+   must be preserved and which can be regenerated, including experiment
+   outputs, exported sites, proposal bundles, and the GraphQL-fetched inputs
+   stored under `data/inputs/`.
 2. **Given** an operator finds a stale or partial expensive output, **When**
    they consult the feature outputs, **Then** they can identify the correct
    invalidation scope without deleting unrelated canonical artifacts.
@@ -88,8 +100,12 @@ regeneration route that preserves unaffected authoritative outputs.
 
 - A cache contains partial progress from an interrupted run and mixes successful
   and failed records.
+- A fetched GraphQL input snapshot and its normalized downstream representation
+  disagree about freshness or source state.
 - A derived output was produced from older defaults while upstream canonical
   inputs remain current.
+- Experiment outputs, exported sites, and proposal bundles have different
+  retention and regeneration expectations even when they share upstream data.
 - Two expensive workflows share upstream inputs but have different regeneration
   costs, so invalidation cannot be treated as all-or-nothing.
 - A workflow depends on credentials or environment-local settings, but cache and
@@ -108,27 +124,32 @@ regeneration route that preserves unaffected authoritative outputs.
   repeated behaviors that are currently rediscovered across in-scope cleanup
   targets.
 - **FR-003**: The system MUST identify the in-scope artifact classes for
-  expensive workflows, including authoritative outputs, resumable caches, and
-  disposable scratch artifacts.
-- **FR-004**: The system MUST state the upstream dependency basis for each
+  expensive workflows, including authoritative outputs, resumable caches,
+  disposable scratch artifacts, and explicit output families for experiments,
+  exported sites, and proposals.
+- **FR-004**: If `data/` is the parent directory for local artifact storage, the
+  system MUST reserve `data/inputs/` for GraphQL-fetched abstract inputs so
+  fetched source data is distinct from caches and derived outputs.
+- **FR-005**: The system MUST state the upstream dependency basis for each
   in-scope expensive artifact class so an operator can tell what it depends on
   before deleting or regenerating it.
-- **FR-005**: The system MUST define the invalidation triggers for each in-scope
+- **FR-006**: The system MUST define the invalidation triggers for each in-scope
   cache or regenerable artifact class, including input changes, default changes,
   interrupted progress, and stale metadata.
-- **FR-006**: The system MUST define the approved regeneration route for each
+- **FR-007**: The system MUST define the approved regeneration route for each
   in-scope cache or regenerable artifact class, including whether selective
   resume, selective rebuild, or full rebuild is expected.
-- **FR-007**: The system MUST preserve the distinction between canonical
+- **FR-008**: The system MUST preserve the distinction between canonical
   repository outputs and exploratory or scratch outputs during cleanup and cache
-  lifecycle decisions.
-- **FR-008**: The system MUST provide operator-facing guidance that lets a
+  lifecycle decisions, with experiments, exported sites, and proposals treated
+  as separate output families with their own regeneration rules.
+- **FR-009**: The system MUST provide operator-facing guidance that lets a
   reviewer or maintainer understand the cleanup boundary and cache lifecycle
   without consulting commit history or tribal knowledge.
-- **FR-009**: The system MUST require verification for each cleanup slice that
+- **FR-010**: The system MUST require verification for each cleanup slice that
   demonstrates unchanged intended behavior while confirming the new artifact and
   cache rules remain accurate.
-- **FR-010**: The system MUST ensure that cache descriptions, invalidation
+- **FR-011**: The system MUST ensure that cache descriptions, invalidation
   guidance, and regeneration routes never require checked-in credentials or
   expose secret values.
 
@@ -137,7 +158,10 @@ regeneration route that preserves unaffected authoritative outputs.
 - **Cleanup Slice**: A bounded maintenance target within an expensive workflow
   that can be reviewed and verified independently.
 - **Artifact Class**: A named category that distinguishes canonical outputs,
-  resumable caches, and disposable scratch products.
+  resumable caches, disposable scratch products, experiments, exported sites,
+  and proposals.
+- **Input Snapshot**: A stored GraphQL-fetched abstract dataset under
+  `data/inputs/` that acts as the fetched source input for downstream work.
 - **Dependency Basis**: The upstream inputs, defaults, or metadata conditions
   that determine whether an artifact remains valid.
 - **Invalidation Trigger**: A defined reason an artifact or cache must be
@@ -182,6 +206,10 @@ regeneration route that preserves unaffected authoritative outputs.
   repo reorganization in one pass.
 - Existing authoritative artifacts remain the source of truth unless the feature
   explicitly reclassifies them in checked-in documentation or metadata.
+- If `data/` remains the parent artifact directory, fetched source inputs move
+  into `data/inputs/` rather than sharing space with caches or derived outputs.
+- Experiments, exported sites, and proposals are all outputs, but they are not
+  interchangeable and therefore need distinct storage and regeneration rules.
 - Selective invalidation is preferable to full rebuilds when upstream evidence
   allows unaffected outputs to remain valid.
 - The feature may introduce shared repository rules or reusable maintenance
