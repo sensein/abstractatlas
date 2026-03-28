@@ -191,6 +191,44 @@ class PosterLayoutTest(unittest.TestCase):
             self._collapse_label_runs(block_two_records, block_two_order),
         )
 
+    def test_build_global_numeric_order_can_use_spectral_semantic_order_within_category(self) -> None:
+        records = [
+            poster_layout.AcceptedAbstract(1, "Poster", "Alpha one", "Systems", "Memory", "Systems :: Memory", "Systems", "Systems :: Memory", "submitter_primary_secondary", 11, 0, None, None),
+            poster_layout.AcceptedAbstract(2, "Poster", "Alpha two", "Systems", "Memory", "Systems :: Memory", "Systems", "Systems :: Memory", "submitter_primary_secondary", 12, 1, None, None),
+            poster_layout.AcceptedAbstract(3, "Poster", "Alpha three", "Systems", "Memory", "Systems :: Memory", "Systems", "Systems :: Memory", "submitter_primary_secondary", 13, 2, None, None),
+            poster_layout.AcceptedAbstract(4, "Poster", "Alpha four", "Systems", "Memory", "Systems :: Memory", "Systems", "Systems :: Memory", "submitter_primary_secondary", 14, 3, None, None),
+            poster_layout.AcceptedAbstract(5, "Poster", "Beta one", "Methods", "Modeling", "Methods :: Modeling", "Methods", "Methods :: Modeling", "submitter_primary_secondary", 15, 4, None, None),
+            poster_layout.AcceptedAbstract(6, "Poster", "Beta two", "Methods", "Modeling", "Methods :: Modeling", "Methods", "Methods :: Modeling", "submitter_primary_secondary", 16, 5, None, None),
+            poster_layout.AcceptedAbstract(7, "Poster", "Beta three", "Methods", "Modeling", "Methods :: Modeling", "Methods", "Methods :: Modeling", "submitter_primary_secondary", 17, 6, None, None),
+            poster_layout.AcceptedAbstract(8, "Poster", "Beta four", "Methods", "Modeling", "Methods :: Modeling", "Methods", "Methods :: Modeling", "submitter_primary_secondary", 18, 7, None, None),
+        ]
+        normalized_matrix = poster_layout._normalize_rows(
+            np.asarray(
+                [
+                    [1.0, 0.0, 0.0],
+                    [0.98, 0.02, 0.0],
+                    [0.84, 0.16, 0.0],
+                    [0.8, 0.2, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.02, 0.98, 0.0],
+                    [0.0, 0.84, 0.16],
+                    [0.0, 0.8, 0.2],
+                ],
+                dtype=np.float32,
+            )
+        )
+
+        ordered_indices = poster_layout.build_global_numeric_order(
+            records,
+            normalized_matrix,
+            within_group_strategy="spectral_cluster",
+        )
+
+        self.assertEqual(sorted(ordered_indices), list(range(8)))
+        collapsed = self._collapse_label_runs(records, ordered_indices)
+        self.assertEqual(len(collapsed), 2)
+        self.assertEqual(set(collapsed), {"Systems :: Memory", "Methods :: Modeling"})
+
     def test_standby_time_labels_follow_alternating_block_patterns(self) -> None:
         self.assertEqual(
             poster_layout.standby_time_labels_for_session(1),

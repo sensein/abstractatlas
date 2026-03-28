@@ -60,6 +60,25 @@ class ComparePosterLayoutProposalsTest(unittest.TestCase):
         self.assertIn("sparse 2-opt", emphasis)
         self.assertIn("derive contiguous layout categories", emphasis)
 
+    def test_layout_system_display_name_and_emphasis_cover_new_nocd_and_categorical_layouts(self) -> None:
+        module = _load_compare_module()
+
+        self.assertEqual(
+            module._layout_system_display_name("voyage_stage2_nocd_structural_17"),
+            "Voyage Stage 2 NOCD structural (17 communities)",
+        )
+        emphasis = module._proposal_emphasis(
+            {
+                "proposal_name": "categorical_layout",
+                "proposal_kind": "global_grouped_order",
+                "proposal_method": "categorical_layout",
+                "layout_label_system": "submitter_primary_secondary",
+                "sequencing_method": "categorical_global_spectral_within_category",
+            }
+        )
+        self.assertIn("submitter category taxonomy", emphasis)
+        self.assertIn("global order", emphasis)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -943,6 +943,7 @@ def resequence_proposal_blocks(
     proposal: dict[str, Any],
     ordered_ids_by_block: dict[int, list[int]],
     method_name: str,
+    sequencing_assumption: str | None = None,
 ) -> dict[str, Any]:
     assignments_by_id = {
         int(item["abstract_id"]): dict(item)
@@ -981,15 +982,46 @@ def resequence_proposal_blocks(
             resequenced_assignments.append(row)
             poster_number += 1
 
+    session_summaries: dict[str, Any] = {}
+    for session_id in SESSION_LABELS:
+        session_assignments = [
+            row for row in resequenced_assignments if int(row.get("standby_session") or 0) == int(session_id)
+        ]
+        first_standby_label, second_standby_label = standby_time_labels_for_session(int(session_id))
+        session_summaries[str(session_id)] = {
+            "session_id": int(session_id),
+            "session_label": SESSION_LABELS[int(session_id)],
+            "block_id": SESSION_TO_BLOCK[int(session_id)],
+            "block_label": BLOCK_LABELS[SESSION_TO_BLOCK[int(session_id)]],
+            "first_standby_time_label": first_standby_label,
+            "second_standby_time_label": second_standby_label,
+            "poster_count": len(session_assignments),
+            "layout_parent_label_counts": dict(
+                sorted(Counter(str(item.get("layout_parent_label") or "Unknown") for item in session_assignments).items())
+            ),
+            "layout_exact_label_counts": dict(
+                sorted(Counter(str(item.get("layout_exact_label") or "Unknown") for item in session_assignments).items())
+            ),
+            "submitter_parent_category_counts": dict(
+                sorted(Counter(str(item.get("primary_parent_category") or "Unknown") for item in session_assignments).items())
+            ),
+            "submitter_subcategory_counts": dict(
+                sorted(Counter(str(item.get("primary_category") or "Unknown") for item in session_assignments).items())
+            ),
+        }
+
     metadata = dict(proposal.get("metadata") or {})
     metadata["sequencing_method"] = str(method_name)
-    metadata["sequencing_assumption"] = (
-        "Poster-to-block assignments are held fixed while the within-block order is recomputed as a weighted graph "
-        "reordering problem that seeks stronger near-diagonal and block-coherent similarity structure."
+    metadata["sequencing_assumption"] = str(
+        sequencing_assumption
+        or (
+            "Poster-to-block assignments are held fixed while the within-block order is recomputed as a weighted graph "
+            "reordering problem that seeks stronger near-diagonal and block-coherent similarity structure."
+        )
     )
     return {
         "metadata": metadata,
-        "session_summaries": dict(proposal.get("session_summaries") or {}),
+        "session_summaries": session_summaries,
         "assignments": resequenced_assignments,
     }
 
@@ -1002,7 +1034,15 @@ def build_global_path_split_proposal(
 ) -> dict[str, Any]:
     _block_by_id, block_sequences = assign_path_to_blocks(global_ordered_ids, records_by_id)
     ordered_ids_by_block = {int(block_id): list(ids) for block_id, ids in block_sequences.items()}
-    return resequence_proposal_blocks(proposal, ordered_ids_by_block, method_name=method_name)
+    return resequence_proposal_blocks(
+        proposal,
+        ordered_ids_by_block,
+        method_name=method_name,
+        sequencing_assumption=(
+            "A single global order is constructed across all accepted abstracts first, and that order is then split "
+            "into the two paired-day blocks using the alternating semantic-path block assignment rule."
+        ),
+    )
 
 
 def _load_neighbor_tail_metrics(proposal_csv: Path) -> dict[str, Any]:

@@ -229,6 +229,24 @@ class PosterSequencingTest(unittest.TestCase):
         self.assertEqual(graph["diagnostics"]["components_after_bridge"], 1)
         self.assertIn("graph_was_disconnected", graph["diagnostics"])
 
+    def test_build_global_path_split_proposal_refreshes_session_summaries_and_assumption(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            inputs, proposal = self._build_fixture(Path(tmpdir))
+            records_by_id = {record.abstract_id: record for record in inputs.records}
+
+            resequenced = poster_sequencing.build_global_path_split_proposal(
+                proposal,
+                global_ordered_ids=[1, 2, 3, 4],
+                records_by_id=records_by_id,
+                method_name="fixture_global_order",
+            )
+
+        self.assertIn("single global order", resequenced["metadata"]["sequencing_assumption"])
+        self.assertEqual(resequenced["session_summaries"]["1"]["poster_count"], 1)
+        self.assertEqual(resequenced["session_summaries"]["2"]["poster_count"], 1)
+        self.assertEqual(resequenced["session_summaries"]["3"]["poster_count"], 1)
+        self.assertEqual(resequenced["session_summaries"]["4"]["poster_count"], 1)
+
     def test_derive_contiguous_layout_clusters_respects_sequence_blocks(self) -> None:
         records = [
             poster_layout.AcceptedAbstract(1, "Poster", "Alpha memory one", "Systems", "Memory", "Systems :: Memory", "Systems", "alpha seed", "submitter_primary_secondary", 101, 0, None, None),

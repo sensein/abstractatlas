@@ -629,6 +629,72 @@ def _nearest_neighbor_order(indices: list[int], normalized_matrix: np.ndarray) -
     return [indices[position] for position in order_positions]
 
 
+def _spectral_clustered_group_order(
+    indices: list[int],
+    normalized_matrix: np.ndarray,
+    target_cluster_size: int = 16,
+    max_clusters: int = 8,
+) -> list[int]:
+    if len(indices) <= max(4, int(target_cluster_size)):
+        return _nearest_neighbor_order(indices, normalized_matrix)
+
+    from sklearn.cluster import SpectralClustering
+
+    subset = np.asarray(normalized_matrix[indices], dtype=np.float32)
+    cluster_count = min(
+        max(2, int(round(len(indices) / max(1, int(target_cluster_size))))),
+        max(2, int(max_clusters)),
+        len(indices) - 1,
+    )
+    if cluster_count < 2:
+        return _nearest_neighbor_order(indices, normalized_matrix)
+
+    affinity = np.clip(subset @ subset.T, 0.0, 1.0)
+    np.fill_diagonal(affinity, 1.0)
+    try:
+        labels = SpectralClustering(
+            n_clusters=int(cluster_count),
+            affinity="precomputed",
+            assign_labels="kmeans",
+            random_state=42,
+        ).fit_predict(affinity)
+    except Exception:
+        return _nearest_neighbor_order(indices, normalized_matrix)
+
+    cluster_names = sorted({int(value) for value in labels})
+    if len(cluster_names) <= 1:
+        return _nearest_neighbor_order(indices, normalized_matrix)
+
+    cluster_centroids: list[np.ndarray] = []
+    for cluster_name in cluster_names:
+        member_positions = np.where(labels == int(cluster_name))[0]
+        centroid = subset[member_positions].mean(axis=0)
+        centroid_norm = np.linalg.norm(centroid)
+        cluster_centroids.append(centroid / centroid_norm if centroid_norm > 0.0 else centroid)
+    cluster_order_positions = _nearest_neighbor_order(
+        list(range(len(cluster_names))),
+        np.asarray(cluster_centroids, dtype=np.float32),
+    )
+
+    ordered_indices: list[int] = []
+    for cluster_position in cluster_order_positions:
+        cluster_name = cluster_names[int(cluster_position)]
+        member_positions = np.where(labels == int(cluster_name))[0].tolist()
+        member_indices = [indices[int(position)] for position in member_positions]
+        ordered_indices.extend(_nearest_neighbor_order(member_indices, normalized_matrix))
+    return ordered_indices
+
+
+def _within_group_order(
+    indices: list[int],
+    normalized_matrix: np.ndarray,
+    strategy: str = "nearest_neighbor",
+) -> list[int]:
+    if strategy == "spectral_cluster":
+        return _spectral_clustered_group_order(indices, normalized_matrix)
+    return _nearest_neighbor_order(indices, normalized_matrix)
+
+
 def _ordered_label_subset(preferred_labels: list[str], available_labels: list[str]) -> list[str]:
     available = set(available_labels)
     ordered = [label for label in preferred_labels if label in available]
@@ -721,6 +787,56 @@ def build_block_numeric_order(
         for subcategory_name in ordered_subcategories:
             poster_indices = [record.embedding_index for record in grouped_by_subcategory[subcategory_name]]
             ordered_embedding_indices.extend(_nearest_neighbor_order(poster_indices, normalized_matrix))
+
+    return ordered_embedding_indices
+
+
+def build_global_numeric_order(
+    records: list[AcceptedAbstract],
+    normalized_matrix: np.ndarray,
+    shared_parent_order: list[str] | None = None,
+    shared_subcategory_order: dict[str, list[str]] | None = None,
+    within_group_strategy: str = "nearest_neighbor",
+) -> list[int]:
+    if not records:
+        return []
+
+    grouped_by_parent: dict[str, list[AcceptedAbstract]] = defaultdict(list)
+    for record in records:
+        grouped_by_parent[record.layout_parent_label].append(record)
+
+    if shared_parent_order:
+        ordered_parent_names = _ordered_label_subset(shared_parent_order, sorted(grouped_by_parent))
+    else:
+        ordered_parent_names, _ = build_shared_layout_group_order(records, normalized_matrix)
+
+    ordered_embedding_indices: list[int] = []
+    for parent_name in ordered_parent_names:
+        grouped_by_subcategory: dict[str, list[AcceptedAbstract]] = defaultdict(list)
+        for record in grouped_by_parent[parent_name]:
+            grouped_by_subcategory[record.layout_exact_label].append(record)
+
+        if shared_subcategory_order and parent_name in shared_subcategory_order:
+            ordered_subcategories = _ordered_label_subset(
+                shared_subcategory_order[parent_name],
+                sorted(grouped_by_subcategory),
+            )
+        else:
+            _, ordered_subcategories_by_parent = build_shared_layout_group_order(
+                grouped_by_parent[parent_name],
+                normalized_matrix,
+            )
+            ordered_subcategories = ordered_subcategories_by_parent[parent_name]
+
+        for subcategory_name in ordered_subcategories:
+            poster_indices = [record.embedding_index for record in grouped_by_subcategory[subcategory_name]]
+            ordered_embedding_indices.extend(
+                _within_group_order(
+                    poster_indices,
+                    normalized_matrix,
+                    strategy=within_group_strategy,
+                )
+            )
 
     return ordered_embedding_indices
 

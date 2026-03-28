@@ -27,6 +27,7 @@ def _layout_system_display_name(layout_label_system: str) -> str:
         "submitter_primary_secondary": "Submitter primary/subcategory taxonomy",
         "voyage_stage2_kmeans_25": "Voyage Stage 2 k-means (25 clusters)",
         "voyage_stage2_spectral_31": "Voyage Stage 2 spectral (31 clusters)",
+        "voyage_stage2_nocd_structural_17": "Voyage Stage 2 NOCD structural (17 communities)",
         "minilm_claims_kmeans_28": "MiniLM claims k-means (28 clusters)",
         "voyage_stage2_olo_contiguous_31": "Voyage OLO contiguous categories (31 clusters)",
     }
@@ -42,9 +43,11 @@ def _proposal_label(proposal_dir: Path) -> str:
 
 def _short_proposal_label(proposal_name: str) -> str:
     mapping = {
+        "categorical_layout": "Categorical",
         "block_spread_soft": "Block Spread Soft",
         "semantic_layout_voyage25": "Voyage 25",
         "semantic_layout_voyage31": "Voyage 31",
+        "semantic_layout_nocd17": "NOCD 17",
         "semantic_layout_claims28": "Claims 28",
         "semantic_path_voyage31_olo_two_opt_knn20_p8": "Voyage31 OLO + 2-opt k20",
         "semantic_path_voyage31_olo_two_opt_knn40_p8": "Voyage31 OLO + 2-opt k40",

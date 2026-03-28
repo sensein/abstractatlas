@@ -20,6 +20,10 @@ class LayoutReviewHubTest(unittest.TestCase):
             module._layout_system_display_name("voyage_stage2_olo_contiguous_31"),
             "Voyage OLO contiguous categories (31 clusters)",
         )
+        self.assertEqual(
+            module._layout_system_display_name("voyage_stage2_nocd_structural_17"),
+            "Voyage Stage 2 NOCD structural (17 communities)",
+        )
 
     def test_short_proposal_label_keeps_long_variant_names_compact(self) -> None:
         module = _load_hub_module()
@@ -27,6 +31,7 @@ class LayoutReviewHubTest(unittest.TestCase):
             module._short_proposal_label("semantic_path_voyage31_olo_two_opt_knn20_p8"),
             "Voyage31 OLO + 2-opt k20",
         )
+        self.assertEqual(module._short_proposal_label("semantic_layout_nocd17"), "NOCD 17")
 
     def test_render_hub_html_includes_selector_and_navigator_controls(self) -> None:
         module = _load_hub_module()

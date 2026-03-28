@@ -17,6 +17,7 @@ def _layout_system_display_name(layout_label_system: str) -> str:
         "submitter_primary_secondary": "submitter primary/subcategory taxonomy",
         "voyage_stage2_kmeans_25": "Voyage Stage 2 k-means (25 clusters)",
         "voyage_stage2_spectral_31": "Voyage Stage 2 spectral (31 clusters)",
+        "voyage_stage2_nocd_structural_17": "Voyage Stage 2 NOCD structural (17 communities)",
         "minilm_claims_kmeans_28": "MiniLM claims k-means (28 clusters)",
         "voyage_stage2_olo_contiguous_31": "Voyage OLO contiguous categories (31 clusters)",
     }
@@ -235,6 +236,8 @@ def _proposal_emphasis(row: dict[str, Any]) -> str:
     sequencing_method = str(row.get("sequencing_method") or "")
     if proposal_name == "session_balance_baseline":
         return "Balance sessions and keep nearby posters closely related"
+    if proposal_name == "categorical_layout":
+        return "Use the submitter category taxonomy, then organize each category semantically before splitting one global order across blocks"
     if proposal_name == "block_spread_soft":
         return "Spread categories across blocks with a light touch"
     if proposal_name == "block_spread_strong":
@@ -250,6 +253,8 @@ def _proposal_emphasis(row: dict[str, Any]) -> str:
         proposal_kind == "weighted_assignment" and layout_label_system != "submitter_primary_secondary"
     ):
         return f"Use learned semantic clusters from {layout_label_system} as the main layout taxonomy"
+    if proposal_kind == "global_grouped_order" and layout_label_system == "submitter_primary_secondary":
+        return "Use the submitter category taxonomy as the grouping structure, but build the poster order globally before splitting into blocks"
     if proposal_kind == "semantic_path":
         if "+" in proposal_method:
             return "Build one semantic path using both embedding spaces, then split it across blocks"
