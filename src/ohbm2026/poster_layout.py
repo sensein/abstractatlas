@@ -53,8 +53,8 @@ HALL_LABELS = {
 }
 LAYOUT_POSTER_FACES_PER_BOARD = 2
 DEFAULT_LAYOUT_GEOMETRY = "data/poster_layout/layout_assets/layout_geometry.json"
-DEFAULT_PROPOSAL_CSV_VOYAGE_EMBEDDINGS_DIR = "data/embeddings/voyage_stage2_published"
-DEFAULT_PROPOSAL_CSV_CLAIMS_EMBEDDINGS_DIR = "data/embeddings/minilm_claims"
+DEFAULT_PROPOSAL_CSV_VOYAGE_EMBEDDINGS_DIR = str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_published")
+DEFAULT_PROPOSAL_CSV_CLAIMS_EMBEDDINGS_DIR = str(artifacts.EMBEDDINGS_ROOT / "minilm_claims")
 UNKNOWN_CATEGORY = "Unknown"
 LISTING_TEMPLATE_COLUMNS = (
     "Abstract ID Number",
@@ -127,8 +127,8 @@ class PathProposalConfig:
     seed_strategy: str = "lowest_abstract_id_oral"
 
 
-DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS = "data/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_assignments.json"
-DEFAULT_CLAIMS_CLUSTER_SUMMARIES = "data/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_summaries.json"
+DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS = str(artifacts.EMBEDDINGS_ROOT / "minilm_claims" / "clustering_benchmark_25_30" / "cluster_assignments.json")
+DEFAULT_CLAIMS_CLUSTER_SUMMARIES = str(artifacts.EMBEDDINGS_ROOT / "minilm_claims" / "clustering_benchmark_25_30" / "cluster_summaries.json")
 DEFAULT_LAYOUT_LABEL_SYSTEM = "submitter_primary_secondary"
 
 
@@ -2090,8 +2090,8 @@ def load_proposal(path: Path) -> dict[str, Any]:
 
 def default_layout_output_dir(
     raw_input: Path = Path("data/abstracts.json"),
-    embeddings_dir: Path = Path("data/embeddings/minilm_claims"),
-    authors_input: Path = Path("data/authors.json"),
+    embeddings_dir: Path = Path(str(artifacts.EMBEDDINGS_ROOT / "minilm_claims")),
+    authors_input: Path = Path(str(artifacts.INPUT_AUTHORS_PATH)),
 ) -> Path:
     basis = artifacts.build_dependency_basis(
         input_sources=[str(raw_input), str(embeddings_dir), str(authors_input)],
@@ -2101,7 +2101,7 @@ def default_layout_output_dir(
 
 def default_layout_analysis_output_path(
     raw_input: Path = Path("data/abstracts.json"),
-    embeddings_dir: Path = Path("data/embeddings/minilm_claims"),
+    embeddings_dir: Path = Path(str(artifacts.EMBEDDINGS_ROOT / "minilm_claims")),
 ) -> Path:
     basis = artifacts.build_dependency_basis(
         input_sources=[str(raw_input), str(embeddings_dir)],
@@ -2112,8 +2112,8 @@ def default_layout_analysis_output_path(
 def build_optimize_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Optimize OHBM poster standby patterns and numeric poster order")
     parser.add_argument("--raw-input", default="data/abstracts.json")
-    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_claims")
-    parser.add_argument("--authors-input", default="data/authors.json")
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_claims"))
+    parser.add_argument("--authors-input", default=str(artifacts.INPUT_AUTHORS_PATH))
     parser.add_argument("--claims-cluster-assignments", default=DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS)
     parser.add_argument("--claims-cluster-summaries", default=DEFAULT_CLAIMS_CLUSTER_SUMMARIES)
     parser.add_argument("--layout-cluster-assignments")
@@ -2173,7 +2173,7 @@ def build_analysis_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Analyze an OHBM poster layout proposal")
     parser.add_argument("--assignment", default=str(default_layout_output_dir() / "proposal.json"))
     parser.add_argument("--raw-input", default="data/abstracts.json")
-    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_claims")
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_claims"))
     parser.add_argument("--claims-cluster-assignments", default=DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS)
     parser.add_argument("--claims-cluster-summaries", default=DEFAULT_CLAIMS_CLUSTER_SUMMARIES)
     parser.add_argument("--layout-cluster-assignments")

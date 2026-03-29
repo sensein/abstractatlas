@@ -39,13 +39,13 @@ Oxford Abstracts source corpus into local, reproducible artifacts:
 
 - `data/inputs/abstracts_graphql__<state-key>.json`
 - `data/abstracts.json`
-- `data/assets/`
+- `data/inputs/assets/`
 - `data/cache/figure_analysis/image_analyses_<backend>__<state-key>.json`
 - `data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json`
 - `data/title_modifications.json`
 - `data/abstracts_enriched.json`
 - `data/reference_metadata.json`
-- `data/embeddings/*`
+- `data/outputs/experiments/embeddings/*`
 - `data/outputs/experiments/*__<state-key>/`
 - `data/outputs/exported-sites/ui-site__<state-key>/`
 - `export/ui-site/`
@@ -108,11 +108,11 @@ The defaults that future users should treat as current project reality are:
   the local Ollama route
 - the main enriched corpus is `data/abstracts_enriched.json`
 - the primary semantic embedding reference is
-  `data/embeddings/voyage_stage2_published`
+  `data/outputs/experiments/embeddings/voyage_stage2_published`
 - the main benchmarked semantic UI lens is the `25`-cluster benchmark on the
   published Voyage stage-2 space
 - the claims-focused UI lens is the `28`-cluster benchmark on
-  `data/embeddings/minilm_claims`
+  `data/outputs/experiments/embeddings/minilm_claims`
 - the final delivery artifact is the static site under `export/ui-site/`
 
 The local pre-publish exported-site root now lives under

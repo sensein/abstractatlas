@@ -1360,7 +1360,7 @@ def enrich_database(
 def build_authors_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Export author metadata for OHBM 2026 abstracts")
     parser.add_argument("--input", default="data/abstracts.json")
-    parser.add_argument("--authors-output", default="data/authors.json")
+    parser.add_argument("--authors-output", default=str(artifacts.INPUT_AUTHORS_PATH))
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--ohbm-api-var", default="OHBM2026_API")
     return parser

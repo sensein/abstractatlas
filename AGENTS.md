@@ -10,6 +10,7 @@ Auto-generated from all feature plans. Last updated: 2026-03-28
 - Local JSON/filesystem artifacts under ignored `data/inputs/`,
   `data/cache/`, `data/outputs/`, `archive/`, `export/`, `tmp/`, and experiment
   directories
+- API-derived figure assets and author exports belong under `data/inputs/`
 
 ## Project Structure
 

@@ -64,11 +64,11 @@ class UIHelpersTest(unittest.TestCase):
         self.assertEqual(args.top_neighbors, 8)
         self.assertIn("data/cache/figure_analysis/", args.image_analyses_input)
         self.assertEqual(args.phenomena_theories_input, "data/abstracts_with_phenomena_with_theories_refined.csv")
-        self.assertEqual(args.cluster_25_dir, "data/embeddings/voyage_stage2_published/clustering_benchmark")
-        self.assertEqual(args.spectral_cluster_dir, "data/embeddings/voyage_stage2_published/clustering_benchmark_spectral")
-        self.assertEqual(args.claims_cluster_dir, "data/embeddings/minilm_claims/clustering_benchmark_25_30")
-        self.assertEqual(args.semantic_vectors_input, "data/embeddings/minilm_stage1/vectors.npy")
-        self.assertEqual(args.umap_input, "data/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json")
+        self.assertEqual(args.cluster_25_dir, "data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark")
+        self.assertEqual(args.spectral_cluster_dir, "data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark_spectral")
+        self.assertEqual(args.claims_cluster_dir, "data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30")
+        self.assertEqual(args.semantic_vectors_input, "data/outputs/experiments/embeddings/minilm_stage1/vectors.npy")
+        self.assertEqual(args.umap_input, "data/outputs/experiments/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json")
 
     def test_default_site_output_dir_uses_exported_site_family(self) -> None:
         self.assertTrue(str(default_site_output_dir()).startswith("data/outputs/exported-sites/ui-site__"))
@@ -231,7 +231,7 @@ class UIHelpersTest(unittest.TestCase):
                 json.dumps(
                     {
                         "analyses": {
-                            "data/assets/1_fig.png": {
+                            "data/inputs/assets/1_fig.png": {
                                 "abstract_id": 1,
                                 "question_name": "Methods Figure (Optional)",
                                 "analysis": {

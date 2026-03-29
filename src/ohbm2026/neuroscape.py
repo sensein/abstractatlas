@@ -2217,7 +2217,7 @@ def build_sentence_transformer_parser(
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--input", default="data/abstracts_enriched.json")
     parser.add_argument("--title-input", default="data/abstracts.json")
-    parser.add_argument("--embeddings-dir", default="data/embeddings")
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT))
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--output-name")
     parser.add_argument("--fields", nargs="+", default=list(DEFAULT_EMBEDDING_FIELDS))
@@ -2303,7 +2303,7 @@ def build_voyage_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate Voyage embeddings for OHBM 2026 abstracts")
     parser.add_argument("--input", default="data/abstracts_enriched.json")
     parser.add_argument("--title-input", default="data/abstracts.json")
-    parser.add_argument("--embeddings-dir", default="data/embeddings")
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT))
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--voyage-api-var", default="VOYAGE_API")
     parser.add_argument("--voyage-model", default=DEFAULT_VOYAGE_MODEL)
@@ -2357,7 +2357,7 @@ def build_openai_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate OpenAI embeddings for OHBM 2026 abstracts")
     parser.add_argument("--input", default="data/abstracts_enriched.json")
     parser.add_argument("--title-input", default="data/abstracts.json")
-    parser.add_argument("--embeddings-dir", default="data/embeddings")
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT))
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--openai-api-var", default="OPENAI_API_KEY")
     parser.add_argument("--openai-model", default="text-embedding-3-small")
@@ -2418,8 +2418,8 @@ def build_stage2_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Train and apply a local NeuroScape stage-2 model from an existing stage-1 embedding bundle"
     )
-    parser.add_argument("--stage1-dir", default="data/embeddings/minilm_stage1")
-    parser.add_argument("--output-dir", default="data/embeddings/neuroscape_stage2_local")
+    parser.add_argument("--stage1-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"))
+    parser.add_argument("--output-dir", default=str(artifacts.EMBEDDINGS_ROOT / "neuroscape_stage2_local"))
     parser.add_argument("--device")
     parser.add_argument("--hidden-dimensions", nargs="+", type=int, default=list(DEFAULT_STAGE2_HIDDEN_DIMENSIONS))
     parser.add_argument("--output-dimension", type=int, default=DEFAULT_STAGE2_OUTPUT_DIMENSION)
@@ -2442,12 +2442,12 @@ def build_apply_pretrained_stage2_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Apply the published NeuroScape stage-2 model to a compatible stage-1 embedding bundle"
     )
-    parser.add_argument("--stage1-dir", default="data/embeddings/voyage_stage1")
+    parser.add_argument("--stage1-dir", default=str(artifacts.EMBEDDINGS_ROOT / "voyage_stage1"))
     parser.add_argument(
         "--model-path",
         default="/Users/satra/software/repronim/abcd-repronim/data/NeuroScape/Data/Models/domain_embedding_model.pth",
     )
-    parser.add_argument("--output-dir", default="data/embeddings/voyage_stage2_published")
+    parser.add_argument("--output-dir", default=str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_published"))
     parser.add_argument("--device")
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--dropout", type=float, default=0.05)
@@ -2561,7 +2561,7 @@ def build_cluster_benchmark_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Benchmark label-independent clustering methods over a local embedding bundle"
     )
-    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"))
     parser.add_argument("--input", default="data/abstracts_enriched.json")
     parser.add_argument("--title-input", default="data/abstracts.json")
     parser.add_argument(
@@ -2572,7 +2572,7 @@ def build_cluster_benchmark_parser() -> argparse.ArgumentParser:
                 "clustering_benchmark",
                 artifacts.build_state_key(
                     artifacts.build_dependency_basis(
-                        input_sources=["data/embeddings/minilm_stage1", "data/abstracts_enriched.json", "data/abstracts.json"]
+                        input_sources=[str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"), "data/abstracts_enriched.json", "data/abstracts.json"]
                     )
                 ),
             )
@@ -2667,7 +2667,7 @@ def build_semantic_analysis_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build a semantic graph, detect communities, and summarize clusters from a local embedding bundle"
     )
-    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"))
     parser.add_argument("--input", default="data/abstracts_enriched.json")
     parser.add_argument("--title-input", default="data/abstracts.json")
     parser.add_argument(
@@ -2678,7 +2678,7 @@ def build_semantic_analysis_parser() -> argparse.ArgumentParser:
                 "semantic_analysis",
                 artifacts.build_state_key(
                     artifacts.build_dependency_basis(
-                        input_sources=["data/embeddings/minilm_stage1", "data/abstracts_enriched.json", "data/abstracts.json"]
+                        input_sources=[str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"), "data/abstracts_enriched.json", "data/abstracts.json"]
                     )
                 ),
             )
@@ -2788,7 +2788,7 @@ def build_projection_compare_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Write a linked interactive UMAP/t-SNE comparison for a local embedding bundle"
     )
-    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"))
     parser.add_argument("--raw-input", default="data/abstracts.json")
     parser.add_argument("--enriched-input", default="data/abstracts_enriched.json")
     parser.add_argument("--output-html")
@@ -2864,7 +2864,7 @@ def build_projection_optimize_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Search UMAP and t-SNE parameter sets for more separable projection clusters"
     )
-    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"))
     parser.add_argument("--output", help="Optional JSON output path for scored parameter sets")
     parser.add_argument("--umap-neighbors", nargs="+", type=int, default=[10, 30])
     parser.add_argument("--umap-min-dists", nargs="+", type=float, default=[0.0, 0.25])
@@ -2918,7 +2918,7 @@ def build_umap_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Project a local embedding bundle to 2D with UMAP and write an interactive Plotly HTML"
     )
-    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"))
     parser.add_argument("--raw-input", default="data/abstracts.json")
     parser.add_argument("--enriched-input", default="data/abstracts_enriched.json")
     parser.add_argument("--output-html")
@@ -2977,7 +2977,7 @@ def umap_main(argv: list[str] | None = None) -> int:
 
 def build_manifest_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Write the NeuroScape handoff manifest for OHBM 2026 embeddings")
-    parser.add_argument("--output", default="data/embeddings/neuroscape_stage2_manifest.json")
+    parser.add_argument("--output", default=str(artifacts.EMBEDDINGS_ROOT / "neuroscape_stage2_manifest.json"))
     return parser
 
 

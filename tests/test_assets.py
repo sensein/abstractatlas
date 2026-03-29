@@ -27,6 +27,7 @@ class AssetHelpersTest(unittest.TestCase):
 
         self.assertEqual(args.output, "data/abstracts.json")
         self.assertEqual(args.input_snapshot_dir, "data/inputs")
+        self.assertEqual(args.assets_dir, "data/inputs/assets")
 
     def test_extract_external_urls_deduplicates_and_cleans(self) -> None:
         urls = extract_external_urls(

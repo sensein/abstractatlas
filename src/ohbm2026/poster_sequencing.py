@@ -1082,7 +1082,7 @@ def _load_neighbor_tail_metrics(proposal_csv: Path) -> dict[str, Any]:
 
 def _neighbor_tail_metrics_from_ordered_ids(
     ordered_ids: list[int],
-    bundle_dir: str = "data/embeddings/voyage_stage2_published",
+    bundle_dir: str = str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_published"),
 ) -> dict[str, Any]:
     scores_by_id = _ordered_neighbor_mean_cosine_similarity(
         [{"abstract_id": int(abstract_id)} for abstract_id in ordered_ids],

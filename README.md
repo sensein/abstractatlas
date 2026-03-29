@@ -40,7 +40,7 @@ Core artifacts:
   - GraphQL-fetched source snapshot for the latest ingest run
 - `data/abstracts.json`
   - canonical normalized accepted abstracts derived from the fetched snapshot
-- `data/assets/`
+- `data/inputs/assets/`
   - downloaded local figure files, restricted to methods/results figures
 - `data/cache/figure_analysis/image_analyses_<backend>__<state-key>.json`
   - resumable figure-analysis cache with direct state-key lookup
@@ -52,7 +52,7 @@ Core artifacts:
   - enriched abstract corpus with markdown sections, figure analyses, and claim extraction when available
 - `data/reference_metadata.json`
   - OpenAlex-matched reference metadata
-- `data/embeddings/*`
+- `data/outputs/experiments/embeddings/*`
   - canonical embedding bundles, stage-2 projections, and neighbors
 - `data/outputs/experiments/*__<state-key>/`
   - clustering, projection, and other experiment-style derived outputs
@@ -66,11 +66,11 @@ Core artifacts:
 Local artifact layout rules:
 
 - `data/inputs/` is for fetched source snapshots
+- `data/inputs/assets/` and `data/inputs/authors.json` are API-derived inputs
 - `data/cache/` is for resumable caches and checkpoints
 - `data/outputs/experiments/`, `data/outputs/exported-sites/`, and
   `data/outputs/proposals/` are for local derived outputs
 - `archive/` is for local pre-migration backups that preserve legacy paths
-- legacy artifact paths may temporarily remain as symlinks into the new layout
 - `data/`, `export/`, and `tmp/` remain ignored by git
 
 ## Current Latest Step
@@ -222,7 +222,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli authors
 
 Output:
 
-- `data/authors.json`
+- `data/inputs/authors.json`
 
 ### 4. Run Figure Analysis
 
@@ -489,14 +489,14 @@ Community detection over an embedding bundle:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli semantic-analysis \
-  --embeddings-dir data/embeddings/voyage_stage2_published
+  --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published
 ```
 
 Clustering benchmark over an embedding bundle:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli cluster-benchmark \
-  --embeddings-dir data/embeddings/voyage_stage2_published \
+  --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published \
   --output-dir data/outputs/experiments/clustering_benchmark__<state-key>
 ```
 
@@ -504,7 +504,7 @@ To benchmark a claims-only bundle around `25-30` clusters:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli cluster-benchmark \
-  --embeddings-dir data/embeddings/minilm_claims \
+  --embeddings-dir data/outputs/experiments/embeddings/minilm_claims \
   --output-dir data/outputs/experiments/clustering_benchmark_claims_25_30__<state-key> \
   --k-min 25 \
   --k-max 30
@@ -534,9 +534,9 @@ The current default UI build uses:
 - `data/abstracts_enriched.json`
 - `data/reference_metadata.json`
 - the OpenAI figure-analysis cache under `data/cache/figure_analysis/`
-- `data/embeddings/voyage_stage2_published/clustering_benchmark`
-- `data/embeddings/minilm_claims/clustering_benchmark_25_30`
-- `data/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json`
+- `data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark`
+- `data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30`
+- `data/outputs/experiments/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json`
 
 By default `build-ui` now writes the local bundle under
 `data/outputs/exported-sites/ui-site__<state-key>/` and mirrors that bundle to
@@ -549,8 +549,8 @@ Useful explicit form if you want to point the UI at a different claims-cluster r
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui \
   --site-output-dir data/outputs/exported-sites/ui-site__<state-key> \
   --publish-dir export/ui-site \
-  --cluster-25-dir data/embeddings/voyage_stage2_published/clustering_benchmark \
-  --claims-cluster-dir data/embeddings/minilm_claims/clustering_benchmark_25_30
+  --cluster-25-dir data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark \
+  --claims-cluster-dir data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30
 ```
 
 The exported detail payload now includes:
@@ -596,7 +596,7 @@ If you already have embeddings but want new cluster evaluations:
 If you specifically want to refresh the claims-based semantic lens:
 
 - rerun `embed-minilm --fields claims --output-name minilm_claims`
-- rerun `cluster-benchmark --embeddings-dir data/embeddings/minilm_claims --output-dir data/embeddings/minilm_claims/clustering_benchmark_25_30 --k-min 25 --k-max 30`
+- rerun `cluster-benchmark --embeddings-dir data/outputs/experiments/embeddings/minilm_claims --output-dir data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30 --k-min 25 --k-max 30`
 - rerun `build-ui`
 
 ## Module Layout
@@ -620,9 +620,9 @@ If you specifically want to refresh the claims-based semantic lens:
 
 - raw ingest
   - `data/abstracts.json`
-  - `data/assets/`
+  - `data/inputs/assets/`
 - authors
-  - `data/authors.json`
+  - `data/inputs/authors.json`
 - figure analysis
   - `data/cache/figure_analysis/image_analyses_ollama__<state-key>.json`
   - `data/cache/figure_analysis/image_analyses_openai__<state-key>.json`
@@ -633,7 +633,7 @@ If you specifically want to refresh the claims-based semantic lens:
 - references
   - `data/reference_metadata.json`
 - embeddings and clustering
-  - `data/embeddings/*`
+  - `data/outputs/experiments/embeddings/*`
 - static site
   - `data/outputs/exported-sites/ui-site__<state-key>/`
   - optional publish mirror at `export/ui-site/`

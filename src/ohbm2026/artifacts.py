@@ -12,6 +12,15 @@ CACHE_ROOT = DATA_ROOT / "cache"
 OUTPUTS_ROOT = DATA_ROOT / "outputs"
 EXPORT_ROOT = Path("export")
 SCRATCH_ROOT = Path("tmp")
+INPUT_ASSETS_ROOT = INPUTS_ROOT / "assets"
+INPUT_AUTHORS_PATH = INPUTS_ROOT / "authors.json"
+EXPERIMENTS_ROOT = OUTPUTS_ROOT / "experiments"
+EXPORTED_SITES_ROOT = OUTPUTS_ROOT / "exported-sites"
+PROPOSALS_ROOT = OUTPUTS_ROOT / "proposals"
+EMBEDDINGS_ROOT = EXPERIMENTS_ROOT / "embeddings"
+PROJECTIONS_ROOT = EXPERIMENTS_ROOT / "projections"
+UMAPS_ROOT = EXPERIMENTS_ROOT / "umaps"
+SEQUENCING_BENCHMARKS_ROOT = EXPERIMENTS_ROOT / "sequencing_benchmarks"
 
 OUTPUT_FAMILIES = ("experiments", "exported-sites", "proposals")
 ARTIFACT_CLASSES = ("input", "cache", "output", "scratch")
