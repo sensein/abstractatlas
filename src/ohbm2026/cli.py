@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_parser = subparsers.add_parser("ingest", help="Fetch abstracts and figure assets from Oxford Abstracts")
     _copy_actions(ingest_parser, assets.build_parser())
 
-    refresh_parser = subparsers.add_parser("refresh-assets", help="Refresh local figure assets from existing abstracts.json")
+    refresh_parser = subparsers.add_parser("refresh-assets", help="Refresh local figure assets from an existing normalized abstracts dataset")
     _copy_actions(refresh_parser, assets.build_parser())
 
     authors_parser = subparsers.add_parser("authors", help="Export author metadata from the local abstract database")

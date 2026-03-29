@@ -8,12 +8,20 @@ from typing import Any, Iterable, Mapping
 
 DATA_ROOT = Path("data")
 INPUTS_ROOT = DATA_ROOT / "inputs"
+PRIMARY_ROOT = DATA_ROOT / "primary"
 CACHE_ROOT = DATA_ROOT / "cache"
 OUTPUTS_ROOT = DATA_ROOT / "outputs"
 EXPORT_ROOT = Path("export")
 SCRATCH_ROOT = Path("tmp")
 INPUT_ASSETS_ROOT = INPUTS_ROOT / "assets"
 INPUT_AUTHORS_PATH = INPUTS_ROOT / "authors.json"
+INPUT_PHENOMENA_THEORIES_PATH = INPUTS_ROOT / "abstracts_with_phenomena_with_theories_refined.csv"
+INPUT_POSTER_LAYOUT_ROOT = INPUTS_ROOT / "poster_layout"
+INPUT_LAYOUT_ASSETS_ROOT = INPUT_POSTER_LAYOUT_ROOT / "layout_assets"
+INPUT_LAYOUT_GEOMETRY_PATH = INPUT_LAYOUT_ASSETS_ROOT / "layout_geometry.json"
+PRIMARY_ABSTRACTS_PATH = PRIMARY_ROOT / "abstracts.json"
+PRIMARY_ENRICHED_ABSTRACTS_PATH = PRIMARY_ROOT / "abstracts_enriched.json"
+PRIMARY_REFERENCE_METADATA_PATH = PRIMARY_ROOT / "reference_metadata.json"
 EXPERIMENTS_ROOT = OUTPUTS_ROOT / "experiments"
 EXPORTED_SITES_ROOT = OUTPUTS_ROOT / "exported-sites"
 PROPOSALS_ROOT = OUTPUTS_ROOT / "proposals"
@@ -21,6 +29,8 @@ EMBEDDINGS_ROOT = EXPERIMENTS_ROOT / "embeddings"
 PROJECTIONS_ROOT = EXPERIMENTS_ROOT / "projections"
 UMAPS_ROOT = EXPERIMENTS_ROOT / "umaps"
 SEQUENCING_BENCHMARKS_ROOT = EXPERIMENTS_ROOT / "sequencing_benchmarks"
+TITLE_AUDIT_ROOT = EXPERIMENTS_ROOT / "title_audit"
+TITLE_MODIFICATIONS_PATH = TITLE_AUDIT_ROOT / "title_modifications.json"
 
 OUTPUT_FAMILIES = ("experiments", "exported-sites", "proposals")
 ARTIFACT_CLASSES = ("input", "cache", "output", "scratch")

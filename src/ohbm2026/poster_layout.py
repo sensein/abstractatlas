@@ -52,7 +52,7 @@ HALL_LABELS = {
     1: "Poster Hall",
 }
 LAYOUT_POSTER_FACES_PER_BOARD = 2
-DEFAULT_LAYOUT_GEOMETRY = "data/poster_layout/layout_assets/layout_geometry.json"
+DEFAULT_LAYOUT_GEOMETRY = str(artifacts.INPUT_LAYOUT_GEOMETRY_PATH)
 DEFAULT_PROPOSAL_CSV_VOYAGE_EMBEDDINGS_DIR = str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_published")
 DEFAULT_PROPOSAL_CSV_CLAIMS_EMBEDDINGS_DIR = str(artifacts.EMBEDDINGS_ROOT / "minilm_claims")
 UNKNOWN_CATEGORY = "Unknown"
@@ -2089,7 +2089,7 @@ def load_proposal(path: Path) -> dict[str, Any]:
 
 
 def default_layout_output_dir(
-    raw_input: Path = Path("data/abstracts.json"),
+    raw_input: Path = artifacts.PRIMARY_ABSTRACTS_PATH,
     embeddings_dir: Path = Path(str(artifacts.EMBEDDINGS_ROOT / "minilm_claims")),
     authors_input: Path = Path(str(artifacts.INPUT_AUTHORS_PATH)),
 ) -> Path:
@@ -2100,7 +2100,7 @@ def default_layout_output_dir(
 
 
 def default_layout_analysis_output_path(
-    raw_input: Path = Path("data/abstracts.json"),
+    raw_input: Path = artifacts.PRIMARY_ABSTRACTS_PATH,
     embeddings_dir: Path = Path(str(artifacts.EMBEDDINGS_ROOT / "minilm_claims")),
 ) -> Path:
     basis = artifacts.build_dependency_basis(
@@ -2111,7 +2111,7 @@ def default_layout_analysis_output_path(
 
 def build_optimize_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Optimize OHBM poster standby patterns and numeric poster order")
-    parser.add_argument("--raw-input", default="data/abstracts.json")
+    parser.add_argument("--raw-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_claims"))
     parser.add_argument("--authors-input", default=str(artifacts.INPUT_AUTHORS_PATH))
     parser.add_argument("--claims-cluster-assignments", default=DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS)
@@ -2172,7 +2172,7 @@ def optimize_main(argv: list[str] | None = None) -> int:
 def build_analysis_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Analyze an OHBM poster layout proposal")
     parser.add_argument("--assignment", default=str(default_layout_output_dir() / "proposal.json"))
-    parser.add_argument("--raw-input", default="data/abstracts.json")
+    parser.add_argument("--raw-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_claims"))
     parser.add_argument("--claims-cluster-assignments", default=DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS)
     parser.add_argument("--claims-cluster-summaries", default=DEFAULT_CLAIMS_CLUSTER_SUMMARIES)

@@ -2215,8 +2215,8 @@ def build_sentence_transformer_parser(
     default_model: str,
 ) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument("--input", default="data/abstracts_enriched.json")
-    parser.add_argument("--title-input", default="data/abstracts.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH))
+    parser.add_argument("--title-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT))
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--output-name")
@@ -2301,8 +2301,8 @@ def hf_main(argv: list[str] | None = None) -> int:
 
 def build_voyage_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate Voyage embeddings for OHBM 2026 abstracts")
-    parser.add_argument("--input", default="data/abstracts_enriched.json")
-    parser.add_argument("--title-input", default="data/abstracts.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH))
+    parser.add_argument("--title-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT))
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--voyage-api-var", default="VOYAGE_API")
@@ -2355,8 +2355,8 @@ def voyage_main(argv: list[str] | None = None) -> int:
 
 def build_openai_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate OpenAI embeddings for OHBM 2026 abstracts")
-    parser.add_argument("--input", default="data/abstracts_enriched.json")
-    parser.add_argument("--title-input", default="data/abstracts.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH))
+    parser.add_argument("--title-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT))
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--openai-api-var", default="OPENAI_API_KEY")
@@ -2562,8 +2562,8 @@ def build_cluster_benchmark_parser() -> argparse.ArgumentParser:
         description="Benchmark label-independent clustering methods over a local embedding bundle"
     )
     parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"))
-    parser.add_argument("--input", default="data/abstracts_enriched.json")
-    parser.add_argument("--title-input", default="data/abstracts.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH))
+    parser.add_argument("--title-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument(
         "--output-dir",
         default=str(
@@ -2572,7 +2572,11 @@ def build_cluster_benchmark_parser() -> argparse.ArgumentParser:
                 "clustering_benchmark",
                 artifacts.build_state_key(
                     artifacts.build_dependency_basis(
-                        input_sources=[str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"), "data/abstracts_enriched.json", "data/abstracts.json"]
+                        input_sources=[
+                            str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"),
+                            str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH),
+                            str(artifacts.PRIMARY_ABSTRACTS_PATH),
+                        ]
                     )
                 ),
             )
@@ -2668,8 +2672,8 @@ def build_semantic_analysis_parser() -> argparse.ArgumentParser:
         description="Build a semantic graph, detect communities, and summarize clusters from a local embedding bundle"
     )
     parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"))
-    parser.add_argument("--input", default="data/abstracts_enriched.json")
-    parser.add_argument("--title-input", default="data/abstracts.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH))
+    parser.add_argument("--title-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument(
         "--output-dir",
         default=str(
@@ -2678,7 +2682,11 @@ def build_semantic_analysis_parser() -> argparse.ArgumentParser:
                 "semantic_analysis",
                 artifacts.build_state_key(
                     artifacts.build_dependency_basis(
-                        input_sources=[str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"), "data/abstracts_enriched.json", "data/abstracts.json"]
+                        input_sources=[
+                            str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"),
+                            str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH),
+                            str(artifacts.PRIMARY_ABSTRACTS_PATH),
+                        ]
                     )
                 ),
             )
@@ -2789,8 +2797,8 @@ def build_projection_compare_parser() -> argparse.ArgumentParser:
         description="Write a linked interactive UMAP/t-SNE comparison for a local embedding bundle"
     )
     parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"))
-    parser.add_argument("--raw-input", default="data/abstracts.json")
-    parser.add_argument("--enriched-input", default="data/abstracts_enriched.json")
+    parser.add_argument("--raw-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
+    parser.add_argument("--enriched-input", default=str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH))
     parser.add_argument("--output-html")
     parser.add_argument("--output-json")
     parser.add_argument("--umap-n-neighbors", type=int, default=DEFAULT_UMAP_NEIGHBORS)
@@ -2919,8 +2927,8 @@ def build_umap_parser() -> argparse.ArgumentParser:
         description="Project a local embedding bundle to 2D with UMAP and write an interactive Plotly HTML"
     )
     parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1"))
-    parser.add_argument("--raw-input", default="data/abstracts.json")
-    parser.add_argument("--enriched-input", default="data/abstracts_enriched.json")
+    parser.add_argument("--raw-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
+    parser.add_argument("--enriched-input", default=str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH))
     parser.add_argument("--output-html")
     parser.add_argument("--output-json")
     parser.add_argument("--n-neighbors", type=int, default=DEFAULT_UMAP_NEIGHBORS)

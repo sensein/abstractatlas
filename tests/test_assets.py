@@ -2,7 +2,9 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
+from ohbm2026 import artifacts
 from ohbm2026.assets import (
     asset_stem,
     build_database,
@@ -25,9 +27,9 @@ class AssetHelpersTest(unittest.TestCase):
     def test_build_parser_defaults_include_input_snapshot_dir(self) -> None:
         args = build_parser().parse_args([])
 
-        self.assertEqual(args.output, "data/abstracts.json")
-        self.assertEqual(args.input_snapshot_dir, "data/inputs")
-        self.assertEqual(args.assets_dir, "data/inputs/assets")
+        self.assertEqual(args.output, str(artifacts.PRIMARY_ABSTRACTS_PATH))
+        self.assertEqual(args.input_snapshot_dir, str(artifacts.INPUTS_ROOT))
+        self.assertEqual(args.assets_dir, str(artifacts.INPUT_ASSETS_ROOT))
 
     def test_extract_external_urls_deduplicates_and_cleans(self) -> None:
         urls = extract_external_urls(
@@ -189,8 +191,8 @@ class AssetHelpersTest(unittest.TestCase):
             snapshot_dir = root / "inputs"
 
             with (
-                unittest.mock.patch("ohbm2026.assets.fetch_abstract_ids", return_value=([1], [123])),
-                unittest.mock.patch(
+                mock.patch("ohbm2026.assets.fetch_abstract_ids", return_value=([1], [123])),
+                mock.patch(
                     "ohbm2026.assets.fetch_abstract_content",
                     return_value=[
                         {

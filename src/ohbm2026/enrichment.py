@@ -94,7 +94,7 @@ def _database_input_digest(base_database: dict[str, Any]) -> str:
 
 
 def default_image_analysis_cache_path(
-    input_path: Path = Path("data/abstracts.json"),
+    input_path: Path = artifacts.PRIMARY_ABSTRACTS_PATH,
     *,
     backend: str = "ollama",
     model: str | None = None,
@@ -112,7 +112,7 @@ def default_image_analysis_cache_path(
 
 
 def default_claim_analysis_cache_path(
-    input_path: Path = Path("data/abstracts.json"),
+    input_path: Path = artifacts.PRIMARY_ABSTRACTS_PATH,
     *,
     llm_provider: str = DEFAULT_CLLM_PROVIDER,
     model: str | None = None,
@@ -1359,7 +1359,7 @@ def enrich_database(
 
 def build_authors_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Export author metadata for OHBM 2026 abstracts")
-    parser.add_argument("--input", default="data/abstracts.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--authors-output", default=str(artifacts.INPUT_AUTHORS_PATH))
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--ohbm-api-var", default="OHBM2026_API")
@@ -1390,10 +1390,10 @@ def authors_main(argv: list[str] | None = None) -> int:
 
 def build_enrich_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build enriched OHBM 2026 abstracts from local databases")
-    parser.add_argument("--input", default="data/abstracts.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--image-analyses-input", default=str(default_image_analysis_cache_path(backend="openai")))
     parser.add_argument("--claim-analyses-input", default=DEFAULT_CLAIM_ANALYSES_OUTPUT)
-    parser.add_argument("--enriched-output", default="data/abstracts_enriched.json")
+    parser.add_argument("--enriched-output", default=str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH))
     return parser
 
 
@@ -1425,7 +1425,7 @@ def enrich_main(argv: list[str] | None = None) -> int:
 
 def build_claim_extraction_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Extract claim lists for OHBM 2026 abstracts with cllm")
-    parser.add_argument("--input", default="data/abstracts.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--image-analyses-input", default=str(default_image_analysis_cache_path(backend="openai")))
     parser.add_argument("--claim-analyses-output", default=DEFAULT_CLAIM_ANALYSES_OUTPUT)
     parser.add_argument("--env-file", default=".env")
@@ -1507,7 +1507,7 @@ def extract_claims_main(argv: list[str] | None = None) -> int:
 
 def build_figure_analysis_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Analyze local OHBM 2026 figure assets with Ollama")
-    parser.add_argument("--input", default="data/abstracts.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--image-analyses-output", default=str(default_image_analysis_cache_path()))
     parser.add_argument("--vision-backend", choices=["ollama", "openai"], default="ollama")
     parser.add_argument("--vision-model", default=DEFAULT_VISION_MODEL)

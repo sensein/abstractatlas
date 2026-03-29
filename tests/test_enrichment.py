@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from ohbm2026 import artifacts
 from ohbm2026.enrichment import (
     DEFAULT_CLAIM_ANALYSES_OUTPUT,
     DEFAULT_CLLM_OPENAI_MAX_COMPLETION_TOKENS,
@@ -42,15 +43,15 @@ class EnrichmentHelpersTest(unittest.TestCase):
     def test_build_enrich_parser_defaults_to_openai_cache(self) -> None:
         args = build_enrich_parser().parse_args([])
 
-        self.assertEqual(args.input, "data/abstracts.json")
+        self.assertEqual(args.input, str(artifacts.PRIMARY_ABSTRACTS_PATH))
         self.assertEqual(args.image_analyses_input, str(default_image_analysis_cache_path(backend="openai")))
         self.assertEqual(args.claim_analyses_input, str(default_claim_analysis_cache_path()))
-        self.assertEqual(args.enriched_output, "data/abstracts_enriched.json")
+        self.assertEqual(args.enriched_output, str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH))
 
     def test_build_claim_extraction_parser_defaults_to_openai_provider(self) -> None:
         args = build_claim_extraction_parser().parse_args([])
 
-        self.assertEqual(args.input, "data/abstracts.json")
+        self.assertEqual(args.input, str(artifacts.PRIMARY_ABSTRACTS_PATH))
         self.assertEqual(args.image_analyses_input, str(default_image_analysis_cache_path(backend="openai")))
         self.assertEqual(args.claim_analyses_output, DEFAULT_CLAIM_ANALYSES_OUTPUT)
         self.assertEqual(args.llm_provider, "openai")
@@ -290,7 +291,7 @@ class EnrichmentHelpersTest(unittest.TestCase):
         parser = build_figure_analysis_parser()
         args = parser.parse_args([])
 
-        self.assertEqual(args.input, "data/abstracts.json")
+        self.assertEqual(args.input, str(artifacts.PRIMARY_ABSTRACTS_PATH))
         self.assertEqual(args.image_analyses_output, str(default_image_analysis_cache_path()))
         self.assertEqual(args.vision_backend, "ollama")
         self.assertEqual(args.save_every, 1)

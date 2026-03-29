@@ -38,13 +38,13 @@ This is the durable backbone of the project. Its responsibility is to turn the
 Oxford Abstracts source corpus into local, reproducible artifacts:
 
 - `data/inputs/abstracts_graphql__<state-key>.json`
-- `data/abstracts.json`
+- `data/primary/abstracts.json`
 - `data/inputs/assets/`
 - `data/cache/figure_analysis/image_analyses_<backend>__<state-key>.json`
 - `data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json`
-- `data/title_modifications.json`
-- `data/abstracts_enriched.json`
-- `data/reference_metadata.json`
+- `data/outputs/experiments/title_audit/title_modifications.json`
+- `data/primary/abstracts_enriched.json`
+- `data/primary/reference_metadata.json`
 - `data/outputs/experiments/embeddings/*`
 - `data/outputs/experiments/*__<state-key>/`
 - `data/outputs/exported-sites/ui-site__<state-key>/`
@@ -79,10 +79,10 @@ practical commitments future operators should internalize are:
   `.venv/bin/python` or `uv` targeting that interpreter, never system Python
 - recorded experiment outputs are immutable and must go into fresh run
   directories
-- `data/abstracts.json` is the canonical normalized raw corpus and should not
+- `data/primary/abstracts.json` is the canonical normalized raw corpus and should not
   be silently rewritten to apply downstream cleanup decisions
 - audit-style corrections belong in explicit derivative artifacts such as
-  `data/title_modifications.json`
+  `data/outputs/experiments/title_audit/title_modifications.json`
 - long-running API and LLM jobs should checkpoint incrementally and remain
   resumable
 - `ohbmcli` is the canonical interface for the main pipeline
@@ -103,10 +103,10 @@ explanations.
 
 The defaults that future users should treat as current project reality are:
 
-- raw accepted abstracts live in `data/abstracts.json`
+- raw accepted abstracts live in `data/primary/abstracts.json`
 - the preferred figure-analysis path for the main corpus is OpenAI-backed, not
   the local Ollama route
-- the main enriched corpus is `data/abstracts_enriched.json`
+- the main enriched corpus is `data/primary/abstracts_enriched.json`
 - the primary semantic embedding reference is
   `data/outputs/experiments/embeddings/voyage_stage2_published`
 - the main benchmarked semantic UI lens is the `25`-cluster benchmark on the
@@ -139,7 +139,7 @@ the code still matches the documented pipeline.
 
 ### Level 2: Rebuild the canonical derived products from local raw data
 
-Useful when `data/abstracts.json` already exists and the goal is to rebuild
+Useful when `data/primary/abstracts.json` already exists and the goal is to rebuild
 enrichment, references, embeddings, clusters, or the UI.
 
 The usual order is:
@@ -165,7 +165,7 @@ Abstracts API.
 3. continue with the Level 2 steps
 
 This repo is designed so that upstream access is only required for a subset of
-the work. Once `data/abstracts.json` exists, much of the pipeline can be
+the work. Once `data/primary/abstracts.json` exists, much of the pipeline can be
 repeated locally.
 
 ## Key Decision Points
@@ -173,7 +173,7 @@ repeated locally.
 ### 1. Preserve the raw corpus and express cleanup as derivative artifacts
 
 The project keeps raw normalization and downstream cleanup separate. Title
-cleanup now writes `data/title_modifications.json` instead of altering the raw
+cleanup now writes `data/outputs/experiments/title_audit/title_modifications.json` instead of altering the raw
 record silently. This is the right choice for traceability and future audit.
 
 ### 2. Break the pipeline into resumable task-oriented commands

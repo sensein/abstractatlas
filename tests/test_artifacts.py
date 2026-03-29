@@ -8,7 +8,7 @@ from ohbm2026 import artifacts
 class ArtifactHelpersTest(unittest.TestCase):
     def test_build_state_key_is_deterministic_for_same_basis(self) -> None:
         basis = artifacts.build_dependency_basis(
-            input_sources=["data/abstracts.json"],
+            input_sources=[str(artifacts.PRIMARY_ABSTRACTS_PATH)],
             input_digest="abc123",
             backend="openai",
             model="gpt-4.1-mini",
@@ -24,14 +24,14 @@ class ArtifactHelpersTest(unittest.TestCase):
 
     def test_build_state_key_changes_when_dependency_basis_changes(self) -> None:
         baseline = artifacts.build_dependency_basis(
-            input_sources=["data/abstracts.json"],
+            input_sources=[str(artifacts.PRIMARY_ABSTRACTS_PATH)],
             input_digest="abc123",
             backend="openai",
             model="gpt-4.1-mini",
             options={"max_images": 5},
         )
         changed = artifacts.build_dependency_basis(
-            input_sources=["data/abstracts.json"],
+            input_sources=[str(artifacts.PRIMARY_ABSTRACTS_PATH)],
             input_digest="abc123",
             backend="openai",
             model="gpt-4.1-mini",
@@ -58,7 +58,7 @@ class ArtifactHelpersTest(unittest.TestCase):
 
     def test_build_artifact_metadata_redacts_secret_values(self) -> None:
         basis = artifacts.build_dependency_basis(
-            input_sources=["data/abstracts.json"],
+            input_sources=[str(artifacts.PRIMARY_ABSTRACTS_PATH)],
             input_digest="abc123",
             backend="openai",
             model="gpt-4.1-mini",
@@ -78,7 +78,7 @@ class ArtifactHelpersTest(unittest.TestCase):
         self.assertNotIn("sk-", str(metadata))
 
     def test_invalidation_action_supports_resume_and_selective_rebuild(self) -> None:
-        basis = artifacts.build_dependency_basis(input_sources=["data/abstracts.json"], input_digest="abc123")
+        basis = artifacts.build_dependency_basis(input_sources=[str(artifacts.PRIMARY_ABSTRACTS_PATH)], input_digest="abc123")
         state_key = artifacts.build_state_key(basis)
 
         running = artifacts.build_artifact_metadata(

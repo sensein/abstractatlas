@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-DEFAULT_TITLE_MODIFICATIONS_OUTPUT = "data/title_modifications.json"
+from ohbm2026 import artifacts
+
+DEFAULT_TITLE_MODIFICATIONS_OUTPUT = str(artifacts.TITLE_MODIFICATIONS_PATH)
 
 LEADING_MARKER_PATTERN = re.compile(r"^[\s]*(?:[•*-]+)\s*")
 WHITESPACE_PATTERN = re.compile(r"\s+")
@@ -95,7 +97,7 @@ def build_title_modification_report(database: dict[str, Any], *, input_path: str
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Write an audit report for cleaned abstract titles")
-    parser.add_argument("--input", default="data/abstracts.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--output", default=DEFAULT_TITLE_MODIFICATIONS_OUTPUT)
     return parser
 

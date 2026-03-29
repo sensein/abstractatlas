@@ -38,7 +38,7 @@ Core artifacts:
 
 - `data/inputs/abstracts_graphql__<state-key>.json`
   - GraphQL-fetched source snapshot for the latest ingest run
-- `data/abstracts.json`
+- `data/primary/abstracts.json`
   - canonical normalized accepted abstracts derived from the fetched snapshot
 - `data/inputs/assets/`
   - downloaded local figure files, restricted to methods/results figures
@@ -46,11 +46,11 @@ Core artifacts:
   - resumable figure-analysis cache with direct state-key lookup
 - `data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json`
   - resumable `cllm` claim-extraction cache with direct state-key lookup
-- `data/title_modifications.json`
+- `data/outputs/experiments/title_audit/title_modifications.json`
   - audit log of cleaned abstract titles versus original raw titles
-- `data/abstracts_enriched.json`
+- `data/primary/abstracts_enriched.json`
   - enriched abstract corpus with markdown sections, figure analyses, and claim extraction when available
-- `data/reference_metadata.json`
+- `data/primary/reference_metadata.json`
   - OpenAlex-matched reference metadata
 - `data/outputs/experiments/embeddings/*`
   - canonical embedding bundles, stage-2 projections, and neighbors
@@ -65,8 +65,8 @@ Core artifacts:
 
 Local artifact layout rules:
 
-- `data/inputs/` is for fetched source snapshots
-- `data/inputs/assets/` and `data/inputs/authors.json` are API-derived inputs
+- `data/inputs/` is for fetched snapshots, API-derived inputs, and manual operator-supplied inputs
+- `data/primary/` is for canonical normalized datasets consumed by downstream stages
 - `data/cache/` is for resumable caches and checkpoints
 - `data/outputs/experiments/`, `data/outputs/exported-sites/`, and
   `data/outputs/proposals/` are for local derived outputs
@@ -194,7 +194,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli ingest
 What it does:
 
 - fetches accepted abstracts from Oxford Abstracts
-- stores the normalized corpus in `data/abstracts.json`
+- stores the normalized corpus in `data/primary/abstracts.json`
 - downloads only methods/results figure images
 - writes local figure links into each abstract
 
@@ -236,7 +236,7 @@ This is the current preferred route for the main enriched corpus.
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-figures \
   --vision-backend openai \
   --openai-model gpt-4.1-mini \
-  --enriched-output data/abstracts_enriched_openai.json
+  --enriched-output data/outputs/experiments/enrichment/abstracts_enriched_openai.json
 ```
 
 Notes:
@@ -274,15 +274,15 @@ Explicit form:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli enrich \
-  --input data/abstracts.json \
+  --input data/primary/abstracts.json \
   --image-analyses-input data/cache/figure_analysis/image_analyses_openai__<state-key>.json \
   --claim-analyses-input data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json \
-  --enriched-output data/abstracts_enriched.json
+  --enriched-output data/primary/abstracts_enriched.json
 ```
 
 Output:
 
-- `data/abstracts_enriched.json`
+- `data/primary/abstracts_enriched.json`
 
 This is the main corpus used by downstream steps.
 
@@ -294,13 +294,13 @@ stray outer whitespace.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli title-audit \
-  --input data/abstracts.json \
-  --output data/title_modifications.json
+  --input data/primary/abstracts.json \
+  --output data/outputs/experiments/title_audit/title_modifications.json
 ```
 
 Output:
 
-- `data/title_modifications.json`
+- `data/outputs/experiments/title_audit/title_modifications.json`
 
 This file records each changed title with the original string, cleaned title,
 and normalization reasons.
@@ -309,14 +309,14 @@ and normalization reasons.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli reference-metadata \
-  --input data/abstracts.json \
-  --output data/reference_metadata.json \
+  --input data/primary/abstracts.json \
+  --output data/primary/reference_metadata.json \
   --use-title-search
 ```
 
 Output:
 
-- `data/reference_metadata.json`
+- `data/primary/reference_metadata.json`
 
 This file is resumable and checkpoint-friendly.
 
@@ -366,9 +366,9 @@ abstracts and merge the repaired results back into the existing output:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli reference-metadata \
-  --input data/abstracts.json \
-  --output data/reference_metadata.json \
-  --repair-failed-splits-from data/reference_metadata.json \
+  --input data/primary/abstracts.json \
+  --output data/primary/reference_metadata.json \
+  --repair-failed-splits-from data/primary/reference_metadata.json \
   --use-title-search \
   --reference-splitting-backend openai \
   --reference-splitting-model gpt-5-nano
@@ -385,7 +385,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli extract-claims
 
 What it does:
 
-- reads `data/abstracts.json`
+- reads `data/primary/abstracts.json`
 - reads the OpenAI figure-analysis cache under `data/cache/figure_analysis/` by
   default so figure-analysis text can be appended when present
 - builds a manuscript from the title, introduction, methods, results, discussion, conclusion, and filtered additional-content fields
@@ -401,7 +401,7 @@ Useful explicit form:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli extract-claims \
-  --input data/abstracts.json \
+  --input data/primary/abstracts.json \
   --image-analyses-input data/cache/figure_analysis/image_analyses_openai__<state-key>.json \
   --claim-analyses-output data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json \
   --openai-model gpt-4o-2024-08-06
@@ -465,7 +465,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm \
   --output-name minilm_claims
 ```
 
-This uses `claim_extraction.claims` from `data/abstracts_enriched.json` and formats each extracted claim as a short bullet containing the claim statement itself.
+This uses `claim_extraction.claims` from `data/primary/abstracts_enriched.json` and formats each extracted claim as a short bullet containing the claim statement itself.
 
 ### 9. Apply Or Train Stage 2
 
@@ -530,9 +530,9 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui
 
 The current default UI build uses:
 
-- `data/abstracts.json`
-- `data/abstracts_enriched.json`
-- `data/reference_metadata.json`
+- `data/primary/abstracts.json`
+- `data/primary/abstracts_enriched.json`
+- `data/primary/reference_metadata.json`
 - the OpenAI figure-analysis cache under `data/cache/figure_analysis/`
 - `data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark`
 - `data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30`
@@ -555,8 +555,8 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui \
 
 The exported detail payload now includes:
 
-- merged `claim_extraction` from `data/abstracts_enriched.json`
-- `reference_summary` from `data/reference_metadata.json`
+- merged `claim_extraction` from `data/primary/abstracts_enriched.json`
+- `reference_summary` from `data/primary/reference_metadata.json`
 - `semantic_25` and `claims_28` cluster lenses in the facet and detail metadata
 
 Then serve it locally:
@@ -619,8 +619,11 @@ If you specifically want to refresh the claims-based semantic lens:
 ## Main Outputs By Stage
 
 - raw ingest
-  - `data/abstracts.json`
+  - `data/primary/abstracts.json`
   - `data/inputs/assets/`
+- manual and operator inputs
+  - `data/inputs/abstracts_with_phenomena_with_theories_refined.csv`
+  - `data/inputs/poster_layout/layout_assets/`
 - authors
   - `data/inputs/authors.json`
 - figure analysis
@@ -629,9 +632,11 @@ If you specifically want to refresh the claims-based semantic lens:
 - claim extraction
   - `data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json`
 - enriched corpus
-  - `data/abstracts_enriched.json`
+  - `data/primary/abstracts_enriched.json`
+- audit outputs
+  - `data/outputs/experiments/title_audit/title_modifications.json`
 - references
-  - `data/reference_metadata.json`
+  - `data/primary/reference_metadata.json`
 - embeddings and clustering
   - `data/outputs/experiments/embeddings/*`
 - static site

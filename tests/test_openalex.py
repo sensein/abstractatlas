@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from ohbm2026 import artifacts
 from ohbm2026.openalex import (
     OPENAI_RESPONSES_API,
     OpenAlexError,
@@ -323,7 +324,7 @@ class OpenAlexHelpersTest(unittest.TestCase):
         self.assertEqual(cached["raw_text_examples"], ["Smith A. Example title. doi:10.1000/test"])
 
     def test_default_reference_collect_checkpoint_path_uses_cache_root(self) -> None:
-        path = default_reference_collect_checkpoint_path(Path("data/abstracts.json"))
+        path = default_reference_collect_checkpoint_path(artifacts.PRIMARY_ABSTRACTS_PATH)
 
         self.assertTrue(str(path).startswith("data/cache/reference_metadata/reference_collect__"))
         self.assertTrue(str(path).endswith(".json"))

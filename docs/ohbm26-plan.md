@@ -17,14 +17,14 @@ This is the operational planning document for the repository.
 
 ## Data Products
 
-- `data/abstracts.json`
+- `data/primary/abstracts.json`
   - canonical raw abstract database
   - includes fetch metadata, normalized responses, figure URLs, and local asset links
 - `data/assets/`
   - local methods/results figure assets only
 - `data/authors.json`
   - normalized author metadata keyed by author ID
-- `data/abstracts_enriched.json`
+- `data/primary/abstracts_enriched.json`
   - enriched abstracts with markdown sections and figure analyses only
 - `data/image_analyses.json`
   - cached multimodal figure analysis output
@@ -116,7 +116,7 @@ Checks:
 - [x] Query event IDs and accepted submission IDs.
 - [x] Fetch abstract content in batches.
 - [x] Normalize raw GraphQL payloads into stable JSON.
-- [x] Persist `data/abstracts.json`.
+- [x] Persist `data/primary/abstracts.json`.
 
 ### Workstream B: Figure Assets
 

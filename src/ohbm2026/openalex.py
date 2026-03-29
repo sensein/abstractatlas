@@ -133,7 +133,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def default_reference_collect_checkpoint_path(
-    input_path: Path = Path("data/abstracts.json"),
+    input_path: Path = artifacts.PRIMARY_ABSTRACTS_PATH,
     *,
     reference_splitting_backend: str = DEFAULT_REFERENCE_SPLIT_BACKEND,
     reference_splitting_model: str = DEFAULT_REFERENCE_SPLIT_MODEL,
@@ -2137,7 +2137,7 @@ def build_reference_metadata_database(
 ) -> dict[str, Any]:
     effective_use_title_search = True
     snapshot_path = checkpoint_path or default_reference_collect_checkpoint_path(
-        Path("data/abstracts.json"),
+        artifacts.PRIMARY_ABSTRACTS_PATH,
         reference_splitting_backend=reference_splitting_backend,
         reference_splitting_model=reference_splitting_model,
         use_title_search=effective_use_title_search,
@@ -2211,8 +2211,8 @@ def build_reference_metadata_database(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Resolve abstract references against OpenAlex and persist citation metadata")
-    parser.add_argument("--input", default="data/abstracts.json")
-    parser.add_argument("--output", default="data/reference_metadata.json")
+    parser.add_argument("--input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
+    parser.add_argument("--output", default=str(artifacts.PRIMARY_REFERENCE_METADATA_PATH))
     parser.add_argument("--repair-failed-splits-from")
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--openai-api-var", default="OPENAI_API_KEY")

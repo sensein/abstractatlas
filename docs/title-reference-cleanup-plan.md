@@ -10,7 +10,7 @@
 
 - add a shared title-normalization helper
 - keep the raw source JSON untouched
-- write `data/title_modifications.json` with:
+- write `data/outputs/experiments/title_audit/title_modifications.json` with:
   - abstract id
   - original title
   - cleaned title
@@ -41,4 +41,4 @@
 
 - add unit tests for title normalization and audit generation
 - add unit tests for DOI discovery helpers and cache updates
-- generate `data/title_modifications.json`
+- generate `data/outputs/experiments/title_audit/title_modifications.json`

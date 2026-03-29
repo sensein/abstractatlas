@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 
+from ohbm2026 import artifacts
 from ohbm2026.ui import (
     build_export_parser,
     build_ui_main,
@@ -63,7 +64,7 @@ class UIHelpersTest(unittest.TestCase):
         self.assertEqual(args.output_dir, str(default_export_output_dir()))
         self.assertEqual(args.top_neighbors, 8)
         self.assertIn("data/cache/figure_analysis/", args.image_analyses_input)
-        self.assertEqual(args.phenomena_theories_input, "data/abstracts_with_phenomena_with_theories_refined.csv")
+        self.assertEqual(args.phenomena_theories_input, str(artifacts.INPUT_PHENOMENA_THEORIES_PATH))
         self.assertEqual(args.cluster_25_dir, "data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark")
         self.assertEqual(args.spectral_cluster_dir, "data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark_spectral")
         self.assertEqual(args.claims_cluster_dir, "data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30")

@@ -351,7 +351,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Fetch OHBM 2026 abstracts to a local JSON DB")
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--env-var", default="OHBM2026_API")
-    parser.add_argument("--output", default="data/abstracts.json")
+    parser.add_argument("--output", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument("--input-snapshot-dir", default=str(artifacts.INPUTS_ROOT))
     parser.add_argument("--assets-dir", default=str(artifacts.INPUT_ASSETS_ROOT))
     parser.add_argument("--batch-size", default=50, type=int)

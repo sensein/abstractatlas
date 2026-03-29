@@ -19,9 +19,9 @@ from ohbm2026.enrichment import default_image_analysis_cache_path
 from ohbm2026.neuroscape import parse_string_list_value
 from ohbm2026.titles import cleaned_abstract_title
 
-DEFAULT_RAW_INPUT = "data/abstracts.json"
-DEFAULT_ENRICHED_INPUT = "data/abstracts_enriched.json"
-DEFAULT_REFERENCES_INPUT = "data/reference_metadata.json"
+DEFAULT_RAW_INPUT = str(artifacts.PRIMARY_ABSTRACTS_PATH)
+DEFAULT_ENRICHED_INPUT = str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH)
+DEFAULT_REFERENCES_INPUT = str(artifacts.PRIMARY_REFERENCE_METADATA_PATH)
 DEFAULT_IMAGE_ANALYSES_INPUT = "data/image_analyses_openai.json"
 DEFAULT_NEIGHBORS_INPUT = str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_published" / "neighbors.json")
 DEFAULT_CLUSTER_15_DIR = str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_published" / "semantic_analysis_15-communities")
@@ -29,7 +29,7 @@ DEFAULT_CLUSTER_21_DIR = str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_publishe
 DEFAULT_CLUSTER_25_DIR = str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_published" / "clustering_benchmark")
 DEFAULT_CLUSTER_SPECTRAL_DIR = str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_published" / "clustering_benchmark_spectral")
 DEFAULT_CLAIMS_CLUSTER_DIR = str(artifacts.EMBEDDINGS_ROOT / "minilm_claims" / "clustering_benchmark_25_30")
-DEFAULT_PHENOMENA_THEORIES_INPUT = "data/abstracts_with_phenomena_with_theories_refined.csv"
+DEFAULT_PHENOMENA_THEORIES_INPUT = str(artifacts.INPUT_PHENOMENA_THEORIES_PATH)
 DEFAULT_SEMANTIC_VECTORS_INPUT = str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1" / "vectors.npy")
 DEFAULT_SEMANTIC_METADATA_INPUT = str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1" / "metadata.json")
 DEFAULT_UMAP_INPUT = str(artifacts.EMBEDDINGS_ROOT / "minilm_stage1" / "umap_title-introduction-methods-results-conclusion.json")
