@@ -5,6 +5,8 @@ from tempfile import TemporaryDirectory
 
 from ohbm2026.assets import (
     asset_stem,
+    build_database,
+    build_parser,
     build_existing_asset_index,
     download_asset,
     extract_external_urls,
@@ -20,6 +22,12 @@ from ohbm2026.assets import (
 
 
 class AssetHelpersTest(unittest.TestCase):
+    def test_build_parser_defaults_include_input_snapshot_dir(self) -> None:
+        args = build_parser().parse_args([])
+
+        self.assertEqual(args.output, "data/abstracts.json")
+        self.assertEqual(args.input_snapshot_dir, "data/inputs")
+
     def test_extract_external_urls_deduplicates_and_cleans(self) -> None:
         urls = extract_external_urls(
             [
@@ -171,6 +179,44 @@ class AssetHelpersTest(unittest.TestCase):
                 }
             ],
         )
+
+    def test_build_database_writes_graphql_input_snapshot(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output_path = root / "abstracts.json"
+            assets_dir = root / "assets"
+            snapshot_dir = root / "inputs"
+
+            with (
+                unittest.mock.patch("ohbm2026.assets.fetch_abstract_ids", return_value=([1], [123])),
+                unittest.mock.patch(
+                    "ohbm2026.assets.fetch_abstract_content",
+                    return_value=[
+                        {
+                            "id": 123,
+                            "title": [{"value": "Example"}],
+                            "accepted_for": {"value": "Poster"},
+                            "authors": [],
+                            "responses": [],
+                        }
+                    ],
+                ),
+            ):
+                database = build_database(
+                    "test-key",
+                    output_path,
+                    assets_dir,
+                    input_snapshot_dir=snapshot_dir,
+                )
+
+            snapshot_path = Path(database["input_snapshot"])
+            self.assertTrue(snapshot_path.exists())
+            self.assertEqual(snapshot_path.parent, snapshot_dir)
+            self.assertEqual(snapshot_path.name.split("__", 1)[0], "abstracts_graphql")
+            snapshot_payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(snapshot_payload["abstract_count"], 1)
+        self.assertEqual(snapshot_payload["abstracts"][0]["id"], 123)
 
 
 if __name__ == "__main__":

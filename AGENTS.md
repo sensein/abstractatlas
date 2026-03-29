@@ -7,8 +7,9 @@ Auto-generated from all feature plans. Last updated: 2026-03-28
 - Python 3.11+ + Python standard library (`argparse`, `pathlib`, `json`,
   `hashlib`, `datetime`), existing `ohbm2026` pipeline modules, and NumPy-backed
   downstream consumers already present in the repo
-- Local JSON/filesystem artifacts under ignored `data/`, `export/`, `tmp/`, and
-  experiment directories
+- Local JSON/filesystem artifacts under ignored `data/inputs/`,
+  `data/cache/`, `data/outputs/`, `export/`, `tmp/`, and experiment
+  directories
 
 ## Project Structure
 

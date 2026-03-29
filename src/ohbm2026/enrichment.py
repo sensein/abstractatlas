@@ -17,6 +17,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from ohbm2026 import artifacts
 from ohbm2026.assets import extract_target_figure_urls
 from ohbm2026.graphql_api import fetch_author_details, get_api_key, load_dotenv
 from ohbm2026.titles import cleaned_abstract_title
@@ -61,7 +62,6 @@ OPENAI_CHAT_API = "https://api.openai.com/v1/chat/completions"
 DEFAULT_OPENAI_MAX_IMAGES_PER_REQUEST = 48
 DEFAULT_OPENAI_MAX_REQUEST_BYTES = 40_000_000
 DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS = 600
-DEFAULT_CLAIM_ANALYSES_OUTPUT = "data/claim_analyses_cllm.json"
 DEFAULT_CLLM_PROVIDER = "openai"
 DEFAULT_CLLM_OPENAI_MODEL = "gpt-4o-2024-08-06"
 DEFAULT_CLLM_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929"
@@ -77,6 +77,60 @@ class EnrichmentError(RuntimeError):
 class OllamaModelStatus:
     available: bool
     models: list[str]
+
+
+def _cli_option_present(argv: list[str] | None, option: str) -> bool:
+    return argv is not None and option in argv
+
+
+def _database_input_digest(base_database: dict[str, Any]) -> str:
+    abstract_ids = [abstract.get("id") for abstract in base_database.get("abstracts", []) if isinstance(abstract.get("id"), int)]
+    return artifacts.build_state_key(
+        {
+            "event_ids": list(base_database.get("event_ids", [])),
+            "abstract_ids": abstract_ids,
+        }
+    )
+
+
+def default_image_analysis_cache_path(
+    input_path: Path = Path("data/abstracts.json"),
+    *,
+    backend: str = "ollama",
+    model: str | None = None,
+    max_images: int | None = None,
+) -> Path:
+    resolved_model = model or (DEFAULT_OPENAI_VISION_MODEL if backend == "openai" else DEFAULT_VISION_MODEL)
+    basis = artifacts.build_dependency_basis(
+        input_sources=[str(input_path)],
+        backend=backend,
+        model=resolved_model,
+        options={"max_images": max_images} if max_images is not None else None,
+        env_boundary=["OPENAI_API_KEY"] if backend == "openai" else None,
+    )
+    return artifacts.build_cache_path("figure_analysis", f"image_analyses_{backend}", artifacts.build_state_key(basis))
+
+
+def default_claim_analysis_cache_path(
+    input_path: Path = Path("data/abstracts.json"),
+    *,
+    llm_provider: str = DEFAULT_CLLM_PROVIDER,
+    model: str | None = None,
+    max_abstracts: int | None = None,
+) -> Path:
+    resolved_model = model or (DEFAULT_CLLM_OPENAI_MODEL if llm_provider == "openai" else DEFAULT_CLLM_ANTHROPIC_MODEL)
+    env_boundary = ["OPENAI_API_KEY"] if llm_provider == "openai" else ["ANTHROPIC_API_KEY"]
+    basis = artifacts.build_dependency_basis(
+        input_sources=[str(input_path)],
+        backend=llm_provider,
+        model=resolved_model,
+        options={"max_abstracts": max_abstracts} if max_abstracts is not None else None,
+        env_boundary=env_boundary,
+    )
+    return artifacts.build_cache_path("claim_analysis", "claim_analyses_cllm", artifacts.build_state_key(basis))
+
+
+DEFAULT_CLAIM_ANALYSES_OUTPUT = str(default_claim_analysis_cache_path())
 
 
 class HTMLToMarkdownParser(HTMLParser):
@@ -433,6 +487,25 @@ def load_claim_analysis_cache(path: Path) -> dict[str, Any]:
 def save_claim_analysis_cache(path: Path, payload: dict[str, Any]) -> None:
     payload["updated_at"] = datetime.now(timezone.utc).isoformat()
     write_json(path, payload)
+
+
+def _update_cache_metadata(
+    cache: dict[str, Any],
+    *,
+    workflow: str,
+    artifact_name: str,
+    dependency_basis: dict[str, Any],
+    status: str,
+) -> None:
+    cache["artifact_metadata"] = artifacts.build_artifact_metadata(
+        workflow=workflow,
+        artifact_name=artifact_name,
+        artifact_class="cache",
+        state_key=artifacts.build_state_key(dependency_basis),
+        dependency_basis=dependency_basis,
+        status=status,
+        producer=f"ohbm2026.{workflow}",
+    )
 
 
 def analysis_entry_succeeded(entry: dict[str, Any] | None) -> bool:
@@ -953,6 +1026,13 @@ def extract_claims_with_cllm(
     refresh_claim_analysis_cache_stats(cache)
     processed = 0
     selected_model = openai_model if llm_provider == "openai" else anthropic_model
+    dependency_basis = artifacts.build_dependency_basis(
+        input_digest=_database_input_digest(base_database),
+        backend=llm_provider,
+        model=selected_model,
+        options={"max_abstracts": max_abstracts, "force": force},
+        env_boundary=["OPENAI_API_KEY"] if llm_provider == "openai" else ["ANTHROPIC_API_KEY"],
+    )
     cllm_verification = load_cllm_verification_module(environment)
 
     def persist_progress() -> None:
@@ -961,6 +1041,13 @@ def extract_claims_with_cllm(
             cache["backend"] = "cllm"
             cache["llm_provider"] = llm_provider
             cache["llm_model"] = selected_model
+            _update_cache_metadata(
+                cache,
+                workflow="claim_analysis",
+                artifact_name="claim_analyses_cllm",
+                dependency_basis=dependency_basis,
+                status="running",
+            )
             save_claim_analysis_cache(cache_path, cache)
 
     for abstract in base_database.get("abstracts", []):
@@ -1032,6 +1119,13 @@ def extract_claims_with_cllm(
     cache["llm_provider"] = llm_provider
     cache["llm_model"] = selected_model
     refresh_claim_analysis_cache_stats(cache)
+    _update_cache_metadata(
+        cache,
+        workflow="claim_analysis",
+        artifact_name="claim_analyses_cllm",
+        dependency_basis=dependency_basis,
+        status="ready",
+    )
     save_claim_analysis_cache(cache_path, cache)
     return cache
 
@@ -1061,6 +1155,13 @@ def analyze_figures(
     cache = load_image_analysis_cache(analysis_cache_path)
     analyses = cache.setdefault("analyses", {})
     refresh_analysis_cache_stats(cache)
+    dependency_basis = artifacts.build_dependency_basis(
+        input_digest=_database_input_digest(base_database),
+        backend=backend,
+        model=model,
+        options={"max_images": max_images, "enrich_every": enrich_every},
+        env_boundary=["OPENAI_API_KEY"] if backend == "openai" else None,
+    )
     prompt = (
         "Analyze this scientific figure and return strict JSON with keys: "
         "caption_guess (string), rich_markdown (string), ocr_text (string), "
@@ -1081,6 +1182,13 @@ def analyze_figures(
         if processed % max(save_every, 1) == 0:
             cache["model"] = model
             cache["backend"] = backend
+            _update_cache_metadata(
+                cache,
+                workflow="figure_analysis",
+                artifact_name=f"image_analyses_{backend}",
+                dependency_basis=dependency_basis,
+                status="running",
+            )
             save_image_analysis_cache(analysis_cache_path, cache)
         if enriched_output_path is not None and processed % max(enrich_every, 1) == 0:
             write_json(enriched_output_path, enrich_database(base_database, cache))
@@ -1168,6 +1276,13 @@ def analyze_figures(
     cache["model"] = model
     cache["backend"] = backend
     refresh_analysis_cache_stats(cache)
+    _update_cache_metadata(
+        cache,
+        workflow="figure_analysis",
+        artifact_name=f"image_analyses_{backend}",
+        dependency_basis=dependency_basis,
+        status="ready",
+    )
     save_image_analysis_cache(analysis_cache_path, cache)
     if enriched_output_path is not None:
         write_json(enriched_output_path, enrich_database(base_database, cache))
@@ -1276,7 +1391,7 @@ def authors_main(argv: list[str] | None = None) -> int:
 def build_enrich_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build enriched OHBM 2026 abstracts from local databases")
     parser.add_argument("--input", default="data/abstracts.json")
-    parser.add_argument("--image-analyses-input", default="data/image_analyses_openai.json")
+    parser.add_argument("--image-analyses-input", default=str(default_image_analysis_cache_path(backend="openai")))
     parser.add_argument("--claim-analyses-input", default=DEFAULT_CLAIM_ANALYSES_OUTPUT)
     parser.add_argument("--enriched-output", default="data/abstracts_enriched.json")
     return parser
@@ -1311,7 +1426,7 @@ def enrich_main(argv: list[str] | None = None) -> int:
 def build_claim_extraction_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Extract claim lists for OHBM 2026 abstracts with cllm")
     parser.add_argument("--input", default="data/abstracts.json")
-    parser.add_argument("--image-analyses-input", default="data/image_analyses_openai.json")
+    parser.add_argument("--image-analyses-input", default=str(default_image_analysis_cache_path(backend="openai")))
     parser.add_argument("--claim-analyses-output", default=DEFAULT_CLAIM_ANALYSES_OUTPUT)
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--llm-provider", choices=["openai", "anthropic"], default=DEFAULT_CLLM_PROVIDER)
@@ -1336,12 +1451,29 @@ def parse_claim_extraction_args(argv: list[str] | None = None) -> argparse.Names
 
 
 def extract_claims_main(argv: list[str] | None = None) -> int:
+    raw_argv = list(argv) if argv is not None else None
     args = parse_claim_extraction_args(argv)
-    base_database = load_json(Path(args.input))
-    image_cache = load_image_analysis_cache(Path(args.image_analyses_input))
+    input_path = Path(args.input)
+    image_analyses_input = (
+        Path(args.image_analyses_input)
+        if _cli_option_present(raw_argv, "--image-analyses-input")
+        else default_image_analysis_cache_path(input_path, backend="openai")
+    )
+    claim_analyses_output = (
+        Path(args.claim_analyses_output)
+        if _cli_option_present(raw_argv, "--claim-analyses-output")
+        else default_claim_analysis_cache_path(
+            input_path,
+            llm_provider=args.llm_provider,
+            model=args.openai_model if args.llm_provider == "openai" else args.anthropic_model,
+            max_abstracts=args.max_abstracts,
+        )
+    )
+    base_database = load_json(input_path)
+    image_cache = load_image_analysis_cache(image_analyses_input)
     claim_cache = extract_claims_with_cllm(
         base_database=base_database,
-        cache_path=Path(args.claim_analyses_output),
+        cache_path=claim_analyses_output,
         image_analysis_cache=image_cache,
         env_file=Path(args.env_file),
         llm_provider=args.llm_provider,
@@ -1359,8 +1491,8 @@ def extract_claims_main(argv: list[str] | None = None) -> int:
         json.dumps(
             {
                 "input": args.input,
-                "image_analyses_input": args.image_analyses_input,
-                "claim_analyses_output": args.claim_analyses_output,
+                "image_analyses_input": str(image_analyses_input),
+                "claim_analyses_output": str(claim_analyses_output),
                 "llm_provider": args.llm_provider,
                 "llm_model": args.openai_model if args.llm_provider == "openai" else args.anthropic_model,
                 "processed_count": claim_cache.get("processed_count", 0),
@@ -1376,7 +1508,7 @@ def extract_claims_main(argv: list[str] | None = None) -> int:
 def build_figure_analysis_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Analyze local OHBM 2026 figure assets with Ollama")
     parser.add_argument("--input", default="data/abstracts.json")
-    parser.add_argument("--image-analyses-output", default="data/image_analyses.json")
+    parser.add_argument("--image-analyses-output", default=str(default_image_analysis_cache_path()))
     parser.add_argument("--vision-backend", choices=["ollama", "openai"], default="ollama")
     parser.add_argument("--vision-model", default=DEFAULT_VISION_MODEL)
     parser.add_argument("--openai-model", default=DEFAULT_OPENAI_VISION_MODEL)
@@ -1398,9 +1530,21 @@ def parse_figure_analysis_args(argv: list[str] | None = None) -> argparse.Namesp
 
 
 def analyze_figures_main(argv: list[str] | None = None) -> int:
+    raw_argv = list(argv) if argv is not None else None
     args = parse_figure_analysis_args(argv)
-    base_database = load_json(Path(args.input))
+    input_path = Path(args.input)
+    base_database = load_json(input_path)
     model = args.vision_model if args.vision_backend == "ollama" else args.openai_model
+    image_analyses_output = (
+        Path(args.image_analyses_output)
+        if _cli_option_present(raw_argv, "--image-analyses-output")
+        else default_image_analysis_cache_path(
+            input_path,
+            backend=args.vision_backend,
+            model=model,
+            max_images=args.vision_max_images,
+        )
+    )
     openai_api_key = (
         resolve_openai_api_key(Path(args.env_file), args.openai_api_var)
         if args.vision_backend == "openai"
@@ -1408,7 +1552,7 @@ def analyze_figures_main(argv: list[str] | None = None) -> int:
     )
     image_cache = analyze_figures(
         base_database,
-        Path(args.image_analyses_output),
+        image_analyses_output,
         backend=args.vision_backend,
         model=model,
         openai_api_key=openai_api_key,
@@ -1425,7 +1569,7 @@ def analyze_figures_main(argv: list[str] | None = None) -> int:
         json.dumps(
             {
                 "input": args.input,
-                "image_analyses_output": args.image_analyses_output,
+                "image_analyses_output": str(image_analyses_output),
                 "vision_backend": args.vision_backend,
                 "vision_model": model,
                 "analysis_count": len(image_cache.get("analyses", {})),

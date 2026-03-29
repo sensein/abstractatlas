@@ -544,14 +544,14 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         args = parser.parse_args([])
 
         self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
-        self.assertEqual(args.output_dir, "data/embeddings/minilm_stage1/semantic_analysis")
+        self.assertTrue(args.output_dir.startswith("data/outputs/experiments/semantic_analysis__"))
 
     def test_build_cluster_benchmark_parser_defaults_to_minilm_bundle(self) -> None:
         parser = build_cluster_benchmark_parser()
         args = parser.parse_args([])
 
         self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
-        self.assertEqual(args.output_dir, "data/embeddings/minilm_stage1/clustering_benchmark")
+        self.assertTrue(args.output_dir.startswith("data/outputs/experiments/clustering_benchmark__"))
         self.assertEqual(args.k_min, 2)
         self.assertEqual(args.k_max, 30)
         self.assertTrue(args.row_normalize)
@@ -570,8 +570,10 @@ class NeuroScapeHelpersTest(unittest.TestCase):
             ["title", "methods", "results"],
         )
 
-        self.assertEqual(str(html_path), "data/embeddings/minilm_stage1/umap_title-methods-results.html")
-        self.assertEqual(str(json_path), "data/embeddings/minilm_stage1/umap_title-methods-results.json")
+        self.assertIn("data/outputs/experiments/umap_title-methods-results__", str(html_path))
+        self.assertIn("/report.html", str(html_path))
+        self.assertIn("data/outputs/experiments/umap_title-methods-results__", str(json_path))
+        self.assertIn("/projection.json", str(json_path))
 
     def test_default_projection_output_paths_include_fieldset(self) -> None:
         html_path, json_path = default_projection_output_paths(
@@ -579,14 +581,16 @@ class NeuroScapeHelpersTest(unittest.TestCase):
             ["title", "methods", "results"],
         )
 
-        self.assertEqual(
+        self.assertIn(
+            "data/outputs/experiments/projection_comparison_title-methods-results__",
             str(html_path),
-            "data/embeddings/minilm_stage1/projection_comparison_title-methods-results.html",
         )
-        self.assertEqual(
+        self.assertIn("/report.html", str(html_path))
+        self.assertIn(
+            "data/outputs/experiments/projection_comparison_title-methods-results__",
             str(json_path),
-            "data/embeddings/minilm_stage1/projection_comparison_title-methods-results.json",
         )
+        self.assertIn("/projection.json", str(json_path))
 
     def test_build_distinct_color_map_assigns_unique_colors(self) -> None:
         color_map = build_distinct_color_map(["A", "B", "C", "A"])

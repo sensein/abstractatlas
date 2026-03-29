@@ -5,6 +5,9 @@
 __pycache__/
 *.pyc
 data/
+data/inputs/
+data/cache/
+data/outputs/
 .cache/
 .matplotlib/
 export/

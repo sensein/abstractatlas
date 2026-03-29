@@ -9,6 +9,8 @@ from ohbm2026.ui import (
     build_export_parser,
     build_ui_main,
     build_ui_payload,
+    default_export_output_dir,
+    default_site_output_dir,
     markdown_to_html,
     primary_topic_from_questions,
     render_additional_content_markdown,
@@ -58,15 +60,18 @@ class UIHelpersTest(unittest.TestCase):
     def test_build_export_parser_defaults(self) -> None:
         args = build_export_parser().parse_args([])
 
-        self.assertEqual(args.output_dir, "export/ui-site/data")
+        self.assertEqual(args.output_dir, str(default_export_output_dir()))
         self.assertEqual(args.top_neighbors, 8)
-        self.assertEqual(args.image_analyses_input, "data/image_analyses_openai.json")
+        self.assertIn("data/cache/figure_analysis/", args.image_analyses_input)
         self.assertEqual(args.phenomena_theories_input, "data/abstracts_with_phenomena_with_theories_refined.csv")
         self.assertEqual(args.cluster_25_dir, "data/embeddings/voyage_stage2_published/clustering_benchmark")
         self.assertEqual(args.spectral_cluster_dir, "data/embeddings/voyage_stage2_published/clustering_benchmark_spectral")
         self.assertEqual(args.claims_cluster_dir, "data/embeddings/minilm_claims/clustering_benchmark_25_30")
         self.assertEqual(args.semantic_vectors_input, "data/embeddings/minilm_stage1/vectors.npy")
         self.assertEqual(args.umap_input, "data/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json")
+
+    def test_default_site_output_dir_uses_exported_site_family(self) -> None:
+        self.assertTrue(str(default_site_output_dir()).startswith("data/outputs/exported-sites/ui-site__"))
 
     def test_build_ui_payload_writes_search_detail_and_relation_fields(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -547,6 +552,150 @@ class UIHelpersTest(unittest.TestCase):
             self.assertTrue((site_output_dir / "data" / "abstracts.search.json").exists())
             self.assertTrue((site_output_dir / "data" / "semantic.vectors.f32").exists())
             self.assertTrue((site_output_dir / "data" / "projection.umap.json").exists())
+
+    def test_build_ui_main_can_publish_to_export_dir(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "ui"
+            source_dir.mkdir()
+            (source_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+
+            raw_input = root / "abstracts.json"
+            enriched_input = root / "abstracts_enriched.json"
+            references_input = root / "reference_metadata.json"
+            image_analyses_input = root / "image_analyses.json"
+            phenomena_theories_input = root / "phenomena_theories.csv"
+            neighbors_input = root / "neighbors.json"
+            semantic_vectors_input = root / "vectors.npy"
+            semantic_metadata_input = root / "metadata.json"
+            umap_input = root / "umap.json"
+            cluster_15_dir = root / "semantic_analysis_15"
+            cluster_21_dir = root / "semantic_analysis_21"
+            cluster_25_dir = root / "clustering_benchmark"
+            spectral_cluster_dir = root / "clustering_benchmark_spectral"
+            claims_cluster_dir = root / "claims_clustering_benchmark"
+            site_output_dir = root / "data" / "outputs" / "exported-sites" / "site__state"
+            publish_dir = root / "export" / "ui-site"
+            for path in (cluster_15_dir, cluster_21_dir, cluster_25_dir, spectral_cluster_dir, claims_cluster_dir):
+                path.mkdir()
+
+            raw_input.write_text(
+                json.dumps({"abstracts": [{"id": 1, "title": "T", "accepted_for": "Poster", "responses": []}]}),
+                encoding="utf-8",
+            )
+            enriched_input.write_text(
+                json.dumps({"abstracts": [{"id": 1, "accepted_for": "Poster"}]}),
+                encoding="utf-8",
+            )
+            references_input.write_text(
+                json.dumps({"references": [], "abstracts": [{"id": 1, "references": []}]}),
+                encoding="utf-8",
+            )
+            image_analyses_input.write_text(json.dumps({"analyses": {}}), encoding="utf-8")
+            phenomena_theories_input.write_text(
+                "id,abstract_body,phenomena,theories\n1,\"T body\",PHEN_001,THEO_001\n",
+                encoding="utf-8",
+            )
+            neighbors_input.write_text(json.dumps({"neighbors": {"1": []}}), encoding="utf-8")
+            np.save(semantic_vectors_input, np.asarray([[1.0, 0.0]], dtype=np.float32))
+            semantic_metadata_input.write_text(
+                json.dumps({"ids": [1], "embedding_fields": ["title"], "embedding_name": "minilm_stage1"}),
+                encoding="utf-8",
+            )
+            umap_input.write_text(
+                json.dumps(
+                    {
+                        "title": "Test UMAP",
+                        "points": [
+                            {
+                                "id": 1,
+                                "title": "T",
+                                "accepted_for": "Poster",
+                                "primary_topic": "Unknown",
+                                "keywords": [],
+                                "x": 0.0,
+                                "y": 0.0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            for directory in (cluster_15_dir, cluster_21_dir, cluster_25_dir, spectral_cluster_dir, claims_cluster_dir):
+                (directory / "cluster_assignments.json").write_text(
+                    json.dumps({"assignments": {"1": 0}}),
+                    encoding="utf-8",
+                )
+                if "semantic_analysis" in directory.name:
+                    (directory / "community_detection.json").write_text(
+                        json.dumps({"best_resolution": 2.5, "best_modularity": 0.41}),
+                        encoding="utf-8",
+                    )
+                else:
+                    (directory / "best_run.json").write_text(
+                        json.dumps({"method": "kmeans", "cluster_count": 1, "silhouette_score": 0.1}),
+                        encoding="utf-8",
+                    )
+                (directory / "cluster_summaries.json").write_text(
+                    json.dumps(
+                        {
+                            "clusters": [
+                                {
+                                    "cluster_id": 0,
+                                    "label": "cluster",
+                                    "size": 1,
+                                    "keywords": [],
+                                    "accepted_for_counts": {},
+                                    "representative_abstracts": [],
+                                }
+                            ]
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            result = build_ui_main(
+                [
+                    "--source-dir",
+                    str(source_dir),
+                    "--site-output-dir",
+                    str(site_output_dir),
+                    "--publish-dir",
+                    str(publish_dir),
+                    "--raw-input",
+                    str(raw_input),
+                    "--enriched-input",
+                    str(enriched_input),
+                    "--references-input",
+                    str(references_input),
+                    "--image-analyses-input",
+                    str(image_analyses_input),
+                    "--phenomena-theories-input",
+                    str(phenomena_theories_input),
+                    "--neighbors-input",
+                    str(neighbors_input),
+                    "--cluster-15-dir",
+                    str(cluster_15_dir),
+                    "--cluster-21-dir",
+                    str(cluster_21_dir),
+                    "--cluster-25-dir",
+                    str(cluster_25_dir),
+                    "--spectral-cluster-dir",
+                    str(spectral_cluster_dir),
+                    "--claims-cluster-dir",
+                    str(claims_cluster_dir),
+                    "--semantic-vectors-input",
+                    str(semantic_vectors_input),
+                    "--semantic-metadata-input",
+                    str(semantic_metadata_input),
+                    "--umap-input",
+                    str(umap_input),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            self.assertTrue((site_output_dir / "data" / "manifest.json").exists())
+            self.assertTrue((publish_dir / "data" / "manifest.json").exists())
 
 
 if __name__ == "__main__":

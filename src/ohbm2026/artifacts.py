@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterable, Mapping
+
+DATA_ROOT = Path("data")
+INPUTS_ROOT = DATA_ROOT / "inputs"
+CACHE_ROOT = DATA_ROOT / "cache"
+OUTPUTS_ROOT = DATA_ROOT / "outputs"
+EXPORT_ROOT = Path("export")
+SCRATCH_ROOT = Path("tmp")
+
+OUTPUT_FAMILIES = ("experiments", "exported-sites", "proposals")
+ARTIFACT_CLASSES = ("input", "cache", "output", "scratch")
+DEFAULT_SCHEMA_VERSION = "1"
+
+
+def utc_now_isoformat() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _normalize_hashable(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _normalize_hashable(value[key]) for key in sorted(value)}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_hashable(item) for item in value]
+    if isinstance(value, set):
+        return [_normalize_hashable(item) for item in sorted(value, key=lambda item: json.dumps(_normalize_hashable(item), sort_keys=True))]
+    return value
+
+
+def _stable_hash(value: Any, *, length: int = 12) -> str:
+    encoded = json.dumps(_normalize_hashable(value), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:length]
+
+
+def _normalized_strings(values: Iterable[str] | None) -> list[str]:
+    if not values:
+        return []
+    normalized = sorted({str(value).strip() for value in values if str(value).strip()})
+    return normalized
+
+
+def build_dependency_basis(
+    *,
+    input_sources: Iterable[str] | None = None,
+    input_digest: str | None = None,
+    backend: str | None = None,
+    model: str | None = None,
+    options: Mapping[str, Any] | None = None,
+    env_boundary: Iterable[str] | None = None,
+    supersedes: str | None = None,
+) -> dict[str, Any]:
+    basis: dict[str, Any] = {
+        "input_sources": _normalized_strings(input_sources),
+        "input_digest": str(input_digest).strip() if input_digest else None,
+        "backend": str(backend).strip() if backend else None,
+        "model": str(model).strip() if model else None,
+        "options_digest": _stable_hash(options) if options else None,
+        "env_boundary": _normalized_strings(env_boundary),
+        "supersedes": str(supersedes).strip() if supersedes else None,
+    }
+    return {key: value for key, value in basis.items() if value not in (None, [], "")}
+
+
+def build_state_key(dependency_basis: Mapping[str, Any], *, schema_version: str = DEFAULT_SCHEMA_VERSION) -> str:
+    return _stable_hash({"schema_version": schema_version, "dependency_basis": dict(dependency_basis)})
+
+
+def build_input_snapshot_path(source_name: str, state_key: str, *, suffix: str = ".json") -> Path:
+    return INPUTS_ROOT / f"{source_name}__{state_key}{suffix}"
+
+
+def build_cache_path(workflow: str, artifact_name: str, state_key: str, *, suffix: str = ".json") -> Path:
+    return CACHE_ROOT / workflow / f"{artifact_name}__{state_key}{suffix}"
+
+
+def build_output_path(output_family: str, artifact_name: str, state_key: str) -> Path:
+    if output_family not in OUTPUT_FAMILIES:
+        raise ValueError(f"Unsupported output family: {output_family}")
+    return OUTPUTS_ROOT / output_family / f"{artifact_name}__{state_key}"
+
+
+def build_publish_path(site_name: str) -> Path:
+    return EXPORT_ROOT / site_name
+
+
+def artifact_root(artifact_class: str, *, output_family: str | None = None) -> Path:
+    if artifact_class == "input":
+        return INPUTS_ROOT
+    if artifact_class == "cache":
+        return CACHE_ROOT
+    if artifact_class == "output":
+        if output_family is None:
+            return OUTPUTS_ROOT
+        return build_output_path(output_family, "placeholder", "state-key").parent
+    if artifact_class == "scratch":
+        return SCRATCH_ROOT
+    raise ValueError(f"Unsupported artifact class: {artifact_class}")
+
+
+def build_artifact_metadata(
+    *,
+    workflow: str,
+    artifact_name: str,
+    artifact_class: str,
+    state_key: str,
+    dependency_basis: Mapping[str, Any],
+    output_family: str | None = None,
+    status: str = "ready",
+    schema_version: str = DEFAULT_SCHEMA_VERSION,
+    generated_at: str | None = None,
+    producer: str | None = None,
+) -> dict[str, Any]:
+    if artifact_class not in ARTIFACT_CLASSES:
+        raise ValueError(f"Unsupported artifact class: {artifact_class}")
+    if artifact_class == "output" and output_family and output_family not in OUTPUT_FAMILIES:
+        raise ValueError(f"Unsupported output family: {output_family}")
+    metadata = {
+        "workflow": workflow,
+        "artifact_name": artifact_name,
+        "artifact_class": artifact_class,
+        "output_family": output_family,
+        "state_key": state_key,
+        "status": status,
+        "generated_at": generated_at or utc_now_isoformat(),
+        "schema_version": schema_version,
+        "producer": producer,
+        "dependency_basis": _normalize_hashable(dict(dependency_basis)),
+    }
+    return {key: value for key, value in metadata.items() if value is not None}
+
+
+def attach_artifact_metadata(payload: Mapping[str, Any], metadata: Mapping[str, Any]) -> dict[str, Any]:
+    enriched = dict(payload)
+    enriched["artifact_metadata"] = dict(metadata)
+    return enriched
+
+
+def artifact_metadata(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    metadata = payload.get("artifact_metadata")
+    return dict(metadata) if isinstance(metadata, Mapping) else None
+
+
+def artifact_is_stale(existing_metadata: Mapping[str, Any] | None, *, expected_state_key: str) -> bool:
+    if not existing_metadata:
+        return True
+    return str(existing_metadata.get("state_key") or "") != expected_state_key
+
+
+def regeneration_action(existing_metadata: Mapping[str, Any] | None, *, expected_state_key: str) -> str:
+    if not existing_metadata:
+        return "full_rebuild"
+    current_state_key = str(existing_metadata.get("state_key") or "")
+    status = str(existing_metadata.get("status") or "")
+    if current_state_key == expected_state_key and status in {"running", "error"}:
+        return "resume"
+    if current_state_key == expected_state_key:
+        return "resume"
+    return "selective_rebuild"

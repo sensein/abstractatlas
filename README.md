@@ -36,14 +36,16 @@ Recommended reading order for a new person or agent:
 
 Core artifacts:
 
+- `data/inputs/abstracts_graphql__<state-key>.json`
+  - GraphQL-fetched source snapshot for the latest ingest run
 - `data/abstracts.json`
-  - raw accepted abstracts from Oxford Abstracts
+  - canonical normalized accepted abstracts derived from the fetched snapshot
 - `data/assets/`
   - downloaded local figure files, restricted to methods/results figures
-- `data/image_analyses_openai.json`
-  - OpenAI multimodal figure-analysis cache
-- `data/claim_analyses_cllm.json`
-  - resumable `cllm` claim-extraction cache
+- `data/cache/figure_analysis/image_analyses_<backend>__<state-key>.json`
+  - resumable figure-analysis cache with direct state-key lookup
+- `data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json`
+  - resumable `cllm` claim-extraction cache with direct state-key lookup
 - `data/title_modifications.json`
   - audit log of cleaned abstract titles versus original raw titles
 - `data/abstracts_enriched.json`
@@ -51,9 +53,23 @@ Core artifacts:
 - `data/reference_metadata.json`
   - OpenAlex-matched reference metadata
 - `data/embeddings/*`
-  - embedding bundles, stage-2 projections, clustering outputs, UMAPs, and neighbors
+  - canonical embedding bundles, stage-2 projections, and neighbors
+- `data/outputs/experiments/*__<state-key>/`
+  - clustering, projection, and other experiment-style derived outputs
+- `data/outputs/exported-sites/ui-site__<state-key>/`
+  - local exported-site bundle before optional publish mirroring
+- `data/outputs/proposals/*__<state-key>/`
+  - proposal bundles and proposal-adjacent analysis outputs
 - `export/ui-site/`
-  - static site bundle for interactive search and browsing
+  - optional publish mirror of the latest exported-site bundle
+
+Local artifact layout rules:
+
+- `data/inputs/` is for fetched source snapshots
+- `data/cache/` is for resumable caches and checkpoints
+- `data/outputs/experiments/`, `data/outputs/exported-sites/`, and
+  `data/outputs/proposals/` are for local derived outputs
+- `data/`, `export/`, and `tmp/` remain ignored by git
 
 ## Current Latest Step
 
@@ -218,7 +234,6 @@ This is the current preferred route for the main enriched corpus.
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-figures \
   --vision-backend openai \
   --openai-model gpt-4.1-mini \
-  --image-analyses-output data/image_analyses_openai.json \
   --enriched-output data/abstracts_enriched_openai.json
 ```
 
@@ -233,8 +248,7 @@ Notes:
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-figures \
   --vision-backend ollama \
-  --vision-model qwen3.5:35b \
-  --image-analyses-output data/image_analyses.json
+  --vision-model qwen3.5:35b
 ```
 
 ### 5. Build The Main Enriched Abstract Dataset
@@ -245,8 +259,10 @@ corpus.
 
 Current default:
 
-- `enrich` now defaults to `data/image_analyses_openai.json`
-- `enrich` now also defaults to `data/claim_analyses_cllm.json`
+- `enrich` now defaults to the OpenAI figure-analysis cache under
+  `data/cache/figure_analysis/`
+- `enrich` now also defaults to the `cllm` claim cache under
+  `data/cache/claim_analysis/`
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli enrich
@@ -257,8 +273,8 @@ Explicit form:
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli enrich \
   --input data/abstracts.json \
-  --image-analyses-input data/image_analyses_openai.json \
-  --claim-analyses-input data/claim_analyses_cllm.json \
+  --image-analyses-input data/cache/figure_analysis/image_analyses_openai__<state-key>.json \
+  --claim-analyses-input data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json \
   --enriched-output data/abstracts_enriched.json
 ```
 
@@ -368,10 +384,11 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli extract-claims
 What it does:
 
 - reads `data/abstracts.json`
-- reads `data/image_analyses_openai.json` by default so figure-analysis text can be appended when present
+- reads the OpenAI figure-analysis cache under `data/cache/figure_analysis/` by
+  default so figure-analysis text can be appended when present
 - builds a manuscript from the title, introduction, methods, results, discussion, conclusion, and filtered additional-content fields
 - excludes references and acknowledgements from the claim prompt
-- writes a resumable cache to `data/claim_analyses_cllm.json`
+- writes a resumable cache under `data/cache/claim_analysis/`
 
 Current default OpenAI path:
 
@@ -383,8 +400,8 @@ Useful explicit form:
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli extract-claims \
   --input data/abstracts.json \
-  --image-analyses-input data/image_analyses_openai.json \
-  --claim-analyses-output data/claim_analyses_cllm.json \
+  --image-analyses-input data/cache/figure_analysis/image_analyses_openai__<state-key>.json \
+  --claim-analyses-output data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json \
   --openai-model gpt-4o-2024-08-06
 ```
 
@@ -478,7 +495,7 @@ Clustering benchmark over an embedding bundle:
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli cluster-benchmark \
   --embeddings-dir data/embeddings/voyage_stage2_published \
-  --output-dir data/embeddings/voyage_stage2_published/clustering_benchmark
+  --output-dir data/outputs/experiments/clustering_benchmark__<state-key>
 ```
 
 To benchmark a claims-only bundle around `25-30` clusters:
@@ -486,7 +503,7 @@ To benchmark a claims-only bundle around `25-30` clusters:
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli cluster-benchmark \
   --embeddings-dir data/embeddings/minilm_claims \
-  --output-dir data/embeddings/minilm_claims/clustering_benchmark_25_30 \
+  --output-dir data/outputs/experiments/clustering_benchmark_claims_25_30__<state-key> \
   --k-min 25 \
   --k-max 30
 ```
@@ -506,8 +523,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli optimize-projections
 This is the current latest delivery step.
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui \
-  --site-output-dir export/ui-site
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui
 ```
 
 The current default UI build uses:
@@ -515,16 +531,22 @@ The current default UI build uses:
 - `data/abstracts.json`
 - `data/abstracts_enriched.json`
 - `data/reference_metadata.json`
-- `data/image_analyses_openai.json`
+- the OpenAI figure-analysis cache under `data/cache/figure_analysis/`
 - `data/embeddings/voyage_stage2_published/clustering_benchmark`
 - `data/embeddings/minilm_claims/clustering_benchmark_25_30`
 - `data/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json`
+
+By default `build-ui` now writes the local bundle under
+`data/outputs/exported-sites/ui-site__<state-key>/` and mirrors that bundle to
+`export/ui-site/`. Pass `--site-output-dir` or `--publish-dir` to override one
+or both locations.
 
 Useful explicit form if you want to point the UI at a different claims-cluster run:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui \
-  --site-output-dir export/ui-site \
+  --site-output-dir data/outputs/exported-sites/ui-site__<state-key> \
+  --publish-dir export/ui-site \
   --cluster-25-dir data/embeddings/voyage_stage2_published/clustering_benchmark \
   --claims-cluster-dir data/embeddings/minilm_claims/clustering_benchmark_25_30
 ```
@@ -538,7 +560,7 @@ The exported detail payload now includes:
 Then serve it locally:
 
 ```bash
-python -m http.server 8000
+.venv/bin/python -m http.server 8000
 ```
 
 Open:
@@ -600,10 +622,10 @@ If you specifically want to refresh the claims-based semantic lens:
 - authors
   - `data/authors.json`
 - figure analysis
-  - `data/image_analyses.json`
-  - `data/image_analyses_openai.json`
+  - `data/cache/figure_analysis/image_analyses_ollama__<state-key>.json`
+  - `data/cache/figure_analysis/image_analyses_openai__<state-key>.json`
 - claim extraction
-  - `data/claim_analyses_cllm.json`
+  - `data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json`
 - enriched corpus
   - `data/abstracts_enriched.json`
 - references
@@ -611,7 +633,8 @@ If you specifically want to refresh the claims-based semantic lens:
 - embeddings and clustering
   - `data/embeddings/*`
 - static site
-  - `export/ui-site/`
+  - `data/outputs/exported-sites/ui-site__<state-key>/`
+  - optional publish mirror at `export/ui-site/`
 
 ## Validation
 

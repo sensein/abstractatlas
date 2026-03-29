@@ -12,6 +12,7 @@ from ohbm2026.openalex import (
     build_reference_key,
     build_reference_metadata_payload,
     collect_reference_cache,
+    default_reference_collect_checkpoint_path,
     extract_dois,
     extract_pmid,
     extract_reference_entries,
@@ -320,6 +321,12 @@ class OpenAlexHelpersTest(unittest.TestCase):
         self.assertTrue(cached["matched"])
         self.assertEqual(cached["source_count"], 1)
         self.assertEqual(cached["raw_text_examples"], ["Smith A. Example title. doi:10.1000/test"])
+
+    def test_default_reference_collect_checkpoint_path_uses_cache_root(self) -> None:
+        path = default_reference_collect_checkpoint_path(Path("data/abstracts.json"))
+
+        self.assertTrue(str(path).startswith("data/cache/reference_metadata/reference_collect__"))
+        self.assertTrue(str(path).endswith(".json"))
 
     def test_collect_reference_cache_uses_llm_split_for_concatenated_reference_text(self) -> None:
         with TemporaryDirectory() as temp_dir:

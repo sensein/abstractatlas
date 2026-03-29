@@ -14,6 +14,8 @@ from typing import Any
 
 import numpy as np
 
+from ohbm2026 import artifacts
+from ohbm2026.enrichment import default_image_analysis_cache_path
 from ohbm2026.neuroscape import parse_string_list_value
 from ohbm2026.titles import cleaned_abstract_title
 
@@ -34,6 +36,7 @@ DEFAULT_UMAP_INPUT = "data/embeddings/minilm_stage1/umap_title-introduction-meth
 DEFAULT_EXPORT_OUTPUT = "export/ui-site/data"
 DEFAULT_SITE_SOURCE = "ui"
 DEFAULT_SITE_OUTPUT = "export/ui-site"
+DEFAULT_PUBLISH_OUTPUT = "export/ui-site"
 
 SECTION_FIELDS = (
     ("introduction_markdown", "Introduction"),
@@ -146,6 +149,46 @@ BRAIN_NETWORK_PATTERNS = {
 
 class UIBuildError(RuntimeError):
     pass
+
+
+def _cli_option_present(argv: list[str] | None, option: str) -> bool:
+    return argv is not None and option in argv
+
+
+def default_site_output_dir(
+    *,
+    raw_input: Path = Path(DEFAULT_RAW_INPUT),
+    enriched_input: Path = Path(DEFAULT_ENRICHED_INPUT),
+    references_input: Path = Path(DEFAULT_REFERENCES_INPUT),
+    image_analyses_input: Path = Path(str(default_image_analysis_cache_path(backend="openai"))),
+    neighbors_input: Path = Path(DEFAULT_NEIGHBORS_INPUT),
+    semantic_metadata_input: Path = Path(DEFAULT_SEMANTIC_METADATA_INPUT),
+    umap_input: Path = Path(DEFAULT_UMAP_INPUT),
+    top_neighbors: int = 8,
+) -> Path:
+    basis = artifacts.build_dependency_basis(
+        input_sources=[
+            str(raw_input),
+            str(enriched_input),
+            str(references_input),
+            str(image_analyses_input),
+            str(neighbors_input),
+            str(semantic_metadata_input),
+            str(umap_input),
+        ],
+        options={"top_neighbors": top_neighbors},
+    )
+    return artifacts.build_output_path("exported-sites", "ui-site", artifacts.build_state_key(basis))
+
+
+def default_export_output_dir(**kwargs: Any) -> Path:
+    return default_site_output_dir(**kwargs) / "data"
+
+
+DEFAULT_IMAGE_ANALYSES_INPUT = str(default_image_analysis_cache_path(backend="openai"))
+DEFAULT_EXPORT_OUTPUT = str(default_export_output_dir())
+DEFAULT_SITE_OUTPUT = str(default_site_output_dir())
+DEFAULT_PUBLISH_OUTPUT = str(artifacts.build_publish_path("ui-site"))
 
 
 @dataclass(frozen=True)
@@ -932,6 +975,11 @@ def copy_ui_assets(source_dir: Path, output_dir: Path) -> None:
             shutil.copy2(path, target)
 
 
+def publish_ui_bundle(site_output_dir: Path, publish_dir: Path) -> None:
+    publish_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(site_output_dir, publish_dir, dirs_exist_ok=True)
+
+
 def build_export_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Export a static JSON bundle for the OHBM abstract search UI")
     parser.add_argument("--raw-input", default=DEFAULT_RAW_INPUT)
@@ -954,7 +1002,22 @@ def build_export_parser() -> argparse.ArgumentParser:
 
 
 def export_ui_main(argv: list[str] | None = None) -> int:
+    raw_argv = list(argv) if argv is not None else None
     args = build_export_parser().parse_args(argv)
+    output_dir = (
+        Path(args.output_dir)
+        if _cli_option_present(raw_argv, "--output-dir")
+        else default_export_output_dir(
+            raw_input=Path(args.raw_input),
+            enriched_input=Path(args.enriched_input),
+            references_input=Path(args.references_input),
+            image_analyses_input=Path(args.image_analyses_input),
+            neighbors_input=Path(args.neighbors_input),
+            semantic_metadata_input=Path(args.semantic_metadata_input),
+            umap_input=Path(args.umap_input),
+            top_neighbors=args.top_neighbors,
+        )
+    )
     payload = build_ui_payload(
         raw_input=Path(args.raw_input),
         enriched_input=Path(args.enriched_input),
@@ -972,11 +1035,11 @@ def export_ui_main(argv: list[str] | None = None) -> int:
         umap_input=Path(args.umap_input),
         top_neighbors=args.top_neighbors,
     )
-    export_ui_bundle(Path(args.output_dir), payload)
+    export_ui_bundle(output_dir, payload)
     print(
         json.dumps(
             {
-                "output_dir": args.output_dir,
+                "output_dir": str(output_dir),
                 "abstract_count": payload["manifest"]["abstract_count"],
                 "top_neighbors": args.top_neighbors,
             },
@@ -1005,12 +1068,27 @@ def build_ui_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-neighbors", type=int, default=8)
     parser.add_argument("--source-dir", default=DEFAULT_SITE_SOURCE)
     parser.add_argument("--site-output-dir", default=DEFAULT_SITE_OUTPUT)
+    parser.add_argument("--publish-dir", default=DEFAULT_PUBLISH_OUTPUT)
     return parser
 
 
 def build_ui_main(argv: list[str] | None = None) -> int:
+    raw_argv = list(argv) if argv is not None else None
     args = build_ui_parser().parse_args(argv)
-    site_output_dir = Path(args.site_output_dir)
+    site_output_dir = (
+        Path(args.site_output_dir)
+        if _cli_option_present(raw_argv, "--site-output-dir")
+        else default_site_output_dir(
+            raw_input=Path(args.raw_input),
+            enriched_input=Path(args.enriched_input),
+            references_input=Path(args.references_input),
+            image_analyses_input=Path(args.image_analyses_input),
+            neighbors_input=Path(args.neighbors_input),
+            semantic_metadata_input=Path(args.semantic_metadata_input),
+            umap_input=Path(args.umap_input),
+            top_neighbors=args.top_neighbors,
+        )
+    )
     copy_ui_assets(Path(args.source_dir), site_output_dir)
     payload = build_ui_payload(
         raw_input=Path(args.raw_input),
@@ -1030,10 +1108,18 @@ def build_ui_main(argv: list[str] | None = None) -> int:
         top_neighbors=args.top_neighbors,
     )
     export_ui_bundle(site_output_dir / "data", payload)
+    publish_dir = (
+        Path(args.publish_dir)
+        if _cli_option_present(raw_argv, "--publish-dir") or not _cli_option_present(raw_argv, "--site-output-dir")
+        else None
+    )
+    if publish_dir is not None:
+        publish_ui_bundle(site_output_dir, publish_dir)
     print(
         json.dumps(
             {
                 "site_output_dir": str(site_output_dir),
+                "publish_dir": str(publish_dir) if publish_dir is not None else None,
                 "abstract_count": payload["manifest"]["abstract_count"],
             },
             indent=2,

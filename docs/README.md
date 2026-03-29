@@ -14,6 +14,14 @@ run the current canonical pipeline. The constitution explains what should not be
 broken while changing it, including `.venv`-only Python execution,
 plan-first/test-driven delivery, auditability, and secret hygiene.
 
+Current artifact contract to keep in mind while reading older docs:
+
+- `data/inputs/` holds fetched GraphQL source snapshots
+- `data/cache/` holds resumable caches and checkpoints
+- `data/outputs/experiments/`, `data/outputs/exported-sites/`, and
+  `data/outputs/proposals/` hold local derived outputs
+- `export/` is only for publish mirrors, not the primary local output root
+
 ## Planning Documents By Topic
 
 ### Core pipeline and reproducibility

@@ -33,9 +33,9 @@ implementation and testing of each story.
 **Purpose**: Establish the shared artifact-governance scaffolding and local path
 rules before workflow-specific changes begin.
 
-- [ ] T001 Update ignore rules for `data/inputs/`, `data/cache/`, and `data/outputs/` in `.gitignore`
-- [ ] T002 Create the shared artifact governance module scaffold in `src/ohbm2026/artifacts.py`
-- [ ] T003 [P] Create the shared artifact test module scaffold in `tests/test_artifacts.py`
+- [X] T001 Update ignore rules for `data/inputs/`, `data/cache/`, and `data/outputs/` in `.gitignore`
+- [X] T002 Create the shared artifact governance module scaffold in `src/ohbm2026/artifacts.py`
+- [X] T003 [P] Create the shared artifact test module scaffold in `tests/test_artifacts.py`
 
 ---
 
@@ -46,11 +46,11 @@ that all workflow migrations will depend on.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Implement deterministic state-key and direct path builders in `src/ohbm2026/artifacts.py`
-- [ ] T005 Implement artifact metadata, dependency-basis, and regeneration policy helpers in `src/ohbm2026/artifacts.py`
-- [ ] T006 [P] Add unit coverage for path resolution, metadata normalization, and git-ignore expectations in `tests/test_artifacts.py`
-- [ ] T007 Wire shared artifact constants/imports into `src/ohbm2026/cli.py`, `src/ohbm2026/enrichment.py`, `src/ohbm2026/openalex.py`, `src/ohbm2026/neuroscape.py`, and `src/ohbm2026/ui.py`
-- [ ] T008 [P] Add representative ignore-path verification coverage for `data/inputs/`, `data/cache/`, and `data/outputs/` in `tests/test_artifacts.py`
+- [X] T004 Implement deterministic state-key and direct path builders in `src/ohbm2026/artifacts.py`
+- [X] T005 Implement artifact metadata, dependency-basis, and regeneration policy helpers in `src/ohbm2026/artifacts.py`
+- [X] T006 [P] Add unit coverage for path resolution, metadata normalization, and git-ignore expectations in `tests/test_artifacts.py`
+- [X] T007 Wire shared artifact constants/imports into `src/ohbm2026/cli.py`, `src/ohbm2026/enrichment.py`, `src/ohbm2026/openalex.py`, `src/ohbm2026/neuroscape.py`, and `src/ohbm2026/ui.py`
+- [X] T008 [P] Add representative ignore-path verification coverage for `data/inputs/`, `data/cache/`, and `data/outputs/` in `tests/test_artifacts.py`
 
 **Checkpoint**: Shared artifact layer, metadata contract, and ignore-path rules
 are ready for workflow-specific implementation.
@@ -71,14 +71,14 @@ longer depends on duplicated local helper logic.
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T009 [P] [US1] Add shared-helper regression tests for cache path and metadata resolution in `tests/test_enrichment.py`
-- [ ] T010 [P] [US1] Add shared-helper regression tests for checkpoint/cache path and metadata resolution in `tests/test_openalex.py`
+- [X] T009 [P] [US1] Add shared-helper regression tests for cache path and metadata resolution in `tests/test_enrichment.py`
+- [X] T010 [P] [US1] Add shared-helper regression tests for checkpoint/cache path and metadata resolution in `tests/test_openalex.py`
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Refactor `src/ohbm2026/enrichment.py` to use `src/ohbm2026/artifacts.py` for cache naming, metadata writes, and direct lookup
-- [ ] T012 [US1] Refactor `src/ohbm2026/openalex.py` to use `src/ohbm2026/artifacts.py` for checkpoint naming, metadata writes, and direct lookup
-- [ ] T013 [US1] Refactor shared JSON/path helper usage in `src/ohbm2026/neuroscape.py` and `src/ohbm2026/ui.py` toward `src/ohbm2026/artifacts.py`
+- [X] T011 [US1] Refactor `src/ohbm2026/enrichment.py` to use `src/ohbm2026/artifacts.py` for cache naming, metadata writes, and direct lookup
+- [X] T012 [US1] Refactor `src/ohbm2026/openalex.py` to use `src/ohbm2026/artifacts.py` for checkpoint naming, metadata writes, and direct lookup
+- [X] T013 [US1] Refactor shared JSON/path helper usage in `src/ohbm2026/neuroscape.py` and `src/ohbm2026/ui.py` toward `src/ohbm2026/artifacts.py`
 
 **Checkpoint**: The shared artifact utility is the single source of truth for
 path and metadata behavior in the first migrated workflows.
@@ -98,18 +98,18 @@ correct output family (`experiments`, `exported-sites`, or `proposals`).
 
 ### Tests for User Story 2 (REQUIRED FOR BEHAVIOR CHANGES) ⚠️
 
-- [ ] T014 [P] [US2] Add input snapshot and asset refresh coverage for `data/inputs/` in `tests/test_assets.py`
-- [ ] T015 [P] [US2] Add output-family path coverage for exported sites and experiments in `tests/test_neuroscape.py` and `tests/test_ui.py`
-- [ ] T016 [P] [US2] Add proposal output-family path coverage in `tests/test_poster_layout.py` and `tests/test_poster_sequencing.py`
-- [ ] T017 [P] [US2] Add exported-site publish compatibility coverage for `data/outputs/exported-sites/` and `export/` in `tests/test_ui.py`
+- [X] T014 [P] [US2] Add input snapshot and asset refresh coverage for `data/inputs/` in `tests/test_assets.py`
+- [X] T015 [P] [US2] Add output-family path coverage for exported sites and experiments in `tests/test_neuroscape.py` and `tests/test_ui.py`
+- [X] T016 [P] [US2] Add proposal output-family path coverage in `tests/test_poster_layout.py` and `tests/test_poster_sequencing.py`
+- [X] T017 [P] [US2] Add exported-site publish compatibility coverage for `data/outputs/exported-sites/` and `export/` in `tests/test_ui.py`
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Update `src/ohbm2026/assets.py` to store GraphQL-fetched source snapshots under `data/inputs/` while preserving canonical normalized outputs
-- [ ] T019 [US2] Update default cache paths in `src/ohbm2026/enrichment.py` and `src/ohbm2026/openalex.py` to resolve under `data/cache/`
-- [ ] T020 [US2] Update exported-site and experiment output paths in `src/ohbm2026/neuroscape.py` and `src/ohbm2026/ui.py` to resolve under `data/outputs/exported-sites/` and `data/outputs/experiments/`
-- [ ] T021 [US2] Update proposal output writers in `src/ohbm2026/poster_layout.py` and `src/ohbm2026/poster_sequencing.py` to resolve under `data/outputs/proposals/`
-- [ ] T022 [US2] Update `src/ohbm2026/ui.py` to preserve or explicitly redefine the publish step from `data/outputs/exported-sites/` into `export/`
+- [X] T018 [US2] Update `src/ohbm2026/assets.py` to store GraphQL-fetched source snapshots under `data/inputs/` while preserving canonical normalized outputs
+- [X] T019 [US2] Update default cache paths in `src/ohbm2026/enrichment.py` and `src/ohbm2026/openalex.py` to resolve under `data/cache/`
+- [X] T020 [US2] Update exported-site and experiment output paths in `src/ohbm2026/neuroscape.py` and `src/ohbm2026/ui.py` to resolve under `data/outputs/exported-sites/` and `data/outputs/experiments/`
+- [X] T021 [US2] Update proposal output writers in `src/ohbm2026/poster_layout.py` and `src/ohbm2026/poster_sequencing.py` to resolve under `data/outputs/proposals/`
+- [X] T022 [US2] Update `src/ohbm2026/ui.py` to preserve or explicitly redefine the publish step from `data/outputs/exported-sites/` into `export/`
 
 **Checkpoint**: Operators can distinguish fetched inputs, caches, and each
 output family by location alone, with tests confirming the contract.
@@ -128,15 +128,15 @@ inputs or outputs.
 
 ### Tests for User Story 3 (REQUIRED FOR BEHAVIOR CHANGES) ⚠️
 
-- [ ] T023 [P] [US3] Add invalidation and state-key regeneration tests in `tests/test_artifacts.py`
-- [ ] T024 [P] [US3] Add resume and regeneration regression tests in `tests/test_enrichment.py` and `tests/test_openalex.py`
-- [ ] T025 [P] [US3] Add output regeneration regression tests in `tests/test_ui.py` and `tests/test_neuroscape.py`
+- [X] T023 [P] [US3] Add invalidation and state-key regeneration tests in `tests/test_artifacts.py`
+- [X] T024 [P] [US3] Add resume and regeneration regression tests in `tests/test_enrichment.py` and `tests/test_openalex.py`
+- [X] T025 [P] [US3] Add output regeneration regression tests in `tests/test_ui.py` and `tests/test_neuroscape.py`
 
 ### Implementation for User Story 3
 
-- [ ] T026 [US3] Implement dependency-basis invalidation and resume policy helpers in `src/ohbm2026/artifacts.py`
-- [ ] T027 [US3] Wire regeneration metadata and stale-detection behavior through `src/ohbm2026/enrichment.py` and `src/ohbm2026/openalex.py`
-- [ ] T028 [US3] Wire regeneration metadata and stale-detection behavior through `src/ohbm2026/neuroscape.py`, `src/ohbm2026/ui.py`, `src/ohbm2026/poster_layout.py`, and `src/ohbm2026/poster_sequencing.py`
+- [X] T026 [US3] Implement dependency-basis invalidation and resume policy helpers in `src/ohbm2026/artifacts.py`
+- [X] T027 [US3] Wire regeneration metadata and stale-detection behavior through `src/ohbm2026/enrichment.py` and `src/ohbm2026/openalex.py`
+- [X] T028 [US3] Wire regeneration metadata and stale-detection behavior through `src/ohbm2026/neuroscape.py`, `src/ohbm2026/ui.py`, `src/ohbm2026/poster_layout.py`, and `src/ohbm2026/poster_sequencing.py`
 
 **Checkpoint**: Stale or interrupted expensive workflows can be resumed or
 rebuilt predictably from explicit metadata and regeneration rules.
@@ -148,10 +148,10 @@ rebuilt predictably from explicit metadata and regeneration rules.
 **Purpose**: Sync operator docs, review secret safety, and validate the planned
 workflow end to end.
 
-- [ ] T029 [P] Update operator docs for `data/inputs/`, `data/cache/`, and `data/outputs/` in `README.md`, `docs/README.md`, and `docs/reproducibility-vision.md`
-- [ ] T030 [P] Update workflow guidance for output families and git-ignore expectations in `experiments/README.md` and `AGENTS.md`
-- [ ] T031 Review secret exposure and metadata redaction behavior in `src/ohbm2026/artifacts.py`, `src/ohbm2026/enrichment.py`, `src/ohbm2026/openalex.py`, `src/ohbm2026/neuroscape.py`, and `src/ohbm2026/ui.py`
-- [ ] T032 Run the verification flow documented in `specs/001-refactor-cache-utils/quickstart.md`
+- [X] T029 [P] Update operator docs for `data/inputs/`, `data/cache/`, and `data/outputs/` in `README.md`, `docs/README.md`, and `docs/reproducibility-vision.md`
+- [X] T030 [P] Update workflow guidance for output families and git-ignore expectations in `experiments/README.md` and `AGENTS.md`
+- [X] T031 Review secret exposure and metadata redaction behavior in `src/ohbm2026/artifacts.py`, `src/ohbm2026/enrichment.py`, `src/ohbm2026/openalex.py`, `src/ohbm2026/neuroscape.py`, and `src/ohbm2026/ui.py`
+- [X] T032 Run the verification flow documented in `specs/001-refactor-cache-utils/quickstart.md`
 
 ---
 

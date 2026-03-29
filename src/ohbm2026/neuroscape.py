@@ -10,6 +10,9 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+import numpy as np
+
+from ohbm2026 import artifacts
 from ohbm2026.graphql_api import chunked, load_dotenv
 from ohbm2026.titles import cleaned_abstract_title
 
@@ -382,8 +385,6 @@ def write_embedding_bundle(
     vectors: list[list[float]],
     embedding_fields: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    import numpy as np
-
     output_dir.mkdir(parents=True, exist_ok=True)
     matrix = np.asarray(vectors, dtype=np.float32)
     ids = [abstract["id"] for abstract in abstracts]
@@ -794,7 +795,12 @@ def default_umap_output_paths(
 ) -> tuple[Path, Path]:
     fieldset = "-".join(embedding_fields)
     basename = f"umap_{fieldset}"
-    return embeddings_dir / f"{basename}.html", embeddings_dir / f"{basename}.json"
+    basis = artifacts.build_dependency_basis(
+        input_sources=[str(embeddings_dir)],
+        options={"embedding_fields": embedding_fields},
+    )
+    output_root = artifacts.build_output_path("experiments", basename, artifacts.build_state_key(basis))
+    return output_root / "report.html", output_root / "projection.json"
 
 
 def default_projection_output_paths(
@@ -803,7 +809,12 @@ def default_projection_output_paths(
 ) -> tuple[Path, Path]:
     fieldset = "-".join(embedding_fields)
     basename = f"projection_comparison_{fieldset}"
-    return embeddings_dir / f"{basename}.html", embeddings_dir / f"{basename}.json"
+    basis = artifacts.build_dependency_basis(
+        input_sources=[str(embeddings_dir)],
+        options={"embedding_fields": embedding_fields},
+    )
+    output_root = artifacts.build_output_path("experiments", basename, artifacts.build_state_key(basis))
+    return output_root / "report.html", output_root / "projection.json"
 
 
 def write_projection_comparison_outputs(
@@ -2553,7 +2564,20 @@ def build_cluster_benchmark_parser() -> argparse.ArgumentParser:
     parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
     parser.add_argument("--input", default="data/abstracts_enriched.json")
     parser.add_argument("--title-input", default="data/abstracts.json")
-    parser.add_argument("--output-dir", default="data/embeddings/minilm_stage1/clustering_benchmark")
+    parser.add_argument(
+        "--output-dir",
+        default=str(
+            artifacts.build_output_path(
+                "experiments",
+                "clustering_benchmark",
+                artifacts.build_state_key(
+                    artifacts.build_dependency_basis(
+                        input_sources=["data/embeddings/minilm_stage1", "data/abstracts_enriched.json", "data/abstracts.json"]
+                    )
+                ),
+            )
+        ),
+    )
     parser.add_argument(
         "--methods",
         nargs="+",
@@ -2646,7 +2670,20 @@ def build_semantic_analysis_parser() -> argparse.ArgumentParser:
     parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_stage1")
     parser.add_argument("--input", default="data/abstracts_enriched.json")
     parser.add_argument("--title-input", default="data/abstracts.json")
-    parser.add_argument("--output-dir", default="data/embeddings/minilm_stage1/semantic_analysis")
+    parser.add_argument(
+        "--output-dir",
+        default=str(
+            artifacts.build_output_path(
+                "experiments",
+                "semantic_analysis",
+                artifacts.build_state_key(
+                    artifacts.build_dependency_basis(
+                        input_sources=["data/embeddings/minilm_stage1", "data/abstracts_enriched.json", "data/abstracts.json"]
+                    )
+                ),
+            )
+        ),
+    )
     parser.add_argument("--num-neighbors", type=int, default=50)
     parser.add_argument("--resolution", type=float)
     parser.add_argument("--num-resolution-parameter", type=int, default=20)
@@ -2949,3 +2986,4 @@ def manifest_main(argv: list[str] | None = None) -> int:
     write_neuroscape_manifest(Path(args.output))
     print(json.dumps({"output": args.output}, indent=2))
     return 0
+from ohbm2026 import artifacts

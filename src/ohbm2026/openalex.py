@@ -20,6 +20,7 @@ from urllib.request import Request
 
 from openai import APIStatusError, AsyncOpenAI, RateLimitError
 
+from ohbm2026 import artifacts
 from ohbm2026.enrichment import html_to_markdown
 from ohbm2026.graphql_api import load_dotenv, urlopen_with_retries
 
@@ -129,6 +130,27 @@ def load_json(path: Path) -> dict[str, Any]:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def default_reference_collect_checkpoint_path(
+    input_path: Path = Path("data/abstracts.json"),
+    *,
+    reference_splitting_backend: str = DEFAULT_REFERENCE_SPLIT_BACKEND,
+    reference_splitting_model: str = DEFAULT_REFERENCE_SPLIT_MODEL,
+    use_title_search: bool = True,
+) -> Path:
+    basis = artifacts.build_dependency_basis(
+        input_sources=[str(input_path)],
+        backend=reference_splitting_backend,
+        model=reference_splitting_model,
+        options={"use_title_search": use_title_search},
+        env_boundary=["OPENAI_API_KEY"] if reference_splitting_backend == "openai" else None,
+    )
+    return artifacts.build_cache_path(
+        "reference_metadata",
+        "reference_collect",
+        artifacts.build_state_key(basis),
+    )
 
 
 def normalize_reference_text(value: str) -> str:
@@ -1275,6 +1297,7 @@ def collect_reference_cache(
     abstracts_database: dict[str, Any],
     output_path: Path,
     *,
+    checkpoint_path: Path | None = None,
     use_title_search: bool = False,
     use_llm_reference_splitting: bool = False,
     reference_splitting_backend: str = DEFAULT_REFERENCE_SPLIT_BACKEND,
@@ -1304,7 +1327,9 @@ def collect_reference_cache(
 
     reference_cache = {
         key: normalize_cached_reference(value)
-        for key, value in load_existing_reference_cache(output_path).items()
+        for key, value in load_existing_reference_cache(
+            output_path if output_path.exists() else checkpoint_path or output_path
+        ).items()
     }
     abstract_reference_records: list[dict[str, Any]] = []
     stats = request_counts if request_counts is not None else default_request_counts()
@@ -1349,7 +1374,7 @@ def collect_reference_cache(
         )
         if collect_checkpoint_every_abstracts > 0 and len(abstract_reference_records) % collect_checkpoint_every_abstracts == 0:
             write_reference_metadata_snapshot(
-                output_path,
+                checkpoint_path or output_path,
                 abstract_reference_records,
                 reference_cache,
                 use_title_search=use_title_search,
@@ -2091,6 +2116,7 @@ def build_reference_metadata_database(
     abstracts_database: dict[str, Any],
     *,
     output_path: Path,
+    checkpoint_path: Path | None = None,
     use_llm_reference_splitting: bool = True,
     reference_splitting_backend: str = DEFAULT_REFERENCE_SPLIT_BACKEND,
     reference_splitting_model: str = DEFAULT_REFERENCE_SPLIT_MODEL,
@@ -2110,10 +2136,17 @@ def build_reference_metadata_database(
     title_max_rps: float = DEFAULT_OPENALEX_TITLE_MAX_RPS,
 ) -> dict[str, Any]:
     effective_use_title_search = True
+    snapshot_path = checkpoint_path or default_reference_collect_checkpoint_path(
+        Path("data/abstracts.json"),
+        reference_splitting_backend=reference_splitting_backend,
+        reference_splitting_model=reference_splitting_model,
+        use_title_search=effective_use_title_search,
+    )
     request_counts = default_request_counts()
     abstract_reference_records, reference_cache = collect_reference_cache(
         abstracts_database,
         output_path,
+        checkpoint_path=snapshot_path,
         use_title_search=effective_use_title_search,
         use_llm_reference_splitting=use_llm_reference_splitting,
         reference_splitting_backend=reference_splitting_backend,
@@ -2126,7 +2159,7 @@ def build_reference_metadata_database(
         split_max_requeues=split_max_requeues,
     )
     write_reference_metadata_snapshot(
-        output_path,
+        snapshot_path,
         abstract_reference_records,
         reference_cache,
         use_title_search=effective_use_title_search,
@@ -2137,7 +2170,7 @@ def build_reference_metadata_database(
     request_counts = resolve_reference_cache_exact_matches(
         abstract_reference_records,
         reference_cache,
-        output_path=output_path,
+        output_path=snapshot_path,
         use_title_search=effective_use_title_search,
         exact_batch_size=exact_batch_size,
         request_counts=request_counts,
@@ -2147,7 +2180,7 @@ def build_reference_metadata_database(
     request_counts = resolve_reference_cache_title_matches(
         abstract_reference_records,
         reference_cache,
-        output_path=output_path,
+        output_path=snapshot_path,
         use_title_search=effective_use_title_search,
         title_similarity_threshold=title_similarity_threshold,
         delay_seconds=delay_seconds,
@@ -2159,7 +2192,7 @@ def build_reference_metadata_database(
         request_counts = resolve_reference_cache_doi_discovery(
             abstract_reference_records,
             reference_cache,
-            output_path=output_path,
+            output_path=snapshot_path,
             use_title_search=effective_use_title_search,
             doi_discovery_similarity_threshold=doi_discovery_similarity_threshold,
             delay_seconds=delay_seconds,
@@ -2203,8 +2236,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    database = load_json(Path(args.input))
+    input_path = Path(args.input)
+    database = load_json(input_path)
     output_path = Path(args.output)
+    checkpoint_path = default_reference_collect_checkpoint_path(
+        input_path,
+        reference_splitting_backend=args.reference_splitting_backend,
+        reference_splitting_model=args.reference_splitting_model,
+        use_title_search=True,
+    )
     if args.repair_failed_splits_from:
         existing_payload = load_json(Path(args.repair_failed_splits_from))
         result = repair_failed_reference_splits(
@@ -2233,6 +2273,7 @@ def main(argv: list[str] | None = None) -> int:
         result = build_reference_metadata_database(
             database,
             output_path=output_path,
+            checkpoint_path=checkpoint_path,
             use_llm_reference_splitting=not args.no_llm_reference_splitting,
             reference_splitting_backend=args.reference_splitting_backend,
             reference_splitting_model=args.reference_splitting_model,

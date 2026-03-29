@@ -37,14 +37,17 @@ There are two primary tracks in this repo.
 This is the durable backbone of the project. Its responsibility is to turn the
 Oxford Abstracts source corpus into local, reproducible artifacts:
 
+- `data/inputs/abstracts_graphql__<state-key>.json`
 - `data/abstracts.json`
 - `data/assets/`
-- `data/image_analyses_openai.json`
-- `data/claim_analyses_cllm.json`
+- `data/cache/figure_analysis/image_analyses_<backend>__<state-key>.json`
+- `data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json`
 - `data/title_modifications.json`
 - `data/abstracts_enriched.json`
 - `data/reference_metadata.json`
 - `data/embeddings/*`
+- `data/outputs/experiments/*__<state-key>/`
+- `data/outputs/exported-sites/ui-site__<state-key>/`
 - `export/ui-site/`
 
 The canonical operational interface for this track is `ohbmcli`.
@@ -60,7 +63,7 @@ produce comparative evidence, not silent replacements for canonical outputs.
 That is why they are concentrated under:
 
 - `experiments/`
-- `data/poster_layout/`
+- `data/outputs/proposals/`
 - `scripts/`
 
 The strongest outputs from this track can later be promoted into organizer
@@ -111,6 +114,9 @@ The defaults that future users should treat as current project reality are:
 - the claims-focused UI lens is the `28`-cluster benchmark on
   `data/embeddings/minilm_claims`
 - the final delivery artifact is the static site under `export/ui-site/`
+
+The local pre-publish exported-site root now lives under
+`data/outputs/exported-sites/ui-site__<state-key>/`.
 
 Those defaults reflect current project choices, not abstract theory. If a later
 change supersedes them, it should update this document, the README, and the
