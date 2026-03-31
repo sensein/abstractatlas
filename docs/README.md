@@ -35,6 +35,8 @@ plan-first/test-driven delivery, auditability, and secret hygiene.
   - claim-only embedding and clustering track
 - [semantic-category-evaluation-plan.md](/Users/satra/software/temp/ohbm2026/docs/semantic-category-evaluation-plan.md)
   - compare learned semantic taxonomies with submitter categories
+- [topic-clustering-landscape-2026-03-30.md](/Users/satra/software/temp/ohbm2026/docs/topic-clustering-landscape-2026-03-30.md)
+  - recent literature scan on explainable, overlapping, and scientific-document topic clustering
 - [poster-semantic-category-experiments-plan.md](/Users/satra/software/temp/ohbm2026/docs/poster-semantic-category-experiments-plan.md)
   - poster-facing semantic-category experiments
 
