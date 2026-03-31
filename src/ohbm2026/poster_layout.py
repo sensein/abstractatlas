@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 
+from ohbm2026 import artifacts
 from ohbm2026.neuroscape import load_embedding_bundle, parse_string_list_value
 from ohbm2026.titles import cleaned_abstract_title
 
@@ -51,9 +52,9 @@ HALL_LABELS = {
     1: "Poster Hall",
 }
 LAYOUT_POSTER_FACES_PER_BOARD = 2
-DEFAULT_LAYOUT_GEOMETRY = "data/poster_layout/layout_assets/layout_geometry.json"
-DEFAULT_PROPOSAL_CSV_VOYAGE_EMBEDDINGS_DIR = "data/embeddings/voyage_stage2_published"
-DEFAULT_PROPOSAL_CSV_CLAIMS_EMBEDDINGS_DIR = "data/embeddings/minilm_claims"
+DEFAULT_LAYOUT_GEOMETRY = str(artifacts.INPUT_LAYOUT_GEOMETRY_PATH)
+DEFAULT_PROPOSAL_CSV_VOYAGE_EMBEDDINGS_DIR = str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_published")
+DEFAULT_PROPOSAL_CSV_CLAIMS_EMBEDDINGS_DIR = str(artifacts.EMBEDDINGS_ROOT / "minilm_claims")
 UNKNOWN_CATEGORY = "Unknown"
 LISTING_TEMPLATE_COLUMNS = (
     "Abstract ID Number",
@@ -126,8 +127,8 @@ class PathProposalConfig:
     seed_strategy: str = "lowest_abstract_id_oral"
 
 
-DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS = "data/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_assignments.json"
-DEFAULT_CLAIMS_CLUSTER_SUMMARIES = "data/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_summaries.json"
+DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS = str(artifacts.EMBEDDINGS_ROOT / "minilm_claims" / "clustering_benchmark_25_30" / "cluster_assignments.json")
+DEFAULT_CLAIMS_CLUSTER_SUMMARIES = str(artifacts.EMBEDDINGS_ROOT / "minilm_claims" / "clustering_benchmark_25_30" / "cluster_summaries.json")
 DEFAULT_LAYOUT_LABEL_SYSTEM = "submitter_primary_secondary"
 
 
@@ -2087,17 +2088,38 @@ def load_proposal(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def default_layout_output_dir(
+    raw_input: Path = artifacts.PRIMARY_ABSTRACTS_PATH,
+    embeddings_dir: Path = Path(str(artifacts.EMBEDDINGS_ROOT / "minilm_claims")),
+    authors_input: Path = Path(str(artifacts.INPUT_AUTHORS_PATH)),
+) -> Path:
+    basis = artifacts.build_dependency_basis(
+        input_sources=[str(raw_input), str(embeddings_dir), str(authors_input)],
+    )
+    return artifacts.build_output_path("proposals", "layout_proposal", artifacts.build_state_key(basis))
+
+
+def default_layout_analysis_output_path(
+    raw_input: Path = artifacts.PRIMARY_ABSTRACTS_PATH,
+    embeddings_dir: Path = Path(str(artifacts.EMBEDDINGS_ROOT / "minilm_claims")),
+) -> Path:
+    basis = artifacts.build_dependency_basis(
+        input_sources=[str(raw_input), str(embeddings_dir)],
+    )
+    return artifacts.build_output_path("proposals", "layout_analysis", artifacts.build_state_key(basis)) / "analysis.json"
+
+
 def build_optimize_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Optimize OHBM poster standby patterns and numeric poster order")
-    parser.add_argument("--raw-input", default="data/abstracts.json")
-    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_claims")
-    parser.add_argument("--authors-input", default="data/authors.json")
+    parser.add_argument("--raw-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_claims"))
+    parser.add_argument("--authors-input", default=str(artifacts.INPUT_AUTHORS_PATH))
     parser.add_argument("--claims-cluster-assignments", default=DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS)
     parser.add_argument("--claims-cluster-summaries", default=DEFAULT_CLAIMS_CLUSTER_SUMMARIES)
     parser.add_argument("--layout-cluster-assignments")
     parser.add_argument("--layout-cluster-summaries")
     parser.add_argument("--layout-label-system", default=DEFAULT_LAYOUT_LABEL_SYSTEM)
-    parser.add_argument("--output-dir", default="data/poster_layout")
+    parser.add_argument("--output-dir", default=str(default_layout_output_dir()))
     parser.add_argument("--exact-session-weight", type=float, default=OptimizationWeights.exact_session_weight)
     parser.add_argument("--parent-session-weight", type=float, default=OptimizationWeights.parent_session_weight)
     parser.add_argument("--exact-block-weight", type=float, default=OptimizationWeights.exact_block_weight)
@@ -2149,15 +2171,15 @@ def optimize_main(argv: list[str] | None = None) -> int:
 
 def build_analysis_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Analyze an OHBM poster layout proposal")
-    parser.add_argument("--assignment", default="data/poster_layout/proposal.json")
-    parser.add_argument("--raw-input", default="data/abstracts.json")
-    parser.add_argument("--embeddings-dir", default="data/embeddings/minilm_claims")
+    parser.add_argument("--assignment", default=str(default_layout_output_dir() / "proposal.json"))
+    parser.add_argument("--raw-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
+    parser.add_argument("--embeddings-dir", default=str(artifacts.EMBEDDINGS_ROOT / "minilm_claims"))
     parser.add_argument("--claims-cluster-assignments", default=DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS)
     parser.add_argument("--claims-cluster-summaries", default=DEFAULT_CLAIMS_CLUSTER_SUMMARIES)
     parser.add_argument("--layout-cluster-assignments")
     parser.add_argument("--layout-cluster-summaries")
     parser.add_argument("--layout-label-system", default=DEFAULT_LAYOUT_LABEL_SYSTEM)
-    parser.add_argument("--output", default="data/poster_layout/analysis.json")
+    parser.add_argument("--output", default=str(default_layout_analysis_output_path()))
     parser.add_argument("--window-size", type=int, default=5)
     parser.add_argument("--oral-top-k", type=int, default=10)
     return parser

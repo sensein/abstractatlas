@@ -1,5 +1,6 @@
 import unittest
 
+from ohbm2026 import artifacts
 from ohbm2026.titles import build_title_modification_report, normalize_abstract_title
 
 
@@ -24,10 +25,10 @@ class TitleHelpersTest(unittest.TestCase):
                     {"id": 2, "title": "Normal title"},
                 ]
             },
-            input_path="data/abstracts.json",
+            input_path=str(artifacts.PRIMARY_ABSTRACTS_PATH),
         )
 
-        self.assertEqual(report["input"], "data/abstracts.json")
+        self.assertEqual(report["input"], str(artifacts.PRIMARY_ABSTRACTS_PATH))
         self.assertEqual(report["modified_count"], 1)
         self.assertEqual(
             report["modifications"],

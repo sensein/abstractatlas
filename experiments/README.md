@@ -44,6 +44,8 @@ or committed artifacts.
 
 - use a new dated experiment directory or a fresh run directory under an
   existing experiment
+- if a workflow also writes machine-readable local outputs, put those under
+  `data/outputs/experiments/` with a state-keyed directory name
 - include a `README.md` that states the purpose, inputs, outputs, and repeat
   command
 - keep recorded runs immutable

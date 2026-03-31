@@ -14,6 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request
 
+from ohbm2026 import artifacts
 from ohbm2026.graphql_api import (
     DEFAULT_TIMEOUT_LIMIT_SECONDS,
     DEFAULT_TIMEOUT_START_SECONDS,
@@ -271,6 +272,7 @@ def build_database(
     api_key: str,
     output_path: Path,
     assets_dir: Path,
+    input_snapshot_dir: Path | None = None,
     batch_size: int = 50,
     reuse_existing_assets_only: bool = False,
     timeout_start: float = DEFAULT_TIMEOUT_START_SECONDS,
@@ -278,6 +280,8 @@ def build_database(
 ) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     assets_dir.mkdir(parents=True, exist_ok=True)
+    if input_snapshot_dir is not None:
+        input_snapshot_dir.mkdir(parents=True, exist_ok=True)
     event_ids, abstract_ids = fetch_abstract_ids(
         api_key,
         timeout_start=timeout_start,
@@ -286,6 +290,7 @@ def build_database(
     asset_cache: dict[str, AssetDownload] = {}
     existing_assets = build_existing_asset_index(assets_dir)
     abstracts: list[dict[str, Any]] = []
+    raw_abstracts: list[dict[str, Any]] = []
 
     for abstract_id_batch in chunked(abstract_ids, batch_size):
         raw_batch = fetch_abstract_content(
@@ -294,6 +299,7 @@ def build_database(
             timeout_start=timeout_start,
             timeout_limit=timeout_limit,
         )
+        raw_abstracts.extend(raw_batch)
         for raw in raw_batch:
             abstract = normalize_abstract(raw)
             abstract["local_assets"] = [
@@ -320,6 +326,23 @@ def build_database(
         "abstract_count": len(abstracts),
         "abstracts": abstracts,
     }
+    if input_snapshot_dir is not None:
+        snapshot_payload = {
+            "fetched_at": database["fetched_at"],
+            "event_ids": event_ids,
+            "abstract_count": len(raw_abstracts),
+            "abstracts": raw_abstracts,
+        }
+        basis = artifacts.build_dependency_basis(
+            input_sources=[str(output_path)],
+            input_digest=artifacts.build_state_key(snapshot_payload),
+        )
+        snapshot_path = input_snapshot_dir / artifacts.build_input_snapshot_path(
+            "abstracts_graphql",
+            artifacts.build_state_key(basis),
+        ).name
+        snapshot_path.write_text(json.dumps(snapshot_payload, indent=2, sort_keys=True), encoding="utf-8")
+        database["input_snapshot"] = str(snapshot_path)
     output_path.write_text(json.dumps(database, indent=2, sort_keys=True), encoding="utf-8")
     return database
 
@@ -328,8 +351,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Fetch OHBM 2026 abstracts to a local JSON DB")
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--env-var", default="OHBM2026_API")
-    parser.add_argument("--output", default="data/abstracts.json")
-    parser.add_argument("--assets-dir", default="data/assets")
+    parser.add_argument("--output", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
+    parser.add_argument("--input-snapshot-dir", default=str(artifacts.INPUTS_ROOT))
+    parser.add_argument("--assets-dir", default=str(artifacts.INPUT_ASSETS_ROOT))
     parser.add_argument("--batch-size", default=50, type=int)
     parser.add_argument("--reuse-existing-assets-only", action="store_true")
     parser.add_argument("--refresh-assets-from-existing-db", action="store_true")
@@ -358,6 +382,7 @@ def main(argv: list[str] | None = None) -> int:
                 get_api_key(Path(args.env_file), args.env_var),
                 Path(args.output),
                 Path(args.assets_dir),
+                input_snapshot_dir=Path(args.input_snapshot_dir),
                 batch_size=args.batch_size,
                 reuse_existing_assets_only=args.reuse_existing_assets_only,
                 timeout_start=args.timeout_start_ms / 1000,
@@ -371,6 +396,7 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(
             {
                 "output": args.output,
+                "input_snapshot_dir": args.input_snapshot_dir,
                 "assets_dir": args.assets_dir,
                 "abstract_count": database["abstract_count"],
                 "event_ids": database["event_ids"],

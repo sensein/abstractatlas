@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 
+from ohbm2026 import artifacts
 from ohbm2026.neuroscape import build_knn_graph, compute_clustering_metrics, load_embedding_bundle, parse_string_list_value
 
 UNKNOWN_LABEL = "Unknown"
@@ -564,7 +565,7 @@ def build_markdown_summary(evaluation: dict[str, Any]) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate submitter and learned label systems in a shared embedding space")
     parser.add_argument("--embeddings-dir", required=True)
-    parser.add_argument("--raw-input", default="data/abstracts.json")
+    parser.add_argument("--raw-input", default=str(artifacts.PRIMARY_ABSTRACTS_PATH))
     parser.add_argument(
         "--label-system",
         action="append",

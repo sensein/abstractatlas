@@ -44,7 +44,7 @@ def _evaluation_payload(
     submitter_parent = _band_row("submitter_parent", 16, 0.1, parent_silhouette, 0.08, 0.45, 1.0, 0.7, None)
     submitter_exact = _band_row("submitter_exact", 121, 0.05, exact_silhouette, 0.02, 0.25, 0.7, 1.0, None)
     return {
-        "embeddings_dir": f"data/embeddings/{embedding_name}",
+        "embeddings_dir": f"data/outputs/experiments/embeddings/{embedding_name}",
         "abstract_count": 3333,
         "neighbor_ks": [5, 10, 20],
         "label_count_bands": [
@@ -82,8 +82,8 @@ class CategoryRollupTest(unittest.TestCase):
                 },
             )
 
-            first_path = root / "data/embeddings/voyage_stage2_published/category_evaluation/evaluation.json"
-            second_path = root / "data/embeddings/minilm_stage1/category_evaluation/evaluation.json"
+            first_path = root / "data/outputs/experiments/embeddings/voyage_stage2_published/category_evaluation/evaluation.json"
+            second_path = root / "data/outputs/experiments/embeddings/minilm_stage1/category_evaluation/evaluation.json"
             first_path.parent.mkdir(parents=True, exist_ok=True)
             second_path.parent.mkdir(parents=True, exist_ok=True)
             first_path.write_text(json.dumps(first_eval), encoding="utf-8")
@@ -104,7 +104,7 @@ class CategoryRollupTest(unittest.TestCase):
     def test_main_writes_rollup_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            evaluation_dir = root / "data/embeddings/voyage_stage2_published/category_evaluation"
+            evaluation_dir = root / "data/outputs/experiments/embeddings/voyage_stage2_published/category_evaluation"
             evaluation_dir.mkdir(parents=True, exist_ok=True)
             evaluation_payload = _evaluation_payload(
                 "voyage_stage2_published",
@@ -124,7 +124,7 @@ class CategoryRollupTest(unittest.TestCase):
             result = category_rollup.main(
                 [
                     "--embeddings-root",
-                    str(root / "data/embeddings"),
+                    str(root / "data/outputs/experiments/embeddings"),
                     "--output-json",
                     str(output_json),
                     "--output-csv",

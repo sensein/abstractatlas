@@ -5,6 +5,9 @@
 __pycache__/
 *.pyc
 data/
+data/inputs/
+data/cache/
+data/outputs/
 .cache/
 .matplotlib/
 export/
@@ -17,6 +20,7 @@ logs/
 tmp/
 
 # Local working memory archives
+archive/
 memory/archive/
 
 # Local packaging and lock artifacts

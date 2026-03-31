@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from ohbm2026 import artifacts
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components, laplacian
@@ -47,6 +48,11 @@ GRAPH_METHODS = (
     "optimal_leaf_ordering",
     "spectral_adjacent_refinement",
 )
+
+
+def default_output_root(proposal_path: Path, *, variant_name: str) -> Path:
+    basis = artifacts.build_dependency_basis(input_sources=[str(proposal_path)])
+    return artifacts.build_output_path("proposals", variant_name, artifacts.build_state_key(basis))
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9'-]+")
 LAYOUT_LABEL_STOPWORDS = {
@@ -1076,7 +1082,7 @@ def _load_neighbor_tail_metrics(proposal_csv: Path) -> dict[str, Any]:
 
 def _neighbor_tail_metrics_from_ordered_ids(
     ordered_ids: list[int],
-    bundle_dir: str = "data/embeddings/voyage_stage2_published",
+    bundle_dir: str = str(artifacts.EMBEDDINGS_ROOT / "voyage_stage2_published"),
 ) -> dict[str, Any]:
     scores_by_id = _ordered_neighbor_mean_cosine_similarity(
         [{"abstract_id": int(abstract_id)} for abstract_id in ordered_ids],

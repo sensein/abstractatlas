@@ -17,7 +17,7 @@ experience overwhelming.
   references and acknowledgements
 - [x] Include cached figure-analysis text in the `cllm` manuscript when local
   assets have already been analyzed
-- [x] Merge cached claim output into `data/abstracts_enriched.json`
+- [x] Merge cached claim output into `data/primary/abstracts_enriched.json`
 - [x] Flow claim output into `abstracts.detail.json`
 - [x] Render abstract sections, claims, figure notes, and references as collapsible
   blocks in the UI

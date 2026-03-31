@@ -34,6 +34,18 @@ def _abstract(
 
 
 class PosterLayoutTest(unittest.TestCase):
+    def test_build_optimize_parser_defaults_use_proposal_output_family(self) -> None:
+        args = poster_layout.build_optimize_parser().parse_args([])
+
+        self.assertTrue(args.output_dir.startswith("data/outputs/proposals/layout_proposal__"))
+
+    def test_build_analysis_parser_defaults_use_proposal_output_family(self) -> None:
+        args = poster_layout.build_analysis_parser().parse_args([])
+
+        self.assertIn("data/outputs/proposals/layout_proposal__", args.assignment)
+        self.assertIn("/proposal.json", args.assignment)
+        self.assertIn("data/outputs/proposals/layout_analysis__", args.output)
+
     @staticmethod
     def _collapse_label_runs(records: list[poster_layout.AcceptedAbstract], ordered_indices: list[int]) -> list[str]:
         records_by_embedding = {record.embedding_index: record for record in records}

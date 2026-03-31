@@ -22,11 +22,11 @@ This branch starts that work from the existing corpus and analysis artifacts alr
 
 ## Existing Inputs To Reuse
 
-- `data/abstracts.json`
+- `data/primary/abstracts.json`
   - raw title, accepted-for status, question/response content, figure metadata, primary topic, keywords
-- `data/abstracts_enriched.json`
+- `data/primary/abstracts_enriched.json`
   - markdown sections, figure analysis fields, figure keywords
-- `data/reference_metadata.json`
+- `data/primary/reference_metadata.json`
   - external citation matches and reference metadata
 - `data/embeddings/*`
   - stage-one bundles across MiniLM, PubMedBERT, OpenAI, Voyage

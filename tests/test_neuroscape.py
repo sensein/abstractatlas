@@ -543,15 +543,15 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         parser = build_semantic_analysis_parser()
         args = parser.parse_args([])
 
-        self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
-        self.assertEqual(args.output_dir, "data/embeddings/minilm_stage1/semantic_analysis")
+        self.assertEqual(args.embeddings_dir, "data/outputs/experiments/embeddings/minilm_stage1")
+        self.assertTrue(args.output_dir.startswith("data/outputs/experiments/semantic_analysis__"))
 
     def test_build_cluster_benchmark_parser_defaults_to_minilm_bundle(self) -> None:
         parser = build_cluster_benchmark_parser()
         args = parser.parse_args([])
 
-        self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
-        self.assertEqual(args.output_dir, "data/embeddings/minilm_stage1/clustering_benchmark")
+        self.assertEqual(args.embeddings_dir, "data/outputs/experiments/embeddings/minilm_stage1")
+        self.assertTrue(args.output_dir.startswith("data/outputs/experiments/clustering_benchmark__"))
         self.assertEqual(args.k_min, 2)
         self.assertEqual(args.k_max, 30)
         self.assertTrue(args.row_normalize)
@@ -560,33 +560,37 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         parser = build_umap_parser()
         args = parser.parse_args([])
 
-        self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
+        self.assertEqual(args.embeddings_dir, "data/outputs/experiments/embeddings/minilm_stage1")
         self.assertIsNone(args.output_html)
         self.assertIsNone(args.output_json)
 
     def test_default_umap_output_paths_include_fieldset(self) -> None:
         html_path, json_path = default_umap_output_paths(
-            Path("data/embeddings/minilm_stage1"),
+            Path("data/outputs/experiments/embeddings/minilm_stage1"),
             ["title", "methods", "results"],
         )
 
-        self.assertEqual(str(html_path), "data/embeddings/minilm_stage1/umap_title-methods-results.html")
-        self.assertEqual(str(json_path), "data/embeddings/minilm_stage1/umap_title-methods-results.json")
+        self.assertIn("data/outputs/experiments/umap_title-methods-results__", str(html_path))
+        self.assertIn("/report.html", str(html_path))
+        self.assertIn("data/outputs/experiments/umap_title-methods-results__", str(json_path))
+        self.assertIn("/projection.json", str(json_path))
 
     def test_default_projection_output_paths_include_fieldset(self) -> None:
         html_path, json_path = default_projection_output_paths(
-            Path("data/embeddings/minilm_stage1"),
+            Path("data/outputs/experiments/embeddings/minilm_stage1"),
             ["title", "methods", "results"],
         )
 
-        self.assertEqual(
+        self.assertIn(
+            "data/outputs/experiments/projection_comparison_title-methods-results__",
             str(html_path),
-            "data/embeddings/minilm_stage1/projection_comparison_title-methods-results.html",
         )
-        self.assertEqual(
+        self.assertIn("/report.html", str(html_path))
+        self.assertIn(
+            "data/outputs/experiments/projection_comparison_title-methods-results__",
             str(json_path),
-            "data/embeddings/minilm_stage1/projection_comparison_title-methods-results.json",
         )
+        self.assertIn("/projection.json", str(json_path))
 
     def test_build_distinct_color_map_assigns_unique_colors(self) -> None:
         color_map = build_distinct_color_map(["A", "B", "C", "A"])
@@ -599,7 +603,7 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         args = parser.parse_args([])
 
         self.assertEqual(args.model, "sentence-transformers/all-MiniLM-L6-v2")
-        self.assertEqual(args.embeddings_dir, "data/embeddings")
+        self.assertEqual(args.embeddings_dir, "data/outputs/experiments/embeddings")
         self.assertEqual(args.env_file, ".env")
         self.assertFalse(args.local_files_only)
 
@@ -615,7 +619,7 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         parser = build_projection_compare_parser()
         args = parser.parse_args([])
 
-        self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
+        self.assertEqual(args.embeddings_dir, "data/outputs/experiments/embeddings/minilm_stage1")
         self.assertEqual(args.umap_n_neighbors, 15)
         self.assertEqual(args.tsne_perplexity, 30.0)
 
@@ -623,7 +627,7 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         parser = build_projection_optimize_parser()
         args = parser.parse_args([])
 
-        self.assertEqual(args.embeddings_dir, "data/embeddings/minilm_stage1")
+        self.assertEqual(args.embeddings_dir, "data/outputs/experiments/embeddings/minilm_stage1")
         self.assertEqual(args.umap_neighbors, [10, 30])
         self.assertEqual(args.tsne_perplexities, [20.0, 40.0])
 
@@ -631,9 +635,9 @@ class NeuroScapeHelpersTest(unittest.TestCase):
         parser = build_apply_pretrained_stage2_parser()
         args = parser.parse_args([])
 
-        self.assertEqual(args.stage1_dir, "data/embeddings/voyage_stage1")
+        self.assertEqual(args.stage1_dir, "data/outputs/experiments/embeddings/voyage_stage1")
         self.assertTrue(args.model_path.endswith("domain_embedding_model.pth"))
-        self.assertEqual(args.output_dir, "data/embeddings/voyage_stage2_published")
+        self.assertEqual(args.output_dir, "data/outputs/experiments/embeddings/voyage_stage2_published")
 
     def test_build_projection_graph_creates_edges(self) -> None:
         import numpy as np

@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ohbm2026 import artifacts
+
 ROLLUP_BANDS = ("coarse", "mid", "fine")
 DEFAULT_TOP_CANDIDATES = 3
 DEFAULT_EVALUATION_GLOB = "*/category_evaluation/evaluation.json"
@@ -354,11 +356,11 @@ def build_markdown_summary(rollup: dict[str, Any]) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build a cross-embedding rollup from category-evaluation outputs")
-    parser.add_argument("--embeddings-root", default="data/embeddings")
+    parser.add_argument("--embeddings-root", default=str(artifacts.EMBEDDINGS_ROOT))
     parser.add_argument("--evaluation", action="append", help="Explicit evaluation.json path; may be repeated")
-    parser.add_argument("--output-json", default="data/embeddings/category_evaluation_summary.json")
-    parser.add_argument("--output-csv", default="data/embeddings/category_evaluation_summary.csv")
-    parser.add_argument("--output-md", default="data/embeddings/category_evaluation_summary.md")
+    parser.add_argument("--output-json", default=str(artifacts.EMBEDDINGS_ROOT / "category_evaluation_summary.json"))
+    parser.add_argument("--output-csv", default=str(artifacts.EMBEDDINGS_ROOT / "category_evaluation_summary.csv"))
+    parser.add_argument("--output-md", default=str(artifacts.EMBEDDINGS_ROOT / "category_evaluation_summary.md"))
     return parser
 
 

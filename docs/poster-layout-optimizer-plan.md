@@ -15,7 +15,7 @@ The first pass should produce library code plus CLI scripts only. UI integration
 
 These are the assumptions used in the current implementation:
 
-- poster assignment is built from the accepted-poster subset of `data/abstracts.json`
+- poster assignment is built from the accepted-poster subset of `data/primary/abstracts.json`
 - oral presentations are not assigned poster standby sessions, but they are included in analysis outputs as topical and semantic context
 - claim-based semantic distance should come from the existing `data/embeddings/minilm_claims` bundle unless a different bundle is preferred
 - first-author conflict checks should use `authors[*].author_order` from the Oxford Abstracts export and should be treated as hard constraints
@@ -56,8 +56,8 @@ Per poster, the optimizer will need:
 
 Likely source files:
 
-- `data/abstracts.json`
-- `data/abstracts_enriched.json`
+- `data/primary/abstracts.json`
+- `data/primary/abstracts_enriched.json`
 - `data/embeddings/minilm_claims/metadata.json`
 - `data/embeddings/minilm_claims/vectors.npy`
 
@@ -185,8 +185,8 @@ Proposed first-pass commands:
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/optimize_poster_layout.py \
-  --raw-input data/abstracts.json \
-  --enriched-input data/abstracts_enriched.json \
+  --raw-input data/primary/abstracts.json \
+  --enriched-input data/primary/abstracts_enriched.json \
   --embeddings-dir data/embeddings/minilm_claims \
   --output-dir data/poster_layout
 ```
@@ -194,7 +194,7 @@ PYTHONPATH=src .venv/bin/python scripts/optimize_poster_layout.py \
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/analyze_poster_layout.py \
   --assignment data/poster_layout/proposal.json \
-  --raw-input data/abstracts.json \
+  --raw-input data/primary/abstracts.json \
   --embeddings-dir data/embeddings/minilm_claims \
   --output data/poster_layout/analysis.json
 ```

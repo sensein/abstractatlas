@@ -33,6 +33,11 @@ def _abstract(
 
 
 class PosterSequencingTest(unittest.TestCase):
+    def test_default_output_root_uses_proposal_family(self) -> None:
+        root = poster_sequencing.default_output_root(Path("data/proposal.json"), variant_name="global_path")
+
+        self.assertTrue(str(root).startswith("data/outputs/proposals/global_path__"))
+
     def _build_fixture(self, root: Path) -> tuple[poster_layout.LayoutInputs, dict]:
         abstracts = [
             _abstract(1, "Poster", "Alpha one", "Systems", "Memory", 101),

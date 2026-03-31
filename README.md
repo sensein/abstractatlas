@@ -36,24 +36,42 @@ Recommended reading order for a new person or agent:
 
 Core artifacts:
 
-- `data/abstracts.json`
-  - raw accepted abstracts from Oxford Abstracts
-- `data/assets/`
+- `data/inputs/abstracts_graphql__<state-key>.json`
+  - GraphQL-fetched source snapshot for the latest ingest run
+- `data/primary/abstracts.json`
+  - canonical normalized accepted abstracts derived from the fetched snapshot
+- `data/inputs/assets/`
   - downloaded local figure files, restricted to methods/results figures
-- `data/image_analyses_openai.json`
-  - OpenAI multimodal figure-analysis cache
-- `data/claim_analyses_cllm.json`
-  - resumable `cllm` claim-extraction cache
-- `data/title_modifications.json`
+- `data/cache/figure_analysis/image_analyses_<backend>__<state-key>.json`
+  - resumable figure-analysis cache with direct state-key lookup
+- `data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json`
+  - resumable `cllm` claim-extraction cache with direct state-key lookup
+- `data/outputs/experiments/title_audit/title_modifications.json`
   - audit log of cleaned abstract titles versus original raw titles
-- `data/abstracts_enriched.json`
+- `data/primary/abstracts_enriched.json`
   - enriched abstract corpus with markdown sections, figure analyses, and claim extraction when available
-- `data/reference_metadata.json`
+- `data/primary/reference_metadata.json`
   - OpenAlex-matched reference metadata
-- `data/embeddings/*`
-  - embedding bundles, stage-2 projections, clustering outputs, UMAPs, and neighbors
+- `data/outputs/experiments/embeddings/*`
+  - canonical embedding bundles, stage-2 projections, and neighbors
+- `data/outputs/experiments/*__<state-key>/`
+  - clustering, projection, and other experiment-style derived outputs
+- `data/outputs/exported-sites/ui-site__<state-key>/`
+  - local exported-site bundle before optional publish mirroring
+- `data/outputs/proposals/*__<state-key>/`
+  - proposal bundles and proposal-adjacent analysis outputs
 - `export/ui-site/`
-  - static site bundle for interactive search and browsing
+  - optional publish mirror of the latest exported-site bundle
+
+Local artifact layout rules:
+
+- `data/inputs/` is for fetched snapshots, API-derived inputs, and manual operator-supplied inputs
+- `data/primary/` is for canonical normalized datasets consumed by downstream stages
+- `data/cache/` is for resumable caches and checkpoints
+- `data/outputs/experiments/`, `data/outputs/exported-sites/`, and
+  `data/outputs/proposals/` are for local derived outputs
+- `archive/` is for local pre-migration backups that preserve legacy paths
+- `data/`, `export/`, and `tmp/` remain ignored by git
 
 ## Current Latest Step
 
@@ -100,7 +118,9 @@ Common keys:
 - `OHBM2026_API`
   - required for Oxford Abstracts ingest and author lookup
 - `OPENAI_API_KEY`
-  - required for OpenAI figure analysis, OpenAI embeddings, or `extract-claims`
+  - required for OpenAI figure analysis, OpenAI embeddings, `extract-claims` with OpenAI, and OpenAI-backed reference splitting
+- `ANTHROPIC_API_KEY`
+  - required only if `extract-claims` is run with `--llm-provider anthropic`
 - `VOYAGE_API`
   - required for Voyage embeddings
 - `OPENALEX_API`
@@ -113,6 +133,30 @@ No API key is needed for local Ollama figure analysis.
 Treat `.env` and shell environment variables as the only valid homes for these
 secrets. Do not commit tokens, paste them into docs, or leave them in command
 logs.
+
+## Token And Tool Matrix
+
+Use this as the quick answer to "what do I need before I run this step?"
+
+| Workflow | Required secret(s) | Extra local tool(s) | Notes |
+| --- | --- | --- | --- |
+| `ohbmcli ingest` | `OHBM2026_API` | none | Fetches accepted abstracts and figure assets |
+| `ohbmcli refresh-assets` | none | none | Uses the existing local normalized corpus |
+| `ohbmcli authors` | `OHBM2026_API` | none | Pulls author details from Oxford Abstracts |
+| `ohbmcli analyze-figures --vision-backend openai` | `OPENAI_API_KEY` | none | Current preferred figure-analysis route |
+| `ohbmcli analyze-figures --vision-backend ollama` | none | `ollama`, `qwen3.5:35b` | No hosted token required |
+| `ohbmcli extract-claims` | `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` | `cllm` installed in `.venv` | Provider depends on `--llm-provider` |
+| `ohbmcli enrich` | none | none | Consumes local caches only |
+| `ohbmcli title-audit` | none | none | Reads local normalized corpus only |
+| `ohbmcli reference-metadata` | optional `OPENALEX_API`; `OPENAI_API_KEY` only if using OpenAI reference splitting | none | `OPENALEX_API` is recommended for authenticated reference matching |
+| `ohbmcli embed-minilm` / `embed-hf` | optional `HF_TOKEN` | `sentence-transformers` | `HF_TOKEN` is only needed for gated/private Hub access |
+| `ohbmcli embed-openai` | `OPENAI_API_KEY` | none | Hosted embedding route |
+| `ohbmcli embed-voyage` | `VOYAGE_API` | none | Voyage embedding route |
+| `ohbmcli apply-published-stage2` / `embed-stage2` | none | local model dependencies already in `.venv` | Uses local artifacts |
+| `ohbmcli semantic-analysis` / `cluster-benchmark` / `umap-plot` / `compare-projections` / `optimize-projections` | none | optional `plotly`, `umap-learn` | Purely local once embeddings exist |
+| `scripts/optimize_poster_layout.py` / `scripts/analyze_poster_layout.py` | none | none | Uses local proposal inputs, authors, and layout assets |
+| poster sequencing scripts under `scripts/` | none | none | Use local proposals and embeddings |
+| `ohbmcli export-ui` / `build-ui` | none | none | Consumes local corpora, caches, clusters, and manual inputs |
 
 ## Setup
 
@@ -161,9 +205,67 @@ For local figure analysis, confirm Ollama can see the required model:
 ollama list
 ```
 
+## Recommended Sequences
+
+Pick the sequence that matches what you are trying to regenerate.
+
+### Full Rebuild To The Static UI
+
+Run these in order when rebuilding the main deliverable from upstream data:
+
+1. `ohbmcli ingest`
+2. `ohbmcli authors`
+3. `ohbmcli analyze-figures --vision-backend openai`
+4. `ohbmcli extract-claims`
+5. `ohbmcli enrich`
+6. `ohbmcli title-audit`
+7. `ohbmcli reference-metadata --use-title-search`
+8. one or more embedding commands such as `embed-minilm`, `embed-voyage`, or `embed-openai`
+9. `ohbmcli apply-published-stage2` if you want the published Voyage stage-2 space
+10. `ohbmcli semantic-analysis`, `cluster-benchmark`, `umap-plot`, or `compare-projections` for the cluster and projection products you want the UI to consume
+11. `ohbmcli export-ui` or `ohbmcli build-ui`
+
+### Add Or Refresh A Cluster Family
+
+Use this when you already have the corpora and want a new cluster output:
+
+1. confirm the required embedding bundle exists under `data/outputs/experiments/embeddings/`
+2. run `ohbmcli semantic-analysis` for community-detection style outputs
+3. run `ohbmcli cluster-benchmark` for k-sweep style outputs
+4. optionally run `scripts/evaluate_label_systems.py` to compare a new cluster family against the submitter taxonomy
+5. point `export-ui`, `build-ui`, or layout scripts at the new cluster directory
+
+### Generate Or Refresh A Layout Proposal
+
+Use this when you want a new organizer-facing proposal:
+
+1. confirm `data/primary/abstracts.json`, `data/inputs/authors.json`, and `data/inputs/poster_layout/layout_assets/layout_geometry.json` exist
+2. choose the embedding bundle and any claims/layout cluster inputs you want to drive the proposal
+3. run `scripts/optimize_poster_layout.py` into a fresh proposal directory under `data/outputs/proposals/`
+4. run `scripts/analyze_poster_layout.py` on that proposal
+5. optionally run comparison or review scripts against multiple proposal directories
+
+### Run A Poster Sequencing Experiment
+
+Use this when you already have a base proposal and want comparative sequencing evidence:
+
+1. pick a base proposal under `data/outputs/proposals/`
+2. run one of the sequencing scripts under `scripts/` into a fresh dated experiment directory under `experiments/` or a fresh local output root under `data/outputs/proposals/`
+3. keep the experiment outputs immutable and compare them rather than overwriting the active proposal set
+
+### Minimal UI Refresh
+
+Use this when the data products already exist locally:
+
+1. rerun only the upstream steps that changed
+2. rerun `ohbmcli export-ui` or `ohbmcli build-ui`
+3. do not rerun hosted/API steps unless their inputs or parameters changed
+
 ## End-To-End Workflow
 
-Use `ohbmcli` for the whole pipeline.
+Use `ohbmcli` for the corpus, enrichment, embedding, clustering, and UI
+pipeline. Use the script wrappers under `scripts/` for proposal generation,
+layout analysis, and sequencing experiments.
 
 ### 1. Download The Raw Abstracts And Figures
 
@@ -176,7 +278,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli ingest
 What it does:
 
 - fetches accepted abstracts from Oxford Abstracts
-- stores the normalized corpus in `data/abstracts.json`
+- stores the normalized corpus in `data/primary/abstracts.json`
 - downloads only methods/results figure images
 - writes local figure links into each abstract
 
@@ -204,7 +306,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli authors
 
 Output:
 
-- `data/authors.json`
+- `data/inputs/authors.json`
 
 ### 4. Run Figure Analysis
 
@@ -218,8 +320,7 @@ This is the current preferred route for the main enriched corpus.
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-figures \
   --vision-backend openai \
   --openai-model gpt-4.1-mini \
-  --image-analyses-output data/image_analyses_openai.json \
-  --enriched-output data/abstracts_enriched_openai.json
+  --enriched-output data/outputs/experiments/enrichment/abstracts_enriched_openai.json
 ```
 
 Notes:
@@ -233,8 +334,7 @@ Notes:
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-figures \
   --vision-backend ollama \
-  --vision-model qwen3.5:35b \
-  --image-analyses-output data/image_analyses.json
+  --vision-model qwen3.5:35b
 ```
 
 ### 5. Build The Main Enriched Abstract Dataset
@@ -245,8 +345,10 @@ corpus.
 
 Current default:
 
-- `enrich` now defaults to `data/image_analyses_openai.json`
-- `enrich` now also defaults to `data/claim_analyses_cllm.json`
+- `enrich` now defaults to the OpenAI figure-analysis cache under
+  `data/cache/figure_analysis/`
+- `enrich` now also defaults to the `cllm` claim cache under
+  `data/cache/claim_analysis/`
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli enrich
@@ -256,15 +358,15 @@ Explicit form:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli enrich \
-  --input data/abstracts.json \
-  --image-analyses-input data/image_analyses_openai.json \
-  --claim-analyses-input data/claim_analyses_cllm.json \
-  --enriched-output data/abstracts_enriched.json
+  --input data/primary/abstracts.json \
+  --image-analyses-input data/cache/figure_analysis/image_analyses_openai__<state-key>.json \
+  --claim-analyses-input data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json \
+  --enriched-output data/primary/abstracts_enriched.json
 ```
 
 Output:
 
-- `data/abstracts_enriched.json`
+- `data/primary/abstracts_enriched.json`
 
 This is the main corpus used by downstream steps.
 
@@ -276,13 +378,13 @@ stray outer whitespace.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli title-audit \
-  --input data/abstracts.json \
-  --output data/title_modifications.json
+  --input data/primary/abstracts.json \
+  --output data/outputs/experiments/title_audit/title_modifications.json
 ```
 
 Output:
 
-- `data/title_modifications.json`
+- `data/outputs/experiments/title_audit/title_modifications.json`
 
 This file records each changed title with the original string, cleaned title,
 and normalization reasons.
@@ -291,14 +393,14 @@ and normalization reasons.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli reference-metadata \
-  --input data/abstracts.json \
-  --output data/reference_metadata.json \
+  --input data/primary/abstracts.json \
+  --output data/primary/reference_metadata.json \
   --use-title-search
 ```
 
 Output:
 
-- `data/reference_metadata.json`
+- `data/primary/reference_metadata.json`
 
 This file is resumable and checkpoint-friendly.
 
@@ -348,9 +450,9 @@ abstracts and merge the repaired results back into the existing output:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli reference-metadata \
-  --input data/abstracts.json \
-  --output data/reference_metadata.json \
-  --repair-failed-splits-from data/reference_metadata.json \
+  --input data/primary/abstracts.json \
+  --output data/primary/reference_metadata.json \
+  --repair-failed-splits-from data/primary/reference_metadata.json \
   --use-title-search \
   --reference-splitting-backend openai \
   --reference-splitting-model gpt-5-nano
@@ -367,11 +469,12 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli extract-claims
 
 What it does:
 
-- reads `data/abstracts.json`
-- reads `data/image_analyses_openai.json` by default so figure-analysis text can be appended when present
+- reads `data/primary/abstracts.json`
+- reads the OpenAI figure-analysis cache under `data/cache/figure_analysis/` by
+  default so figure-analysis text can be appended when present
 - builds a manuscript from the title, introduction, methods, results, discussion, conclusion, and filtered additional-content fields
 - excludes references and acknowledgements from the claim prompt
-- writes a resumable cache to `data/claim_analyses_cllm.json`
+- writes a resumable cache under `data/cache/claim_analysis/`
 
 Current default OpenAI path:
 
@@ -382,9 +485,9 @@ Useful explicit form:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli extract-claims \
-  --input data/abstracts.json \
-  --image-analyses-input data/image_analyses_openai.json \
-  --claim-analyses-output data/claim_analyses_cllm.json \
+  --input data/primary/abstracts.json \
+  --image-analyses-input data/cache/figure_analysis/image_analyses_openai__<state-key>.json \
+  --claim-analyses-output data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json \
   --openai-model gpt-4o-2024-08-06
 ```
 
@@ -446,9 +549,9 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm \
   --output-name minilm_claims
 ```
 
-This uses `claim_extraction.claims` from `data/abstracts_enriched.json` and formats each extracted claim as a short bullet containing the claim statement itself.
+This uses `claim_extraction.claims` from `data/primary/abstracts_enriched.json` and formats each extracted claim as a short bullet containing the claim statement itself.
 
-### 9. Apply Or Train Stage 2
+### 10. Apply Or Train Stage 2
 
 #### Apply the published NeuroScape stage-2 model
 
@@ -464,34 +567,46 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli apply-published-stage2
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-stage2
 ```
 
-### 10. Build Semantic Analysis And Cluster Outputs
+### 11. Build Semantic Analysis And Cluster Outputs
 
 Community detection over an embedding bundle:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli semantic-analysis \
-  --embeddings-dir data/embeddings/voyage_stage2_published
+  --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published
 ```
 
 Clustering benchmark over an embedding bundle:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli cluster-benchmark \
-  --embeddings-dir data/embeddings/voyage_stage2_published \
-  --output-dir data/embeddings/voyage_stage2_published/clustering_benchmark
+  --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published \
+  --output-dir data/outputs/experiments/clustering_benchmark__<state-key>
 ```
 
 To benchmark a claims-only bundle around `25-30` clusters:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli cluster-benchmark \
-  --embeddings-dir data/embeddings/minilm_claims \
-  --output-dir data/embeddings/minilm_claims/clustering_benchmark_25_30 \
+  --embeddings-dir data/outputs/experiments/embeddings/minilm_claims \
+  --output-dir data/outputs/experiments/clustering_benchmark_claims_25_30__<state-key> \
   --k-min 25 \
   --k-max 30
 ```
 
 This is the current claims-cluster artifact consumed by the UI. The latest run selected a `28`-cluster k-means solution inside that benchmark output.
+
+If you want to score a new cluster family against the submitter taxonomy:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/evaluate_label_systems.py \
+  --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published \
+  --raw-input data/primary/abstracts.json \
+  --label-system submitter_parent \
+  --label-system submitter_exact \
+  --label-system candidate=data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark/cluster_assignments.json \
+  --output-dir data/outputs/experiments/embeddings/voyage_stage2_published/category_evaluation
+```
 
 Projection outputs:
 
@@ -501,44 +616,127 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli compare-projections
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli optimize-projections
 ```
 
-### 11. Build The Static UI
+### 12. Generate And Analyze Layout Proposals
+
+The stable route for proposal generation currently lives in the script wrappers
+under `scripts/`, not in `ohbmcli`.
+
+Generate a fresh proposal bundle:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/optimize_poster_layout.py \
+  --raw-input data/primary/abstracts.json \
+  --authors-input data/inputs/authors.json \
+  --embeddings-dir data/outputs/experiments/embeddings/minilm_claims \
+  --claims-cluster-assignments data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_assignments.json \
+  --claims-cluster-summaries data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_summaries.json \
+  --output-dir data/outputs/proposals/layout_claims__<fresh-run-name>
+```
+
+Analyze that proposal:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/analyze_poster_layout.py \
+  --assignment data/outputs/proposals/layout_claims__<fresh-run-name>/proposal.json \
+  --raw-input data/primary/abstracts.json \
+  --embeddings-dir data/outputs/experiments/embeddings/minilm_claims \
+  --claims-cluster-assignments data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_assignments.json \
+  --claims-cluster-summaries data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_summaries.json \
+  --output data/outputs/proposals/layout_claims__<fresh-run-name>/analysis.json
+```
+
+To drive the layout with a learned label system instead of the submitter
+taxonomy, add:
+
+- `--layout-cluster-assignments <cluster_assignments.json>`
+- `--layout-cluster-summaries <cluster_summaries.json>`
+- `--layout-label-system <name>`
+
+Use a fresh `--output-dir` whenever the layout label system, embeddings, or
+weights change. The default output-root hash does not encode every proposal
+option.
+
+### 13. Run Poster Sequencing And Proposal Experiments
+
+Once a base proposal exists, the sequencing and comparison workflows are also
+script-driven. Write these outputs to fresh experiment directories or fresh
+proposal output roots.
+
+Graph benchmark against an existing proposal:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/benchmark_poster_sequencing.py \
+  --proposal data/outputs/proposals/layout_claims__<fresh-run-name>/proposal.json \
+  --raw-input data/primary/abstracts.json \
+  --authors-input data/inputs/authors.json \
+  --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published \
+  --claims-cluster-assignments data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_assignments.json \
+  --claims-cluster-summaries data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_summaries.json \
+  --output-root experiments/<date>-poster-sequencing-benchmark/runs/<fresh-run-name>
+```
+
+Advanced non-diffusion global-path experiment:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/run_advanced_global_path_experiment.py \
+  --proposal data/outputs/proposals/layout_claims__<fresh-run-name>/proposal.json \
+  --raw-input data/primary/abstracts.json \
+  --authors-input data/inputs/authors.json \
+  --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published \
+  --claims-cluster-assignments data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_assignments.json \
+  --claims-cluster-summaries data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_summaries.json \
+  --output-root experiments/<date>-advanced-global-path/runs/<fresh-run-name>
+```
+
+The same pattern applies to `scripts/sweep_diffusion_variants.py`,
+`scripts/sweep_global_path_variants.py`, and
+`scripts/sweep_global_path_mapalign_variants.py`: pass explicit current paths
+for the proposal, corpora, authors, embeddings, and output root rather than
+relying on older baked-in defaults.
+
+### 14. Build The Static UI
 
 This is the current latest delivery step.
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui \
-  --site-output-dir export/ui-site
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui
 ```
 
 The current default UI build uses:
 
-- `data/abstracts.json`
-- `data/abstracts_enriched.json`
-- `data/reference_metadata.json`
-- `data/image_analyses_openai.json`
-- `data/embeddings/voyage_stage2_published/clustering_benchmark`
-- `data/embeddings/minilm_claims/clustering_benchmark_25_30`
-- `data/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json`
+- `data/primary/abstracts.json`
+- `data/primary/abstracts_enriched.json`
+- `data/primary/reference_metadata.json`
+- the OpenAI figure-analysis cache under `data/cache/figure_analysis/`
+- `data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark`
+- `data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30`
+- `data/outputs/experiments/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json`
+
+By default `build-ui` now writes the local bundle under
+`data/outputs/exported-sites/ui-site__<state-key>/` and mirrors that bundle to
+`export/ui-site/`. Pass `--site-output-dir` or `--publish-dir` to override one
+or both locations.
 
 Useful explicit form if you want to point the UI at a different claims-cluster run:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui \
-  --site-output-dir export/ui-site \
-  --cluster-25-dir data/embeddings/voyage_stage2_published/clustering_benchmark \
-  --claims-cluster-dir data/embeddings/minilm_claims/clustering_benchmark_25_30
+  --site-output-dir data/outputs/exported-sites/ui-site__<state-key> \
+  --publish-dir export/ui-site \
+  --cluster-25-dir data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark \
+  --claims-cluster-dir data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30
 ```
 
 The exported detail payload now includes:
 
-- merged `claim_extraction` from `data/abstracts_enriched.json`
-- `reference_summary` from `data/reference_metadata.json`
+- merged `claim_extraction` from `data/primary/abstracts_enriched.json`
+- `reference_summary` from `data/primary/reference_metadata.json`
 - `semantic_25` and `claims_28` cluster lenses in the facet and detail metadata
 
 Then serve it locally:
 
 ```bash
-python -m http.server 8000
+.venv/bin/python -m http.server 8000
 ```
 
 Open:
@@ -567,13 +765,24 @@ If you already have fresh figure analyses and only changed claim extraction:
 If you already have embeddings but want new cluster evaluations:
 
 - rerun `cluster-benchmark`
+- optionally rerun `scripts/evaluate_label_systems.py`
 - optionally rerun `build-ui`
 
 If you specifically want to refresh the claims-based semantic lens:
 
 - rerun `embed-minilm --fields claims --output-name minilm_claims`
-- rerun `cluster-benchmark --embeddings-dir data/embeddings/minilm_claims --output-dir data/embeddings/minilm_claims/clustering_benchmark_25_30 --k-min 25 --k-max 30`
+- rerun `cluster-benchmark --embeddings-dir data/outputs/experiments/embeddings/minilm_claims --output-dir data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30 --k-min 25 --k-max 30`
 - rerun `build-ui`
+
+If you want to regenerate a proposal without touching the corpora:
+
+- rerun `scripts/optimize_poster_layout.py` into a fresh `data/outputs/proposals/...` directory
+- rerun `scripts/analyze_poster_layout.py`
+
+If you want to rerun sequencing experiments on an existing proposal:
+
+- pick the proposal JSON under `data/outputs/proposals/`
+- rerun the relevant script under `scripts/` into a fresh experiment run directory
 
 ## Module Layout
 
@@ -595,23 +804,29 @@ If you specifically want to refresh the claims-based semantic lens:
 ## Main Outputs By Stage
 
 - raw ingest
-  - `data/abstracts.json`
-  - `data/assets/`
+  - `data/primary/abstracts.json`
+  - `data/inputs/assets/`
+- manual and operator inputs
+  - `data/inputs/abstracts_with_phenomena_with_theories_refined.csv`
+  - `data/inputs/poster_layout/layout_assets/`
 - authors
-  - `data/authors.json`
+  - `data/inputs/authors.json`
 - figure analysis
-  - `data/image_analyses.json`
-  - `data/image_analyses_openai.json`
+  - `data/cache/figure_analysis/image_analyses_ollama__<state-key>.json`
+  - `data/cache/figure_analysis/image_analyses_openai__<state-key>.json`
 - claim extraction
-  - `data/claim_analyses_cllm.json`
+  - `data/cache/claim_analysis/claim_analyses_cllm__<state-key>.json`
 - enriched corpus
-  - `data/abstracts_enriched.json`
+  - `data/primary/abstracts_enriched.json`
+- audit outputs
+  - `data/outputs/experiments/title_audit/title_modifications.json`
 - references
-  - `data/reference_metadata.json`
+  - `data/primary/reference_metadata.json`
 - embeddings and clustering
-  - `data/embeddings/*`
+  - `data/outputs/experiments/embeddings/*`
 - static site
-  - `export/ui-site/`
+  - `data/outputs/exported-sites/ui-site__<state-key>/`
+  - optional publish mirror at `export/ui-site/`
 
 ## Validation
 

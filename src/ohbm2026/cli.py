@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ohbm2026 import assets, enrichment, neuroscape, openalex, titles, ui
+from ohbm2026 import artifacts, assets, enrichment, neuroscape, openalex, titles, ui
 
 
 def _copy_actions(target: argparse.ArgumentParser, source: argparse.ArgumentParser) -> None:
@@ -12,13 +12,20 @@ def _copy_actions(target: argparse.ArgumentParser, source: argparse.ArgumentPars
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ohbmcli", description="Unified CLI for OHBM 2026 ingest and enrichment")
+    parser = argparse.ArgumentParser(
+        prog="ohbmcli",
+        description="Unified CLI for OHBM 2026 ingest and enrichment",
+        epilog=(
+            f"Local artifacts are organized under {artifacts.INPUTS_ROOT}, "
+            f"{artifacts.CACHE_ROOT}, {artifacts.OUTPUTS_ROOT}, and optional publish mirrors under {artifacts.EXPORT_ROOT}."
+        ),
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     ingest_parser = subparsers.add_parser("ingest", help="Fetch abstracts and figure assets from Oxford Abstracts")
     _copy_actions(ingest_parser, assets.build_parser())
 
-    refresh_parser = subparsers.add_parser("refresh-assets", help="Refresh local figure assets from existing abstracts.json")
+    refresh_parser = subparsers.add_parser("refresh-assets", help="Refresh local figure assets from an existing normalized abstracts dataset")
     _copy_actions(refresh_parser, assets.build_parser())
 
     authors_parser = subparsers.add_parser("authors", help="Export author metadata from the local abstract database")

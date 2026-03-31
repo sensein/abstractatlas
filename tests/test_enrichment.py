@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from ohbm2026 import artifacts
 from ohbm2026.enrichment import (
     DEFAULT_CLAIM_ANALYSES_OUTPUT,
     DEFAULT_CLLM_OPENAI_MAX_COMPLETION_TOKENS,
@@ -19,6 +20,8 @@ from ohbm2026.enrichment import (
     build_claim_manuscript_markdown,
     build_enrich_parser,
     build_figure_analysis_parser,
+    default_claim_analysis_cache_path,
+    default_image_analysis_cache_path,
     build_sections_markdown,
     enrich_database,
     extract_claims_from_cllm_module,
@@ -40,16 +43,16 @@ class EnrichmentHelpersTest(unittest.TestCase):
     def test_build_enrich_parser_defaults_to_openai_cache(self) -> None:
         args = build_enrich_parser().parse_args([])
 
-        self.assertEqual(args.input, "data/abstracts.json")
-        self.assertEqual(args.image_analyses_input, "data/image_analyses_openai.json")
-        self.assertEqual(args.claim_analyses_input, DEFAULT_CLAIM_ANALYSES_OUTPUT)
-        self.assertEqual(args.enriched_output, "data/abstracts_enriched.json")
+        self.assertEqual(args.input, str(artifacts.PRIMARY_ABSTRACTS_PATH))
+        self.assertEqual(args.image_analyses_input, str(default_image_analysis_cache_path(backend="openai")))
+        self.assertEqual(args.claim_analyses_input, str(default_claim_analysis_cache_path()))
+        self.assertEqual(args.enriched_output, str(artifacts.PRIMARY_ENRICHED_ABSTRACTS_PATH))
 
     def test_build_claim_extraction_parser_defaults_to_openai_provider(self) -> None:
         args = build_claim_extraction_parser().parse_args([])
 
-        self.assertEqual(args.input, "data/abstracts.json")
-        self.assertEqual(args.image_analyses_input, "data/image_analyses_openai.json")
+        self.assertEqual(args.input, str(artifacts.PRIMARY_ABSTRACTS_PATH))
+        self.assertEqual(args.image_analyses_input, str(default_image_analysis_cache_path(backend="openai")))
         self.assertEqual(args.claim_analyses_output, DEFAULT_CLAIM_ANALYSES_OUTPUT)
         self.assertEqual(args.llm_provider, "openai")
         self.assertEqual(args.openai_model, DEFAULT_CLLM_OPENAI_MODEL)
@@ -288,7 +291,8 @@ class EnrichmentHelpersTest(unittest.TestCase):
         parser = build_figure_analysis_parser()
         args = parser.parse_args([])
 
-        self.assertEqual(args.input, "data/abstracts.json")
+        self.assertEqual(args.input, str(artifacts.PRIMARY_ABSTRACTS_PATH))
+        self.assertEqual(args.image_analyses_output, str(default_image_analysis_cache_path()))
         self.assertEqual(args.vision_backend, "ollama")
         self.assertEqual(args.save_every, 1)
         self.assertEqual(args.enrich_every, 25)
@@ -448,6 +452,8 @@ class EnrichmentHelpersTest(unittest.TestCase):
             self.assertEqual(entry["llm_provider"], "openai")
             self.assertEqual(entry["claims"][0]["claim_id"], "C1")
             self.assertEqual(entry["llm_model"], "gpt-4o-2024-08-06")
+            self.assertEqual(saved_cache["artifact_metadata"]["artifact_class"], "cache")
+            self.assertEqual(saved_cache["artifact_metadata"]["workflow"], "claim_analysis")
             extract_mock.assert_called_once()
             manuscript_text = extract_mock.call_args.kwargs["manuscript_text"]
             self.assertIn("## Figure Analyses", manuscript_text)
@@ -514,6 +520,8 @@ class EnrichmentHelpersTest(unittest.TestCase):
             analysis_entry = saved_cache["analyses"][str(image_path)]
             self.assertEqual(analysis_entry["backend"], "openai")
             self.assertEqual(analysis_entry["model"], "gpt-4.1-mini")
+            self.assertEqual(saved_cache["artifact_metadata"]["artifact_class"], "cache")
+            self.assertEqual(saved_cache["artifact_metadata"]["workflow"], "figure_analysis")
             self.assertEqual(saved_enriched["abstracts"][0]["figure_keywords"], ["MRI", "Flowchart"])
             self.assertEqual(saved_enriched["abstracts"][0]["figure_analyses"][0]["analysis"]["caption_guess"], "Figure caption")
             openai_chat.assert_called_once()
