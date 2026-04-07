@@ -7,6 +7,11 @@ matching, embeddings, clustering, and a static search UI.
 This README is the runbook for a person or an agent that needs to go from the
 original abstract download to the current latest step.
 
+Repository home:
+
+- Git remote `origin`: `git@github.com:satra/ohbm2026.git`
+- GitHub URL: [github.com/satra/ohbm2026](https://github.com/satra/ohbm2026)
+
 Project conventions that should not be violated live in
 [CONSTITUTION.md](/Users/satra/software/temp/ohbm2026/CONSTITUTION.md),
 including the rules that Python work stays inside the repository-local `.venv`,
@@ -14,9 +19,14 @@ recorded experiment runs write to fresh directories instead of overwriting prior
 outputs, behavior-changing work stays plan-first and test-driven, and secrets
 never get copied into the repo or logs.
 
-For the repo-level intent, reproducibility model, key decisions, and experiment
-history, start with
+This README is the operational runbook, not the full project charter.
+For the repo-level intent, reproducibility model, authoritative defaults, key
+decisions, and experiment history, start with
 [docs/reproducibility-vision.md](/Users/satra/software/temp/ohbm2026/docs/reproducibility-vision.md).
+
+If you only read one document before changing behavior, read
+[docs/reproducibility-vision.md](/Users/satra/software/temp/ohbm2026/docs/reproducibility-vision.md)
+first.
 
 Catalogs for the rest of the repository:
 
@@ -26,8 +36,8 @@ Catalogs for the rest of the repository:
 Recommended reading order for a new person or agent:
 
 1. [docs/reproducibility-vision.md](/Users/satra/software/temp/ohbm2026/docs/reproducibility-vision.md)
-2. [docs/README.md](/Users/satra/software/temp/ohbm2026/docs/README.md)
-3. [README.md](/Users/satra/software/temp/ohbm2026/README.md)
+2. [README.md](/Users/satra/software/temp/ohbm2026/README.md)
+3. [docs/README.md](/Users/satra/software/temp/ohbm2026/docs/README.md)
 4. [CONSTITUTION.md](/Users/satra/software/temp/ohbm2026/CONSTITUTION.md)
 5. [memory/summary.md](/Users/satra/software/temp/ohbm2026/memory/summary.md)
 6. the specific plan or experiment README closest to the work you are changing

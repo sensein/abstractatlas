@@ -14,6 +14,11 @@ run the current canonical pipeline. The constitution explains what should not be
 broken while changing it, including `.venv`-only Python execution,
 plan-first/test-driven delivery, auditability, and secret hygiene.
 
+Treat [reproducibility-vision.md](/Users/satra/software/temp/ohbm2026/docs/reproducibility-vision.md)
+as the project charter and source of truth for the repo's scope, defaults, and
+reproducibility model. Treat [README.md](/Users/satra/software/temp/ohbm2026/README.md)
+as the operational runbook.
+
 Current artifact contract to keep in mind while reading older docs:
 
 - `data/inputs/` holds fetched GraphQL source snapshots
