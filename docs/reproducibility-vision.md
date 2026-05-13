@@ -161,12 +161,30 @@ Useful when a new operator needs to replay the pipeline from the Oxford
 Abstracts API.
 
 1. configure `.env`
-2. run `ohbmcli ingest`
-3. continue with the Level 2 steps
+2. run `ohbmcli fetch-abstracts` (accepted corpus; replaces the
+   former `ohbmcli ingest`) — writes `data/primary/abstracts.json`
+   plus the persisted GraphQL schema introspection at
+   `data/inputs/abstracts_graphql_schema__<state-key>.json` and a
+   machine-readable provenance record at
+   `data/inputs/abstracts_fetch_provenance__<state-key>.json`. The
+   stage is resumable from per-record checkpoint and detects
+   upstream schema drift (HARD / SOFT / INFORMATIONAL tiers).
+3. optionally run `ohbmcli fetch-withdrawn` to fetch the SEPARATE
+   withdrawn-decision corpus into
+   `data/primary/abstracts_withdrawn.json` (never co-mingled with
+   the accepted corpus).
+4. continue with the Level 2 steps
 
 This repo is designed so that upstream access is only required for a subset of
 the work. Once `data/primary/abstracts.json` exists, much of the pipeline can be
 repeated locally.
+
+The per-stage script pattern that Stage 1 now establishes — six
+contracts (input, output, provenance, error, resumability, discovery)
+documented in [per-stage-pattern.md](per-stage-pattern.md) — is the
+template subsequent stages (figure analysis, enrichment, references,
+embeddings, clustering, UI build) will follow as they get cleaned up
+in their own per-stage `/speckit-specify` rounds.
 
 ## Key Decision Points
 

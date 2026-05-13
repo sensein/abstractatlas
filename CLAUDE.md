@@ -93,7 +93,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli <subcommand>
 
 Subcommands group into stages (see README for full options):
 
-- ingest/refresh: `ingest`, `refresh-assets`, `authors`
+- ingest/refresh: `fetch-abstracts`, `fetch-withdrawn`, `refresh-assets`, `authors` (note: `ingest` removed; replaced by `fetch-abstracts` — Stage 1 rewire, FR-014)
 - enrichment: `analyze-figures`, `extract-claims`, `enrich`, `title-audit`, `reference-metadata`
 - embeddings: `embed-minilm`, `embed-hf`, `embed-openai`, `embed-voyage`, `embed-stage2`, `apply-published-stage2`
 - analysis: `semantic-analysis`, `cluster-benchmark`, `umap-plot`, `compare-projections`, `optimize-projections`
@@ -105,8 +105,11 @@ Poster layout/sequencing is **not** in `ohbmcli` — use `scripts/optimize_poste
 
 All library code lives in `src/ohbm2026/`:
 
-- `graphql_api.py` — Oxford Abstracts GraphQL client (env loading, batching, exponential-backoff retries).
-- `assets.py` — abstract ingest and methods/results figure download/refresh (reuse-aware).
+- `graphql_api.py` — Oxford Abstracts GraphQL client (env loading, batching, exponential-backoff retries). Defines `ABSTRACT_IDS_QUERY` (accepted), `WITHDRAWN_IDS_QUERY` (withdrawn), `ABSTRACT_CONTENTS_QUERY` (incl. `program_code` + `program_sessions_submissions` chain), `INTROSPECTION_QUERY` (canonical), and `fetch_schema_introspection`.
+- `assets.py` — figure asset download/refresh (reuse-aware via `asset_stem` matching), `normalize_abstract` (maps `program_code` → `poster_id`, flattens `program_sessions_submissions` → `program_sessions`), `fetch_content_batches` generator with per-batch + per-record callback hooks, `advance_record_state` state-machine validator.
+- `fetch_stage.py` — **Stage 1 orchestrator** for `ohbmcli fetch-abstracts` / `fetch-withdrawn`; drives introspection → tiered schema diff → checkpoint lifecycle → batched fetch with figure download → atomic-write corpus + schema + provenance.
+- `schema_diff.py` — tiered HARD/SOFT/INFORMATIONAL field-level diff classifier; pure functions, no I/O.
+- `exceptions.py` — typed Stage 1 exception hierarchy (`Stage1Error`, `SchemaContractError`, `CheckpointError`, `ProvenanceError`, `FigureFailureError`); re-exports `GraphQLAPIError`.
 - `enrichment.py` — markdown conversion, figure analysis (OpenAI or Ollama backends), claim extraction (`cllm`), and final enriched-corpus assembly.
 - `openalex.py` — reference parsing pipeline: markdown normalization → LLM-assisted splitting (validated lexically against source) → DOI/PMID lookup → OpenAlex title search → Semantic Scholar fallback. Resumable with checkpoints.
 - `neuroscape.py` — embeddings (MiniLM/HF/OpenAI/Voyage), stage-2 projection (apply published NeuroScape model or train local), semantic community detection, k-sweep clustering benchmarks, UMAP, projection comparison/optimization.
