@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "enriched_record.schema.json",
+  "title": "Enriched Abstract Record (Stage 2 payload, post-zlib-decompress)",
+  "type": "object",
+  "required": ["id", "figure_interpretation", "claims", "references"],
+  "properties": {
+    "id": { "type": "integer" },
+    "poster_id": { "type": ["string", "null"] },
+    "title": { "type": ["string", "null"] },
+    "accepted_for": { "type": ["string", "null"] },
+    "authors": { "type": "array" },
+    "responses": { "type": "array" },
+    "external_urls": { "type": "array" },
+    "figure_urls": { "type": "array" },
+    "program_sessions": { "type": "array" },
+    "local_assets": { "type": "array" },
+    "figure_interpretation": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/FigureInterpretation" }
+    },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Claim" }
+    },
+    "references": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ReferenceResolution" }
+    }
+  },
+  "$defs": {
+    "FigureInterpretation": {
+      "type": "object",
+      "required": ["figure_url", "question_name", "model_id", "cache_key"],
+      "additionalProperties": false,
+      "properties": {
+        "figure_url": { "type": "string" },
+        "local_path": { "type": ["string", "null"], "pattern": "^(?!/)(?!~).+$" },
+        "question_name": { "type": "string" },
+        "interpretation": { "type": ["string", "null"] },
+        "model_id": { "type": "string" },
+        "cache_key": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "Claim": {
+      "type": "object",
+      "required": ["claim_text", "model_id", "cache_key"],
+      "additionalProperties": false,
+      "properties": {
+        "claim_text": { "type": "string" },
+        "confidence": { "type": ["number", "null"] },
+        "model_id": { "type": "string" },
+        "cache_key": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "ReferenceResolution": {
+      "type": "object",
+      "required": ["raw_reference", "resolution_status", "strategy_id", "cache_key"],
+      "additionalProperties": false,
+      "properties": {
+        "raw_reference": { "type": "string" },
+        "doi": { "type": ["string", "null"] },
+        "pmid": { "type": ["string", "null"] },
+        "openalex_id": { "type": ["string", "null"] },
+        "title": { "type": ["string", "null"] },
+        "authors": { "type": ["array", "null"], "items": { "type": "string" } },
+        "year": { "type": ["integer", "null"] },
+        "resolution_status": {
+          "type": "string",
+          "enum": ["resolved", "partial", "unresolved"]
+        },
+        "resolution_source": { "type": ["string", "null"] },
+        "strategy_id": { "type": "string" },
+        "cache_key": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}
