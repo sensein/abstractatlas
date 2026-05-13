@@ -279,23 +279,65 @@ layout analysis, and sequencing experiments.
 
 ### 1. Download The Raw Abstracts And Figures
 
-This is the canonical starting point.
+This is the canonical starting point. Two distinct corpora are
+fetched separately; they never share an output file or a state-key
+namespace.
+
+**Accepted corpus** (the main pipeline driver):
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli ingest
+PYTHONPATH=src .venv/bin/python scripts/run_fetch_abstracts.py
+```
+
+Equivalent through `ohbmcli`:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli fetch-abstracts
 ```
 
 What it does:
 
-- fetches accepted abstracts from Oxford Abstracts
+- fetches accepted abstracts from Oxford Abstracts (`decision_status=Accepted`)
 - stores the normalized corpus in `data/primary/abstracts.json`
-- downloads only methods/results figure images
+- persists the upstream GraphQL schema introspection alongside at
+  `data/inputs/abstracts_graphql_schema__<state-key>.json`
+- writes a machine-readable provenance record at
+  `data/inputs/abstracts_fetch_provenance__<state-key>.json`
+- writes a resumable checkpoint under
+  `data/cache/fetch_abstracts/checkpoint__<state-key>.json` (deleted
+  on full completion)
+- downloads only methods/results figure images, reuse-aware
 - writes local figure links into each abstract
+
+Each normalized record now includes:
+
+- `poster_id` (the OHBM-assigned poster number, sourced from upstream `program_code`)
+- `program_sessions` (list of standby/symposium session memberships
+  with date, location, time, type, track — empty list until
+  organizer scheduling lands upstream)
 
 Important behavior:
 
 - retries use an exponential timeout schedule starting at `100ms` and capped at `10s`
-- figure downloads are reuse-aware
+- figure downloads are reuse-aware (same abstract_id + same source URL → zero HTTP)
+- schema drift on a fetch-query field exits non-zero (code 2) without overwriting the corpus
+- resumable: an interrupted run picks up from the per-record marker on the next invocation
+
+**Withdrawn corpus** (separate file, never mixed with accepted):
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/run_fetch_withdrawn.py
+```
+
+Or `ohbmcli fetch-withdrawn`. Output:
+`data/primary/abstracts_withdrawn.json`. Filter:
+`decision_status="Withdrawn" AND complete=true AND archived=false`.
+Same per-record shape as the accepted corpus. State-key namespace
+is independent.
+
+See [docs/per-stage-pattern.md](docs/per-stage-pattern.md) for the
+contract every stage script (this one and the upcoming Stage 2..N)
+satisfies.
 
 ### 2. Refresh Assets Without Rerunning Abstract Extraction
 
@@ -797,9 +839,37 @@ If you want to rerun sequencing experiments on an existing proposal:
 ## Module Layout
 
 - `src/ohbm2026/graphql_api.py`
-  - GraphQL access, env loading, batching, retries
+  - GraphQL access, env loading, batching, retries; canonical
+    `INTROSPECTION_QUERY`; `fetch_abstract_ids`,
+    `fetch_withdrawn_ids`, `fetch_schema_introspection`
 - `src/ohbm2026/assets.py`
-  - abstract ingest and figure asset download/refresh
+  - figure asset download/refresh (reuse-aware), normalization
+    (`normalize_abstract` maps `program_code` → `poster_id` and
+    flattens `program_sessions_submissions[]` →
+    `program_sessions[]`), `fetch_content_batches` generator with
+    per-batch + per-record callback hooks, `advance_record_state`
+    state-machine validator
+- `src/ohbm2026/fetch_stage.py`
+  - **Stage 1 orchestrator**. Entry point for
+    `ohbmcli fetch-abstracts` and `ohbmcli fetch-withdrawn`.
+    Drives: introspection → schema diff (HARD / SOFT /
+    INFORMATIONAL) → checkpoint lifecycle → batched fetch →
+    atomic-write corpus + schema + provenance → delete checkpoint
+    on success. The canonical reference for the per-stage
+    contract (see [docs/per-stage-pattern.md](docs/per-stage-pattern.md))
+- `src/ohbm2026/schema_diff.py`
+  - tiered field-level schema-drift classifier
+    (HARD / SOFT / INFORMATIONAL); pure functions, no I/O
+- `src/ohbm2026/exceptions.py`
+  - typed Stage 1 exception hierarchy
+    (`Stage1Error`, `SchemaContractError`, `CheckpointError`,
+    `ProvenanceError`, `FigureFailureError`); re-exports
+    `GraphQLAPIError`
+- `src/ohbm2026/artifacts.py`
+  - shared path helpers (`build_schema_artifact_path`,
+    `build_provenance_path`, `build_fetch_checkpoint_path`,
+    `PRIMARY_ABSTRACTS_PATH`, `PRIMARY_WITHDRAWN_ABSTRACTS_PATH`),
+    state-key derivation
 - `src/ohbm2026/enrichment.py`
   - markdown conversion, figure analysis, claim extraction, enrichment assembly
 - `src/ohbm2026/openalex.py`
@@ -814,8 +884,12 @@ If you want to rerun sequencing experiments on an existing proposal:
 ## Main Outputs By Stage
 
 - raw ingest
-  - `data/primary/abstracts.json`
+  - `data/primary/abstracts.json` (accepted corpus)
+  - `data/primary/abstracts_withdrawn.json` (withdrawn corpus, separate file)
+  - `data/inputs/abstracts_graphql_schema__<state-key>.json` (persisted upstream schema)
+  - `data/inputs/abstracts_fetch_provenance__<state-key>.json` (provenance record)
   - `data/inputs/assets/`
+  - `data/cache/fetch_abstracts/checkpoint__<state-key>.json` (resume checkpoint; deleted on success)
 - manual and operator inputs
   - `data/inputs/abstracts_with_phenomena_with_theories_refined.csv`
   - `data/inputs/poster_layout/layout_assets/`
