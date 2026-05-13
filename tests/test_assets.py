@@ -477,6 +477,56 @@ class TestFetchContentBatchesFigureResolution(unittest.TestCase):
         self.assertEqual(local_assets[0]["local_path"], str(seeded))
 
 
+class TestNormalizeAuthor(unittest.TestCase):
+    """FR-023 — `normalize_author` MUST drop email and stabilize the
+    affiliations order. ORCID and other non-PII fields are preserved."""
+
+    def test_email_is_stripped(self) -> None:
+        from ohbm2026.assets import normalize_author
+
+        raw = {
+            "id": 42,
+            "first_name": "A",
+            "last_name": "B",
+            "email": "a.b@example.org",
+            "orcid_id": "0000-0001-2345-6789",
+            "presenting": True,
+            "submission_id": 1,
+            "affiliations": [],
+        }
+        out = normalize_author(raw)
+        self.assertNotIn("email", out)
+        self.assertEqual(out["orcid_id"], "0000-0001-2345-6789")
+
+    def test_affiliations_sorted_by_order_then_id(self) -> None:
+        from ohbm2026.assets import normalize_author
+
+        raw = {
+            "id": 1,
+            "first_name": "A",
+            "last_name": "B",
+            "affiliations": [
+                {"id": 200, "affiliation_order": 2, "institution": "X"},
+                {"id": 100, "affiliation_order": 1, "institution": "Y"},
+                {"id": 150, "affiliation_order": 1, "institution": "Z"},
+            ],
+        }
+        out = normalize_author(raw)
+        ids = [a["id"] for a in out["affiliations"]]
+        # affiliation_order=1 (ids 100, 150 in id order), then order=2 (200)
+        self.assertEqual(ids, [100, 150, 200])
+
+    def test_missing_fields_become_none(self) -> None:
+        from ohbm2026.assets import normalize_author
+
+        raw = {"id": 99, "affiliations": None}
+        out = normalize_author(raw)
+        self.assertEqual(out["id"], 99)
+        self.assertIsNone(out["first_name"])
+        self.assertIsNone(out["orcid_id"])
+        self.assertEqual(out["affiliations"], [])
+
+
 class TestPosterIdPropagation(unittest.TestCase):
     """T009 (FR-020) — `normalize_abstract` MUST rename upstream
     `program_code` to `poster_id` on the normalized record.

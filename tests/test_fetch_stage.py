@@ -65,6 +65,31 @@ def _fake_submission(sid: int) -> dict[str, object]:
     }
 
 
+def _fake_author(aid: int) -> dict[str, object]:
+    return {
+        "id": aid,
+        "first_name": f"First{aid}",
+        "middle_initial": None,
+        "last_name": f"Last{aid}",
+        "title": None,
+        "degree": "PhD",
+        "email": f"a{aid}@example.org",  # to be stripped by normalize_author
+        "orcid_id": f"0000-0000-0000-{aid:04d}",
+        "presenting": False,
+        "submission_id": aid // 10,
+        "affiliations": [
+            {
+                "id": aid * 100,
+                "affiliation_order": 1,
+                "institution": "Demo University",
+                "city": "Boston",
+                "state": "MA",
+                "country": "USA",
+            }
+        ],
+    }
+
+
 def _patch_upstream(
     *,
     introspection: dict[str, object] | None = None,
@@ -90,6 +115,9 @@ def _patch_upstream(
     def content_side_effect(api_key, ids, **kw):
         return [content_factory(sid) for sid in ids]
 
+    def author_side_effect(api_key, ids, **kw):
+        return [_fake_author(aid) for aid in ids]
+
     patches = [
         mock.patch.object(graphql_api, "fetch_schema_introspection", return_value=introspection),
         mock.patch.object(
@@ -111,6 +139,11 @@ def _patch_upstream(
             assets_module,
             "fetch_abstract_content",
             side_effect=content_side_effect,
+        ),
+        mock.patch.object(
+            graphql_api,
+            "fetch_author_details",
+            side_effect=author_side_effect,
         ),
     ]
     return patches
@@ -362,6 +395,78 @@ class ResumabilityContractTests(unittest.TestCase):
         self.assertEqual(sorted(set(seen_ids)), [3, 4])
 
 
+class AuthorIngestionTests(unittest.TestCase):
+    """FR-023 / FR-024: Stage 1 fetches author details inline and
+    writes them to data/primary/authors.json (or authors_withdrawn.json
+    for the withdrawn corpus). Email is dropped at normalize time."""
+
+    def test_accepted_run_writes_authors_to_data_primary_authors_json(self) -> None:
+        from ohbm2026 import fetch_stage
+
+        with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
+            os.environ, {"OHBM2026_API": "fake"}, clear=False
+        ), _StackedPatches(_patch_upstream(submission_ids=[1, 2])):
+            tmp = Path(tmp_name)
+            with mock.patch("ohbm2026.fetch_stage.Path.cwd", return_value=tmp):
+                exit_code = fetch_stage.main([])
+            self.assertEqual(exit_code, 0)
+
+            authors_file = tmp / "data" / "primary" / "authors.json"
+            self.assertTrue(authors_file.exists())
+            payload = json.loads(authors_file.read_text(encoding="utf-8"))
+
+            self.assertIn("author_count", payload)
+            self.assertIn("authors", payload)
+            self.assertEqual(payload["author_count"], 2)
+            # Author IDs were derived from the corpus (sid*10 → 10, 20).
+            self.assertEqual([a["id"] for a in payload["authors"]], [10, 20])
+            # Email MUST NOT appear anywhere in the persisted record.
+            self.assertNotIn("email", json.dumps(payload))
+
+    def test_withdrawn_run_writes_authors_to_separate_file(self) -> None:
+        from ohbm2026 import fetch_stage
+
+        with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
+            os.environ, {"OHBM2026_API": "fake"}, clear=False
+        ), _StackedPatches(
+            _patch_upstream(submission_ids=[1], withdrawn_submission_ids=[99])
+        ):
+            tmp = Path(tmp_name)
+            with mock.patch("ohbm2026.fetch_stage.Path.cwd", return_value=tmp):
+                exit_code = fetch_stage.main(["--corpus-kind", "withdrawn"])
+            self.assertEqual(exit_code, 0)
+
+            withdrawn_authors = tmp / "data" / "primary" / "authors_withdrawn.json"
+            accepted_authors = tmp / "data" / "primary" / "authors.json"
+
+            self.assertTrue(withdrawn_authors.exists())
+            self.assertFalse(
+                accepted_authors.exists(),
+                "withdrawn-mode MUST NOT write to the accepted authors path",
+            )
+
+    def test_provenance_record_includes_authors_path_and_count(self) -> None:
+        from ohbm2026 import fetch_stage
+
+        with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
+            os.environ, {"OHBM2026_API": "fake"}, clear=False
+        ), _StackedPatches(_patch_upstream(submission_ids=[1])):
+            tmp = Path(tmp_name)
+            with mock.patch("ohbm2026.fetch_stage.Path.cwd", return_value=tmp):
+                fetch_stage.main([])
+
+            provenance_path = list((tmp / "data" / "inputs").glob("abstracts_fetch_provenance__*.json"))[0]
+            record = json.loads(provenance_path.read_text(encoding="utf-8"))
+
+        self.assertIn("authors_path", record)
+        self.assertIn("author_count", record)
+        self.assertEqual(record["authors_path"], "data/primary/authors.json")
+        self.assertEqual(record["author_count"], 1)
+        # Path must be project-relative.
+        self.assertFalse(record["authors_path"].startswith("/"))
+        self.assertFalse(record["authors_path"].startswith("~"))
+
+
 class WithdrawnCorpusKindTests(unittest.TestCase):
     """FR-022: --corpus-kind=withdrawn dispatches to fetch_withdrawn_ids
     and writes a separate `data/primary/abstracts_withdrawn.json`. The
@@ -438,12 +543,17 @@ class DiscoveryContractTests(unittest.TestCase):
             call_order.append("content")
             return [_fake_submission(sid) for sid in ids]
 
+        def author_recorder(api_key, ids, **kw):
+            call_order.append("authors")
+            return [_fake_author(aid) for aid in ids]
+
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
         ), mock.patch.object(graphql_api, "fetch_schema_introspection", side_effect=intro_recorder), \
              mock.patch.object(graphql_api, "fetch_abstract_ids", side_effect=ids_recorder), \
              mock.patch.object(graphql_api, "fetch_abstract_content", side_effect=content_recorder), \
-             mock.patch.object(assets_module, "fetch_abstract_content", side_effect=content_recorder):
+             mock.patch.object(assets_module, "fetch_abstract_content", side_effect=content_recorder), \
+             mock.patch.object(graphql_api, "fetch_author_details", side_effect=author_recorder):
             tmp = Path(tmp_name)
             with mock.patch("ohbm2026.fetch_stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main([])
@@ -451,6 +561,9 @@ class DiscoveryContractTests(unittest.TestCase):
         self.assertEqual(call_order[0], "introspection")
         self.assertIn("content", call_order)
         self.assertLess(call_order.index("introspection"), call_order.index("content"))
+        # Authors fetched AFTER content (corpus drives author_id list).
+        self.assertIn("authors", call_order)
+        self.assertLess(call_order.index("content"), call_order.index("authors"))
 
     def test_checkpoint_with_mismatched_schema_hash_refuses_to_resume_silently(self) -> None:
         from ohbm2026 import fetch_stage

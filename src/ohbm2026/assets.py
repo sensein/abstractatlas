@@ -391,6 +391,44 @@ def _resolve_figures(
     return local_assets, has_retryable_failure
 
 
+def normalize_author(raw: dict[str, Any]) -> dict[str, Any]:
+    """Strip PII from an upstream author record and stabilize the
+    affiliations order.
+
+    Per FR-023: the persisted record MUST NOT include `email`. The
+    upstream `AUTHOR_QUERY` returns it; this function drops it before
+    the record reaches disk. ORCID is retained (public researcher
+    identifier). Affiliations are sorted by `affiliation_order` so
+    re-runs are byte-identical."""
+    affiliations_raw = raw.get("affiliations") or []
+    affiliations = sorted(
+        (dict(a) for a in affiliations_raw if isinstance(a, dict)),
+        key=lambda a: (a.get("affiliation_order") or 0, a.get("id") or 0),
+    )
+    return {
+        "id": raw.get("id"),
+        "first_name": raw.get("first_name"),
+        "middle_initial": raw.get("middle_initial"),
+        "last_name": raw.get("last_name"),
+        "title": raw.get("title"),
+        "degree": raw.get("degree"),
+        "orcid_id": raw.get("orcid_id"),
+        "presenting": raw.get("presenting"),
+        "submission_id": raw.get("submission_id"),
+        "affiliations": [
+            {
+                "id": a.get("id"),
+                "affiliation_order": a.get("affiliation_order"),
+                "institution": a.get("institution"),
+                "city": a.get("city"),
+                "state": a.get("state"),
+                "country": a.get("country"),
+            }
+            for a in affiliations
+        ],
+    }
+
+
 def fetch_content_batches(
     *,
     api_key: str,

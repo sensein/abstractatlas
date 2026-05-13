@@ -14,13 +14,6 @@ class CLITest(unittest.TestCase):
             ["--reuse-existing-assets-only", "--refresh-assets-from-existing-db"]
         )
 
-    def test_authors_subcommand_delegates_to_authors_main(self) -> None:
-        with mock.patch.object(cli.enrichment, "authors_main", return_value=9) as authors_main:
-            result = cli.main(["authors", "--authors-output", "custom.json"])
-
-        self.assertEqual(result, 9)
-        authors_main.assert_called_once_with(["--authors-output", "custom.json"])
-
     def test_enrich_subcommand_delegates_to_enrich_main(self) -> None:
         with mock.patch.object(cli.enrichment, "enrich_main", return_value=11) as enrich_main:
             result = cli.main(["enrich", "--enriched-output", "custom.json"])
@@ -160,6 +153,15 @@ class CLITest(unittest.TestCase):
 
         self.assertEqual(result, 25)
         manifest_main.assert_called_once_with(["--output", "manifest.json"])
+
+
+class TestAuthorsSubcommandRemoved(unittest.TestCase):
+    """FR-024 — `ohbmcli authors` is REMOVED (no backward-compat alias).
+    Authors are now fetched inline by Stage 1 (FR-023)."""
+
+    def test_authors_subcommand_is_not_a_known_choice(self) -> None:
+        with self.assertRaises(SystemExit):
+            cli.main(["authors"])
 
 
 class TestIngestSubcommandRemoved(unittest.TestCase):
