@@ -83,7 +83,7 @@ re-run command.
   fallbacks, or verification-gate bypasses.** PASS — FR-007, CA-006.
   The constitution-check lint catches the patterns; new code is
   scoped to typed exceptions (`GraphQLAPIError`,
-  `SchemaContractError`, `CheckpointError`).
+  `SchemaContractError`, `CheckpointError`, `ProvenanceError`).
 - **External-state dependencies discovered at runtime; mismatches
   surface as precise errors, not silent skips.** PASS — this is the
   defining feature. Schema introspection IS the discovery mechanism;
@@ -142,6 +142,10 @@ src/ohbm2026/
 │                           #   schema-diff invocation, atomic writes
 ├── schema_diff.py          # NEW — tiered classification: HARD / SOFT /
 │                           #   INFORMATIONAL. Pure functions; no I/O.
+├── exceptions.py           # NEW — typed exception hierarchy for Stage 1:
+│                           #   Stage1Error (base), SchemaContractError,
+│                           #   CheckpointError, ProvenanceError; re-exports
+│                           #   GraphQLAPIError for a single import surface
 └── cli.py                  # `ohbmcli ingest` REMOVED; `ohbmcli fetch-abstracts` ADDED
 
 scripts/
