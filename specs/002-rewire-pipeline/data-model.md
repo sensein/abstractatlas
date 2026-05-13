@@ -9,14 +9,40 @@ artifacts are detailed below.
 ## Corpus Snapshot
 
 `data/primary/abstracts.json` shape is preserved from the previous
-ingest, with one addition: every accepted-submission record now
-includes a `poster_id` field (FR-020). The exact GraphQL field name
-that populates `poster_id` is discovered at implementation time from
-the introspection result (research.md §1 / Principle VII). If the
-upstream schema does not expose any field representing a poster
-identifier, Stage 1 raises `SchemaContractError` and does not write
-the corpus snapshot. The `poster_id` field is part of the HARD
-contract Stage 1 maintains with downstream consumers.
+ingest, with two new fields on every accepted-submission record
+(empirically pinned 2026-05-13 via live introspection probe):
+
+- **`poster_id`** (String) — populated from upstream
+  `submissions.program_code` (FR-020). Confirmed live values:
+  e.g. `"0581"`, `"0580"`, `"0743"`.
+- **`program_sessions`** (list) — populated from upstream
+  `submissions.program_sessions_submissions[]` flattened with each
+  row's linked `program_session` data (FR-021). Each entry shape:
+
+  ```json
+  {
+    "session_id":            <int>,             // program_session.id
+    "session_name":          <string|null>,
+    "session_type":          <string|null>,     // e.g., "Poster Standby"
+    "session_track":         <string|null>,
+    "session_date":          <date|null>,       // program_date.program_date
+    "session_location":      <string|null>,     // program_location.name
+    "session_start_time":    <time|null>,       // session-wide
+    "session_end_time":      <time|null>,
+    "standby_start_time":    <time|null>,       // per-poster window
+    "standby_end_time":      <time|null>,
+    "display_order":         <int|null>
+  }
+  ```
+
+  Empty list `[]` is the legitimate value when upstream has not yet
+  scheduled the abstract (the typical state pre-OHBM-scheduling).
+  Stage 1 does NOT block on emptiness; the schema-diff machinery
+  catches RENAMES and REMOVALS of requested fields per FR-021.
+
+These two fields are HARD-contract: their absence from the upstream
+schema is a SchemaContractError. Their VALUES being null/empty is
+NOT a SchemaContractError — that's expected state today.
 
 ## State-Key Convention
 

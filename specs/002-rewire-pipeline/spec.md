@@ -51,6 +51,24 @@
   VII); if the upstream does not expose any field that represents a
   poster identifier, the stage fails loudly rather than fabricating
   one. (FR-020.)
+- Q: Empirical schema probe (2026-05-13) — which upstream field IS
+  the poster identifier, and where does poster standby time live?
+  → A: Verified live against `https://app.oxfordabstracts.com/v1/graphql`.
+  Findings:
+  - The flat `poster_id` field name does NOT exist upstream. The
+    upstream field that carries the conference-assigned poster
+    number is **`submissions.program_code`** (String). FR-020 is
+    pinned to `program_code` → normalized as `poster_id`.
+  - Poster standby time + location live on the relationship table
+    **`submissions.program_sessions_submissions[]`** with
+    per-poster `start_time`/`end_time`/`display_order` plus a linked
+    `program_session` that carries date, location, type, and track.
+  - In the current upstream state (2026-05-13),
+    `program_sessions_submissions` is EMPTY for sampled accepted
+    abstracts — OHBM 2026 organizer scheduling has not yet been
+    entered. Stage 1 still REQUESTS these fields so they land
+    automatically once scheduling is populated; null values are
+    expected and not an error today. (FR-021.)
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -221,7 +239,16 @@ suite catches it.
   type(s) and pattern of field names searched; does NOT fabricate a
   placeholder; does NOT silently omit the field. The operator's
   options are to (a) wait for upstream to expose the field, or
-  (b) downgrade FR-020 in a follow-up spec.
+  (b) downgrade FR-020 in a follow-up spec. (Empirically resolved
+  as of 2026-05-13: the field IS `submissions.program_code` —
+  this edge case applies only if upstream removes or renames
+  `program_code` in the future.)
+- An accepted submission has zero rows in `program_sessions_submissions`
+  (typical state before OHBM organizer scheduling is entered upstream)
+  → Stage 1 normalizes the record with `program_sessions: []`. No
+  error, no warning — this is the legitimate pre-scheduling state.
+  FR-021 only treats RENAMING or removing requested fields as
+  drift; null values on populated rows are tolerated.
 - The `OHBM2026_API` env var is missing → fail immediately with a
   named error, do not attempt the request, do not overwrite local
   artifacts.
@@ -370,17 +397,28 @@ suite catches it.
   schema change that may have altered the fields being collected.
 - **FR-020**: Stage 1 MUST retrieve the upstream-assigned poster
   identifier for each accepted submission and persist it on the
-  normalized corpus record as a `poster_id` field. The upstream
-  GraphQL field name that represents the poster identifier MUST be
-  discovered at implementation time from the introspection result
-  (Principle VII applied to this field too); the stage MUST NOT
-  hardcode a guessed field name. If the upstream schema does NOT
-  expose any field representing a poster identifier, Stage 1 MUST
-  fail loudly with a typed error naming what was searched and what
-  was not found, rather than fabricating a placeholder or omitting
-  the field. The new `poster_id` field is part of the hard contract
-  Stage 1 maintains with downstream consumers; subsequent stages
-  may begin reading it once Stage 1 lands.
+  normalized corpus record as a `poster_id` field. Empirically
+  verified upstream field (introspection probe 2026-05-13):
+  `submissions.program_code` (String). The fetch query body MUST
+  request `program_code` directly; the normalize step MUST rename
+  it to `poster_id` on the output record. If upstream removes or
+  renames `program_code` in a future schema change, the tiered
+  drift detection (FR-003 HARD tier) catches it.
+- **FR-021**: Stage 1 MUST retrieve each accepted submission's
+  program-session memberships (poster standby + symposium + other
+  programmed sessions the abstract appears in) and persist them on
+  the normalized corpus record as a `program_sessions` list. Each
+  list entry MUST contain, when upstream populates them: per-poster
+  `start_time`, `end_time`, `display_order`; the linked session's
+  `id`, `name`, `start_time`, `end_time`, `program_date.program_date`
+  (date), `program_location.name`, `program_type.name`,
+  `program_track.name`. Empty list is the legitimate value today
+  (scheduling not yet entered upstream — see Clarifications
+  2026-05-13). The fetch query body MUST ask for the full chain so
+  values land automatically once OHBM organizer scheduling
+  populates them. Null leaves on individual entries are tolerated;
+  what is NOT tolerated is upstream RENAMING any of these fields
+  while we still ask for them — that is HARD-tier drift (FR-003).
 
 ### Key Entities
 
@@ -388,9 +426,14 @@ suite catches it.
   by the fetch stage. Path identical to today's
   `data/primary/abstracts.json` (plus a sibling GraphQL source under
   `data/inputs/abstracts_graphql__<state-key>.json`). Shape matches
-  today's shape plus the new `poster_id` field on each record
-  (FR-020) — every other user-visible field is preserved verbatim
-  (FR-006).
+  today's shape plus two new fields on each record:
+  - `poster_id` (String) — sourced from upstream
+    `submissions.program_code` (FR-020).
+  - `program_sessions` (list) — sourced from upstream
+    `submissions.program_sessions_submissions[]` with each linked
+    `program_session` flattened (FR-021). Empty list when upstream
+    has not yet scheduled the abstract.
+  Every other user-visible field is preserved verbatim (FR-006).
 - **GraphQL Schema Artifact**: A JSON file capturing the upstream
   Oxford Abstracts GraphQL schema introspection result at fetch time.
   Lives alongside the GraphQL source under `data/inputs/` with a
