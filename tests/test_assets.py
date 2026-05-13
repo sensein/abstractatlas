@@ -345,41 +345,150 @@ class TestPerRecordStateTransitions(unittest.TestCase):
 
 
 class TestPosterIdPropagation(unittest.TestCase):
-    """T009 (FR-020) — normalize_abstract MUST surface the upstream
-    poster identifier as `poster_id` on the normalized record. If
-    upstream does not include any poster-identifier-shaped field,
-    the function MUST surface it loudly rather than fabricating one."""
+    """T009 (FR-020) — `normalize_abstract` MUST rename upstream
+    `program_code` to `poster_id` on the normalized record.
 
-    def test_normalize_abstract_propagates_poster_id_when_present(self) -> None:
+    Pinned by the 2026-05-13 introspection probe: the upstream field
+    that carries the conference-assigned poster number is
+    `submissions.program_code` (String); confirmed live values are
+    short numeric strings like "0581"."""
+
+    def test_normalize_abstract_renames_program_code_to_poster_id(self) -> None:
         raw = {
-            "id": 42,
+            "id": 1227181,
             "title": [{"value": "Demo"}],
             "accepted_for": {"value": "Poster"},
             "authors": [{"author_order": 1, "id": 7}],
             "responses": [],
-            "poster_id": "P-042",
+            "program_code": "0581",
         }
         normalized = normalize_abstract(raw)
 
-        self.assertEqual(normalized["poster_id"], "P-042")
+        self.assertEqual(normalized["poster_id"], "0581")
+        # The upstream raw key MUST NOT be exposed under both names on
+        # the normalized record — one canonical key only.
+        self.assertNotIn("program_code", normalized)
 
-    def test_normalize_abstract_passes_through_alternative_poster_field_names(self) -> None:
-        # The implementation discovers the upstream field name from
-        # introspection at fetch time, so multiple input shapes can
-        # land in the normalized record. Whatever the discovered key
-        # was, normalize_abstract must expose it as `poster_id`.
-        for upstream_key in ("poster_id", "poster_number", "presentation_id"):
-            with self.subTest(upstream_key=upstream_key):
-                raw = {
-                    "id": 1,
-                    "title": [{"value": "X"}],
-                    "accepted_for": {"value": "Poster"},
-                    "authors": [],
-                    "responses": [],
-                    upstream_key: "P-1",
+    def test_normalize_abstract_carries_null_poster_id_through(self) -> None:
+        # Upstream may legitimately not have assigned a program_code
+        # yet for a brand-new submission. normalize_abstract MUST NOT
+        # crash; it surfaces None.
+        raw = {
+            "id": 999,
+            "title": [{"value": "Demo"}],
+            "accepted_for": {"value": "Poster"},
+            "authors": [],
+            "responses": [],
+            "program_code": None,
+        }
+        normalized = normalize_abstract(raw)
+        self.assertIsNone(normalized["poster_id"])
+
+
+class TestProgramSessionsPropagation(unittest.TestCase):
+    """T009 (FR-021) — `normalize_abstract` MUST flatten upstream
+    `program_sessions_submissions[]` into a `program_sessions` list on
+    the normalized record. Each entry carries per-poster + session-
+    level fields.
+
+    Empirical state (2026-05-13): the upstream relationship is empty
+    for accepted submissions — OHBM 2026 organizer scheduling has
+    not yet been entered. The normalize step MUST therefore tolerate
+    both empty input and populated input.
+    """
+
+    def test_empty_relationship_yields_empty_program_sessions_list(self) -> None:
+        raw = {
+            "id": 1227181,
+            "title": [{"value": "Demo"}],
+            "accepted_for": {"value": "Poster"},
+            "authors": [],
+            "responses": [],
+            "program_code": "0581",
+            "program_sessions_submissions": [],
+        }
+        normalized = normalize_abstract(raw)
+        self.assertEqual(normalized["program_sessions"], [])
+
+    def test_populated_relationship_flattens_into_program_sessions_list(self) -> None:
+        raw = {
+            "id": 1,
+            "title": [{"value": "Demo"}],
+            "accepted_for": {"value": "Poster"},
+            "authors": [],
+            "responses": [],
+            "program_code": "0001",
+            "program_sessions_submissions": [
+                {
+                    "start_time": "10:00:00",
+                    "end_time": "11:00:00",
+                    "display_order": 7,
+                    "program_session": {
+                        "id": 42,
+                        "name": "Poster Session 1",
+                        "start_time": "09:00:00",
+                        "end_time": "12:00:00",
+                        "program_date": {"program_date": "2026-06-26"},
+                        "program_location": {"name": "Hall A"},
+                        "program_type": {"name": "Poster Standby"},
+                        "program_track": {"name": "Cognitive"},
+                    },
                 }
-                normalized = normalize_abstract(raw)
-                self.assertEqual(normalized["poster_id"], "P-1")
+            ],
+        }
+        normalized = normalize_abstract(raw)
+
+        self.assertEqual(len(normalized["program_sessions"]), 1)
+        entry = normalized["program_sessions"][0]
+        self.assertEqual(entry["session_id"], 42)
+        self.assertEqual(entry["session_name"], "Poster Session 1")
+        self.assertEqual(entry["session_type"], "Poster Standby")
+        self.assertEqual(entry["session_track"], "Cognitive")
+        self.assertEqual(entry["session_date"], "2026-06-26")
+        self.assertEqual(entry["session_location"], "Hall A")
+        self.assertEqual(entry["session_start_time"], "09:00:00")
+        self.assertEqual(entry["session_end_time"], "12:00:00")
+        self.assertEqual(entry["standby_start_time"], "10:00:00")
+        self.assertEqual(entry["standby_end_time"], "11:00:00")
+        self.assertEqual(entry["display_order"], 7)
+
+    def test_null_subfields_in_populated_session_are_preserved_as_none(self) -> None:
+        # Upstream may populate the junction row but leave individual
+        # sub-fields null (e.g. location not yet decided). normalize
+        # MUST carry None through, not crash or fabricate.
+        raw = {
+            "id": 1,
+            "title": [{"value": "Demo"}],
+            "accepted_for": {"value": "Poster"},
+            "authors": [],
+            "responses": [],
+            "program_code": "0001",
+            "program_sessions_submissions": [
+                {
+                    "start_time": None,
+                    "end_time": None,
+                    "display_order": None,
+                    "program_session": {
+                        "id": 5,
+                        "name": None,
+                        "start_time": None,
+                        "end_time": None,
+                        "program_date": None,
+                        "program_location": None,
+                        "program_type": None,
+                        "program_track": None,
+                    },
+                }
+            ],
+        }
+        normalized = normalize_abstract(raw)
+        entry = normalized["program_sessions"][0]
+        self.assertEqual(entry["session_id"], 5)
+        self.assertIsNone(entry["session_name"])
+        self.assertIsNone(entry["session_date"])
+        self.assertIsNone(entry["session_location"])
+        self.assertIsNone(entry["session_type"])
+        self.assertIsNone(entry["standby_start_time"])
 
 
 if __name__ == "__main__":

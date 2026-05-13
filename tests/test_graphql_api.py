@@ -119,23 +119,60 @@ class TestIntrospectionRetry(unittest.TestCase):
 
 
 class TestPosterIdRequested(unittest.TestCase):
-    """T008 — the live content query MUST request the upstream poster-
-    identifier field (FR-020).
+    """T008 — the live content query MUST request the empirically
+    confirmed upstream poster-identifier field (FR-020).
 
-    The exact field name is discovered at implementation time from the
-    introspection, so this test asserts the query body contains AT
-    LEAST ONE of the candidate names the implementation would pick.
+    The field name was pinned via the 2026-05-13 introspection probe:
+    `submissions.program_code` (String) carries the conference-assigned
+    poster number.
     """
 
-    def test_abstract_contents_query_requests_a_poster_identifier_field(self) -> None:
+    def test_abstract_contents_query_requests_program_code(self) -> None:
         from ohbm2026.graphql_api import ABSTRACT_CONTENTS_QUERY
 
-        candidates = ("poster_id", "poster_number", "presentation_id", "submission_number")
-        self.assertTrue(
-            any(name in ABSTRACT_CONTENTS_QUERY for name in candidates),
-            f"ABSTRACT_CONTENTS_QUERY must request a poster-identifier field; "
-            f"none of {candidates} were found in the query body.",
+        self.assertIn(
+            "program_code",
+            ABSTRACT_CONTENTS_QUERY,
+            "ABSTRACT_CONTENTS_QUERY must request the upstream "
+            "`program_code` field — this is the poster identifier "
+            "per FR-020 / Clarifications 2026-05-13.",
         )
+
+
+class TestStandbyChainRequested(unittest.TestCase):
+    """T008 — the live content query MUST also request the program-
+    session chain that carries poster standby time / location /
+    session type per FR-021. Even though upstream may not have
+    scheduling populated yet (empirically empty as of 2026-05-13),
+    the query asks for the structure so values flow automatically
+    once scheduling lands."""
+
+    def test_abstract_contents_query_requests_program_sessions_submissions(self) -> None:
+        from ohbm2026.graphql_api import ABSTRACT_CONTENTS_QUERY
+
+        # The fetch query must traverse the junction table.
+        self.assertIn("program_sessions_submissions", ABSTRACT_CONTENTS_QUERY)
+
+    def test_abstract_contents_query_requests_session_metadata_chain(self) -> None:
+        from ohbm2026.graphql_api import ABSTRACT_CONTENTS_QUERY
+
+        # Each linked program_session contributes day, location, type,
+        # track, and the standby time window.
+        for required in (
+            "start_time",
+            "end_time",
+            "display_order",
+            "program_session",
+            "program_date",
+            "program_location",
+            "program_type",
+        ):
+            self.assertIn(
+                required,
+                ABSTRACT_CONTENTS_QUERY,
+                f"FR-021: query body must include `{required}` so poster "
+                f"standby info lands when upstream populates it.",
+            )
 
 
 class TestSchemaContractError(unittest.TestCase):
