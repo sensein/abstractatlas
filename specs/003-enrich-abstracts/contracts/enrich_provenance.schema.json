@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "enrich_provenance.schema.json",
+  "title": "Stage 2 Enrich Provenance Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provenance_version", "run_id", "state_key", "run_timestamp",
+    "code_revision", "command_line", "env_vars_consulted",
+    "source_corpus_path", "source_corpus_hash",
+    "enriched_corpus_path", "corpus_kind", "abstract_count",
+    "components", "delta_vs_previous",
+    "figure_failure_count", "claim_failure_count", "reference_failure_count",
+    "parquet_export_path"
+  ],
+  "properties": {
+    "provenance_version": { "type": "string", "const": "enrich.provenance.v1" },
+    "run_id": { "type": "string", "format": "uuid" },
+    "state_key": { "type": "string", "pattern": "^[0-9a-f]{12}$" },
+    "run_timestamp": { "type": "string", "format": "date-time" },
+    "code_revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git_sha", "dirty"],
+      "properties": {
+        "git_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "dirty": { "type": "boolean" }
+      }
+    },
+    "command_line": { "type": "array", "items": { "type": "string" } },
+    "env_vars_consulted": { "type": "array", "items": { "type": "string" } },
+    "source_corpus_path": { "type": "string", "pattern": "^(?!/)(?!~).+$" },
+    "source_corpus_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "enriched_corpus_path": { "type": "string", "pattern": "^(?!/)(?!~).+$" },
+    "corpus_kind": { "type": "string", "enum": ["accepted"] },
+    "abstract_count": { "type": "integer", "minimum": 0 },
+    "components": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/ComponentSummary" }
+    },
+    "delta_vs_previous": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["added_count", "removed_count", "unchanged_count"],
+          "properties": {
+            "added_count": { "type": "integer", "minimum": 0 },
+            "removed_count": { "type": "integer", "minimum": 0 },
+            "unchanged_count": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "figure_failure_count": { "type": "integer", "minimum": 0 },
+    "claim_failure_count": { "type": "integer", "minimum": 0 },
+    "reference_failure_count": { "type": "integer", "minimum": 0 },
+    "parquet_export_path": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^(?!/)(?!~).+$" }
+      ]
+    }
+  },
+  "$defs": {
+    "ComponentSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component", "model_id", "cache_version", "cache_hit_count", "cache_miss_count", "cache_invalidated", "failure_count"],
+      "properties": {
+        "component": { "type": "string", "enum": ["figures", "claims", "references"] },
+        "model_id": { "type": "string", "minLength": 1 },
+        "cache_version": { "type": "string", "minLength": 1 },
+        "cache_hit_count": { "type": "integer", "minimum": 0 },
+        "cache_miss_count": { "type": "integer", "minimum": 0 },
+        "cache_invalidated": { "type": "boolean" },
+        "failure_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

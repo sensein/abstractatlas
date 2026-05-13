@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cache_entry.schema.json",
+  "title": "Stage 2 Component Cache Entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cache_version", "component", "cache_key", "model_id", "input_hash", "computed_at", "payload"],
+  "properties": {
+    "cache_version": { "type": "string", "const": "enrich.cache.v1" },
+    "component": { "type": "string", "enum": ["figures", "claims", "references"] },
+    "cache_key": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "model_id": { "type": "string", "minLength": 1 },
+    "input_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "computed_at": { "type": "string", "format": "date-time" },
+    "payload": {
+      "description": "Component-specific output. Validated by the component's own parser at write time.",
+      "type": "object"
+    }
+  }
+}
