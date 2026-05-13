@@ -46,9 +46,6 @@ def build_parser() -> argparse.ArgumentParser:
     refresh_parser = subparsers.add_parser("refresh-assets", help="Refresh local figure assets from an existing normalized abstracts dataset")
     _copy_actions(refresh_parser, assets.build_parser())
 
-    authors_parser = subparsers.add_parser("authors", help="Export author metadata from the local abstract database")
-    _copy_actions(authors_parser, enrichment.build_authors_parser())
-
     enrich_parser = subparsers.add_parser("enrich", help="Build enriched abstracts from local databases")
     _copy_actions(enrich_parser, enrichment.build_enrich_parser())
 
@@ -172,8 +169,6 @@ def main(argv: list[str] | None = None) -> int:
         return fetch_stage.main(subcommand_argv)
     if command == "refresh-assets":
         return _run_refresh_assets(subcommand_argv)
-    if command == "authors":
-        return enrichment.authors_main(subcommand_argv)
     if command == "enrich":
         return enrichment.enrich_main(subcommand_argv)
     if command == "extract-claims":

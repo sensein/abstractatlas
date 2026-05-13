@@ -252,6 +252,16 @@ def _run(args: argparse.Namespace, argv: list[str]) -> int:
 
     _write_corpus(corpus_path, event_ids, abstracts_combined)
 
+    # ── Author roster (FR-023) ──
+    authors_path = _resolve_authors_path(cwd, args)
+    _assert_project_relative(cwd, authors_path)
+    author_count = _fetch_and_write_authors(
+        api_key=api_key,
+        abstracts=abstracts_combined,
+        output_path=authors_path,
+        request_counter=request_counter,
+    )
+
     figure_asset_count, figure_failure_count = _count_figure_outcomes(abstracts_combined)
 
     # Figure-failure-rate gate: hard-fail only if the failure RATE
@@ -287,6 +297,8 @@ def _run(args: argparse.Namespace, argv: list[str]) -> int:
         schema_diff_summary=schema_diff_summary,
         checkpoint_path=checkpoint_path if resumed else None,
         resumed=resumed,
+        authors_path=authors_path,
+        author_count=author_count,
     )
     _write_provenance(provenance_path, provenance)
 
@@ -296,10 +308,12 @@ def _run(args: argparse.Namespace, argv: list[str]) -> int:
 
     summary = {
         "corpus_output": _project_relative(cwd, corpus_path),
+        "authors_output": _project_relative(cwd, authors_path),
         "schema_artifact": _project_relative(cwd, schema_artifact_path),
         "provenance_record": _project_relative(cwd, provenance_path),
         "state_key": state_key,
         "abstract_count": final_count,
+        "author_count": author_count,
         "figure_asset_count": figure_asset_count,
         "figure_failure_count": figure_failure_count,
         "resumed_from_previous_run": resumed,
@@ -346,6 +360,59 @@ def _resolve_assets_dir(cwd: Path, args: argparse.Namespace) -> Path:
         candidate = Path(args.assets_dir)
         return candidate if candidate.is_absolute() else (cwd / candidate)
     return cwd / artifacts.INPUT_ASSETS_ROOT
+
+
+def _resolve_authors_path(cwd: Path, args: argparse.Namespace) -> Path:
+    """FR-023 / FR-022 parallel: corpus_kind=accepted writes to
+    `data/primary/authors.json`; corpus_kind=withdrawn writes to
+    `data/primary/authors_withdrawn.json`. Files never mix."""
+    if args.corpus_kind == "withdrawn":
+        return cwd / artifacts.PRIMARY_AUTHORS_WITHDRAWN_PATH
+    return cwd / artifacts.PRIMARY_AUTHORS_PATH
+
+
+def _fetch_and_write_authors(
+    *,
+    api_key: str,
+    abstracts: list[dict[str, Any]],
+    output_path: Path,
+    request_counter: dict[str, Any],
+) -> int:
+    """Collect unique author IDs from the corpus, fetch their details
+    via the existing AUTHOR_QUERY, normalize each (dropping email per
+    FR-023), and write the roster atomically. Returns the author count.
+
+    The fetch piggybacks on the same run's API key and request
+    counter; each author batch (200 IDs) increments the counter.
+    Empty author lists are OK — the on-disk file still gets written
+    with author_count=0 so downstream consumers can read it
+    unconditionally."""
+    author_ids: set[int] = set()
+    for abstract in abstracts:
+        for author in (abstract.get("authors") or []):
+            aid = author.get("id") if isinstance(author, dict) else None
+            if isinstance(aid, int):
+                author_ids.add(aid)
+    sorted_ids = sorted(author_ids)
+
+    raw_authors: list[dict[str, Any]] = []
+    if sorted_ids:
+        raw_authors = _gql.fetch_author_details(api_key, sorted_ids)
+        # fetch_author_details batches internally at 200 IDs/batch;
+        # count one request per batch.
+        request_counter["count"] += (len(sorted_ids) + 199) // 200
+
+    normalized = sorted(
+        (assets.normalize_author(a) for a in raw_authors),
+        key=lambda a: a.get("id") or 0,
+    )
+    payload = {
+        "fetched_at": _utc_now(),
+        "author_count": len(normalized),
+        "authors": normalized,
+    }
+    _atomic_write_json(output_path, payload)
+    return len(normalized)
 
 
 def _compute_state_key(args: argparse.Namespace) -> str:
@@ -524,6 +591,8 @@ def _build_provenance_record(
     schema_diff_summary: list[_schema_diff.SchemaDiffEntry],
     checkpoint_path: Path | None,
     resumed: bool,
+    authors_path: Path,
+    author_count: int,
 ) -> dict[str, Any]:
     diff_payload = None
     if previous_schema_hash is not None:
@@ -565,6 +634,8 @@ def _build_provenance_record(
         "schema_diff_vs_previous": diff_payload,
         "checkpoint_path": _project_relative(cwd, checkpoint_path) if checkpoint_path else None,
         "resumed_from_previous_run": resumed,
+        "authors_path": _project_relative(cwd, authors_path),
+        "author_count": author_count,
     }
     _assert_provenance_paths_safe(record)
     return record
@@ -587,7 +658,7 @@ def _count_figure_outcomes(abstracts_list: list[dict[str, Any]]) -> tuple[int, i
 
 
 def _assert_provenance_paths_safe(record: dict[str, Any]) -> None:
-    for key in ("schema_artifact_path", "checkpoint_path"):
+    for key in ("schema_artifact_path", "checkpoint_path", "authors_path"):
         value = record.get(key)
         if value is None:
             continue
