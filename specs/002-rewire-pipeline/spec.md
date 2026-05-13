@@ -80,6 +80,33 @@
     automatically once scheduling is populated; null values are
     expected and not an error today. (FR-021.)
 
+### Session 2026-05-13
+
+- Q: Stage 1 should also ingest author details. Which fields from
+  the existing `AUTHOR_QUERY` go on disk in the canonical author
+  record (email, orcid_id, etc. are returned upstream)? → A: Drop
+  email entirely at fetch time. Keep `orcid_id` (public researcher
+  identifier by design) and all non-PII fields (name parts, title,
+  degree, presenting flag, affiliations). Email is a privacy
+  liability and is not required by any planned downstream stage in
+  v1; organizer workflows that need contact info can round-trip
+  via Oxford Abstracts. (FR-023.)
+- Q: Where does the canonical author file live? → A:
+  `data/primary/authors.json` for accepted-corpus authors and
+  `data/primary/authors_withdrawn.json` for withdrawn-corpus
+  authors. Matches the pattern set by `abstracts.json` /
+  `abstracts_withdrawn.json` (FR-022) — normalized datasets in
+  `data/primary/`, separate files per corpus, never mixed. The
+  legacy `data/inputs/authors.json` location used by the standalone
+  `ohbmcli authors` subcommand is deprecated.
+- Q: What happens to the existing `ohbmcli authors` subcommand
+  once Stage 1 ingests authors inline? → A: Removed in this
+  change. Clean break, no backward-compat alias — parallel to
+  FR-014's removal of `ohbmcli ingest`. Any operator who needs to
+  refresh authors invokes `ohbmcli fetch-abstracts` (or
+  `fetch-withdrawn`); Stage 1's resumability handles the common
+  case where abstracts are already fetched. (FR-024.)
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Operator re-runs the abstract-fetch stage independently and gets a Schema-Verified snapshot (Priority: P1) — MVP
@@ -337,12 +364,12 @@ suite catches it.
   bare excepts, and "log and continue" handlers are PROHIBITED.
 - **FR-008**: The fetch-abstracts stage MUST write all artifacts
   under the existing gitignored data roots: the corpus snapshot
-  under `data/primary/`; the GraphQL source snapshot, the GraphQL
-  schema artifact, and the provenance record under `data/inputs/`;
-  the resume checkpoint under `data/cache/fetch_abstracts/`; figure
-  assets under `data/inputs/assets/`. The stage MUST refuse to
-  write outside the gitignored boundary even if explicitly directed
-  to.
+  and the author roster (FR-023) under `data/primary/`; the
+  GraphQL source snapshot, the GraphQL schema artifact, and the
+  provenance record under `data/inputs/`; the resume checkpoint
+  under `data/cache/fetch_abstracts/`; figure assets under
+  `data/inputs/assets/`. The stage MUST refuse to write outside
+  the gitignored boundary even if explicitly directed to.
 - **FR-009**: The per-stage pattern documented for future stages MUST
   define and name each of the six contract elements: input contract,
   output contract, provenance contract, error-handling contract,
@@ -442,6 +469,35 @@ suite catches it.
   The CLI exposes both modes as discrete subcommands:
   `ohbmcli fetch-abstracts` (accepted, default) and
   `ohbmcli fetch-withdrawn` (forces corpus-kind=withdrawn).
+- **FR-023**: Stage 1 MUST also fetch author details for every
+  unique `author_id` referenced by the corpus it just produced.
+  The fetch uses the existing `AUTHOR_QUERY` against
+  `https://app.oxfordabstracts.com/v1/graphql`. The persisted
+  record MUST include: `id`, `first_name`, `middle_initial`,
+  `last_name`, `title`, `degree`, `orcid_id`, `presenting`,
+  `submission_id`, `affiliations` (with `id`, `affiliation_order`,
+  `institution`, `city`, `state`, `country`). The persisted record
+  MUST NOT include `email` — the field is fetched from upstream
+  but dropped before the on-disk record is written. Authors are
+  written to:
+  - `data/primary/authors.json` for the accepted-corpus run.
+  - `data/primary/authors_withdrawn.json` for the
+    withdrawn-corpus run.
+  The two files MUST NEVER mix, parallel to FR-022. Update FR-008
+  for these new artifact paths. Stage 1's schema-diff machinery
+  (FR-003) MUST treat the fetched author fields as HARD-contract:
+  upstream removing or renaming any of them blocks the run.
+- **FR-024**: This feature removes the legacy `ohbmcli authors`
+  subcommand outright (no backward-compatibility alias, parallel
+  to FR-014's removal of `ohbmcli ingest`). The standalone
+  `enrichment.authors_main` entry point and its associated
+  argparse helper are deleted in the same change; downstream
+  scripts that still invoke `ohbmcli authors` MUST be updated to
+  call `ohbmcli fetch-abstracts` (or `fetch-withdrawn`). Operators
+  who only want to refresh authors rely on Stage 1's resumability:
+  the abstract content fetch short-circuits via the checkpoint
+  when the corpus is already complete, and the author fetch runs
+  to refresh `data/primary/authors.json`.
 
 ### Key Entities
 
@@ -478,6 +534,13 @@ suite catches it.
   `in_progress` / `failed-retryable` / `failed-blocking`); a count of
   records completed and pending; the run id of the run that wrote it.
   Lives under the gitignored `data/inputs/` (or `data/cache/`) root.
+- **Author Roster**: Normalized author records keyed by upstream
+  `author_id`. Path: `data/primary/authors.json` for accepted-
+  corpus authors; `data/primary/authors_withdrawn.json` for
+  withdrawn-corpus authors (FR-023 / FR-022 parallel split). Each
+  record carries the fields listed in FR-023 with `email`
+  deliberately omitted. The roster is sorted by author `id` for
+  byte-identical re-runs.
 - **Per-Stage Pattern Doc**: A short reference page (README section or
   separate doc) that names the six contracts every stage script
   satisfies. Cites Stage 1 by file and function.
