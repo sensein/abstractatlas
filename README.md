@@ -433,58 +433,64 @@ and normalization reasons.
 
 ### 5. Generate Embeddings
 
-Pick one or more embedding routes.
+Stage 3 generates per-component embeddings (one bundle per
+`(model, component)` pair) and lets downstream tools compose
+multi-component recipes by averaging the relevant component vectors.
 
-MiniLM:
-
-```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm
-```
-
-OpenAI:
+Canonical entry — the matrix command:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-openai
+PYTHONPATH=src .venv/bin/python scripts/run_embed_matrix.py \
+  --models voyage,minilm,openai,pubmedbert \
+  --components title,introduction,methods,results,conclusion,claims
 ```
 
-Voyage:
+Models supported (FR-005):
 
-```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-voyage
+| Model key  | Model id                                          | Tier   |
+|------------|---------------------------------------------------|--------|
+| voyage     | `voyage-large-2-instruct` (NeuroScape Stage-1 compatible) | paid  |
+| minilm     | `sentence-transformers/all-MiniLM-L6-v2` (UI search model) | local |
+| openai     | `text-embedding-3-small`                          | paid   |
+| pubmedbert | `neuml/pubmedbert-base-embeddings`                | local  |
+| neuroscape | derived from a Voyage bundle (apply the published Stage-2 model) | local |
+
+Canonical components (FR-006):
+`title`, `introduction`, `methods`, `results`, `conclusion`, `claims`.
+The opt-in `inference_claims` component covers ~12% of abstracts and
+requires `--allow-partial inference_claims`.
+
+Bundles land at `data/outputs/experiments/embeddings/<model_key>_<component>/`
+with `vectors.npy`, `ids.npy`, `metadata.json`, and `provenance.json`.
+
+Behavior:
+- Per-abstract cache writes (`data/cache/embeddings/<model_key>/`)
+  enable byte-equivalent resume after interruption (FR-009 / SC-003).
+- Paid providers batch at 64 inputs per HTTP call with dynamic
+  concurrency starting at 8 (FR-009a / FR-009b).
+- Long-input defaults: `chunk_mean_pool` for MiniLM / PubMedBERT,
+  `truncate_end` for Voyage / OpenAI (FR-010).
+- Per-bundle JSON-on-stdout + a run-level rollup at the end.
+- Provenance at `data/inputs/embeddings_matrix_provenance__<state-key>.json`.
+
+Single-model subcommands (`embed-voyage`, `embed-minilm`, `embed-openai`,
+`embed-hf`) remain available for debugging individual bundles.
+
+Composing multi-component recipes downstream:
+
+```python
+from ohbm2026.neuroscape import compose_recipe
+manuscript = compose_recipe(
+    ["title", "introduction", "methods", "results", "conclusion"],
+    model_key="voyage",
+)
+# manuscript["matrix"] is float32 [n_union × dim]
+# manuscript["ids"]    is int64 [n_union]
 ```
 
-Hugging Face model:
-
-```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-hf \
-  --model neuml/pubmedbert-base-embeddings
-```
-
-Embedding text is built on demand from:
-
-- `title`
-- `claims`
-- `introduction`
-- `methods`
-- `results`
-- `conclusion`
-
-You can override the fields at runtime, for example:
-
-```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm \
-  --fields title methods results
-```
-
-To build a claims-only embedding bundle:
-
-```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-minilm \
-  --fields claims \
-  --output-name minilm_claims
-```
-
-This uses `claim_extraction.claims` from `data/primary/abstracts_enriched.json` and formats each extracted claim as a short bullet containing the claim statement itself.
+Cost ballpark for the full 30-bundle matrix at fresh-cache: ~$1 USD
+(Voyage + OpenAI combined); free for the local-only subset
+(`--models minilm,pubmedbert`). Cached re-runs complete in seconds.
 
 ### 6. Apply Or Train The NeuroScape Stage-2 Embedding Model
 
