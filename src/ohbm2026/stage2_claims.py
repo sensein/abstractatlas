@@ -44,6 +44,44 @@ __all__ = [
 ]
 
 
+# ----- JSON-schema helper --------------------------------------------
+
+
+def _make_strict_schema(schema: dict) -> dict:
+    """Coerce a Pydantic-derived JSON schema into the shape OpenAI's
+    strict structured-output mode accepts.
+
+    OpenAI strict mode requires:
+    - `additionalProperties: false` on every object.
+    - `required` listing EVERY property of every object (no
+      optional fields — express absence via type unions with null).
+    - No Pydantic-specific metadata keys (e.g., `title`).
+    """
+    import copy
+    schema = copy.deepcopy(schema)
+
+    def fix(node: Any) -> None:
+        if isinstance(node, dict):
+            # Strip metadata OpenAI doesn't accept.
+            node.pop("title", None)
+            if node.get("type") == "object" or "properties" in node:
+                node.setdefault("additionalProperties", False)
+                props = node.get("properties") or {}
+                node["required"] = sorted(props.keys())
+            for v in list(node.values()):
+                fix(v)
+            for key in ("$defs", "definitions"):
+                if key in node:
+                    for v in node[key].values():
+                        fix(v)
+        elif isinstance(node, list):
+            for item in node:
+                fix(item)
+
+    fix(schema)
+    return schema
+
+
 # ----- Embedded ECO vocabulary loader --------------------------------
 
 
@@ -388,11 +426,27 @@ def _execute_agentic_loop(
 
     tier_telemetry = _TierTelemetry()
 
+    # Structured output: ClaimsResponse JSON schema enforced
+    # server-side. Strict mode means missing required fields,
+    # off-enum claim_type, or out-of-range confidence are
+    # rejected by OpenAI before reaching our parser — matches
+    # spec FR-012.
+    claims_schema = ClaimsResponse.model_json_schema()
+    text_format = {
+        "format": {
+            "type": "json_schema",
+            "name": "claims_response",
+            "strict": True,
+            "schema": _make_strict_schema(claims_schema),
+        }
+    }
+
     def call(*, service_tier: str, timeout: float, current_input: list[dict]) -> Any:
         return client.responses.create(
             model=model_id,
             input=current_input,
             tools=tools,
+            text=text_format,
             service_tier=service_tier,
             timeout=timeout,
             prompt_cache_key=f"stage2.claims.{model_id}.{vocabulary['vocabulary_version']}",

@@ -438,19 +438,31 @@ def _run_figure_component(
 
     # Compute per-figure cache keys up front so we can decide
     # whether to skip the per-abstract API call entirely.
+    # The Stage 1 corpus uses `source_url` as the figure URL key
+    # in both figure_urls and local_assets; older test fixtures used
+    # `url` / `figure_url`. Tolerate all three.
     local_assets_by_url = {
-        a.get("figure_url"): a.get("local_path")
+        (a.get("source_url") or a.get("figure_url") or ""): a.get("local_path")
         for a in (abstract.get("local_assets") or [])
     }
     per_figure_keys: list[tuple[str, str, str | None, bytes | None]] = []  # (url, key, local_path, png_bytes)
+    primary_assets_root = cwd / "data" / "primary" / "assets"
     for entry in figure_urls:
-        url = entry.get("url") or entry.get("figure_url") or ""
+        url = entry.get("source_url") or entry.get("url") or entry.get("figure_url") or ""
         local_path = local_assets_by_url.get(url)
         png_bytes: bytes | None = None
         if local_path:
-            abs_path = (cwd / local_path) if not Path(local_path).is_absolute() else Path(local_path)
-            if abs_path.exists():
-                png_bytes = abs_path.read_bytes()
+            stored = Path(local_path)
+            candidates = [stored if stored.is_absolute() else (cwd / stored)]
+            # Stage 1 FR-008 relocated assets to data/primary/assets/.
+            # The corpus may carry the pre-FR-008 path; fall back to
+            # the canonical primary/assets directory keyed by basename.
+            candidates.append(primary_assets_root / stored.name)
+            for cand in candidates:
+                if cand.exists():
+                    png_bytes = cand.read_bytes()
+                    local_path = str(cand.relative_to(cwd)) if cand.is_relative_to(cwd) else str(cand)
+                    break
         if png_bytes is None:
             # Missing asset — surface as a per-figure failure via the
             # production runner (it will raise EnrichmentError).
@@ -859,6 +871,11 @@ def _resolve_corpus_references(
     output_path = snapshot_path  # single canonical file; openalex
     # treats output_path as both write target and read-existing-cache.
 
+    # split_concurrency lowered from the openalex default (500) to
+    # 100 — matches the openai-python SDK's default httpx connection
+    # pool (max_connections≈100). At 500 workers, ~80% sat idle
+    # waiting for a connection slot, which was the root cause of
+    # the apparent stall in the earlier T058 attempts.
     payload = openalex_module.build_reference_metadata_database(
         abstracts_database,
         output_path=output_path,
@@ -870,6 +887,7 @@ def _resolve_corpus_references(
         openai_api_var=openai_api_var,
         use_doi_discovery=True,
         use_title_search=True,
+        split_concurrency=100,
     )
     # Persist the resolved payload so subsequent runs read it back.
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)

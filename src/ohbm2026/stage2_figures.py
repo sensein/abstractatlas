@@ -257,10 +257,14 @@ def run_figure_component(
             attempts=0, latency_ms=0.0,
         )
 
+    # Stage 1 corpus uses `source_url` as the figure-URL key in both
+    # figure_urls and local_assets. Older test fixtures used `url` /
+    # `figure_url`. Tolerate all three.
     local_assets_by_url = {
-        a.get("figure_url"): a.get("local_path")
+        (a.get("source_url") or a.get("figure_url") or ""): a.get("local_path")
         for a in (abstract.get("local_assets") or [])
     }
+    primary_assets_root = cwd / "data" / "primary" / "assets"
 
     figures: list[tuple[str, bytes, dict]] = []
     cache_keys: list[str] = []
@@ -269,15 +273,30 @@ def run_figure_component(
     question_names: list[str] = []
 
     for entry in figure_urls:
-        url = entry.get("url") or entry.get("figure_url") or ""
+        url = entry.get("source_url") or entry.get("url") or entry.get("figure_url") or ""
         question_name = entry.get("question_name", "")
-        local_path = local_assets_by_url.get(url)
-        png_bytes = _read_image_bytes(local_path, cwd=cwd)
+        stored_local_path = local_assets_by_url.get(url)
+        # Try stored path first; if missing (Stage 1 FR-008 relocated
+        # assets to data/primary/assets/), fall back to basename lookup.
+        png_bytes = None
+        resolved_local_path = stored_local_path
+        if stored_local_path:
+            stored = Path(stored_local_path)
+            candidates = [stored if stored.is_absolute() else (cwd / stored)]
+            candidates.append(primary_assets_root / stored.name)
+            for cand in candidates:
+                if cand.exists():
+                    png_bytes = cand.read_bytes()
+                    resolved_local_path = (
+                        str(cand.relative_to(cwd)) if cand.is_relative_to(cwd) else str(cand)
+                    )
+                    break
         if png_bytes is None:
             raise EnrichmentError(
                 f"figures: local asset missing for abstract {abstract.get('id')} "
-                f"figure {url!r} (expected at {local_path!r})"
+                f"figure {url!r} (expected at {stored_local_path!r})"
             )
+        local_path = resolved_local_path
         jpeg_bytes, local_estimate = compress_image(
             png_bytes, max_dim=max_dim, quality=jpeg_quality,
         )
