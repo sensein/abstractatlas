@@ -6,6 +6,7 @@ import sys
 from ohbm2026 import (
     artifacts,
     assets,
+    embed_stage,
     enrich_stage,
     enrichment,
     fetch_stage,
@@ -52,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Stage 2: enrich the accepted corpus (figures, claims, references)",
     )
     _copy_actions(enrich_abstracts_parser, enrich_stage._build_parser())
+
+    embed_matrix_parser = subparsers.add_parser(
+        "embed-matrix",
+        help="Stage 3: generate the multi-model embeddings matrix (per-component bundles)",
+    )
+    _copy_actions(embed_matrix_parser, embed_stage.build_parser())
 
     minilm_parser = subparsers.add_parser("embed-minilm", help="Generate local MiniLM embeddings")
     _copy_actions(minilm_parser, neuroscape.build_minilm_parser())
@@ -163,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_refresh_assets(subcommand_argv)
     if command == "enrich-abstracts":
         return enrich_stage.main(subcommand_argv)
+    if command == "embed-matrix":
+        return embed_stage.main(subcommand_argv)
     if command == "embed-minilm":
         return neuroscape.minilm_main(subcommand_argv)
     if command == "embed-hf":
