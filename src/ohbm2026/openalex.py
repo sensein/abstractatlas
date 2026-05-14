@@ -1146,6 +1146,57 @@ def load_existing_reference_cache(output_path: Path) -> dict[str, dict[str, Any]
     }
 
 
+def _block_split_cache_hash(markdown: str, *, model: str, backend: str) -> str:
+    """Stable cache key for a reference-block split.
+
+    Salted with `model` + `backend` so changing the splitter
+    naturally invalidates the cache (no silent reuse across model
+    bumps). Mirrors the Stage 2.1 figures/claims cache-key pattern.
+    """
+    h = hashlib.sha256()
+    h.update(markdown.encode("utf-8"))
+    h.update(b"||")
+    h.update(model.encode("utf-8"))
+    h.update(b"||")
+    h.update(backend.encode("utf-8"))
+    return h.hexdigest()
+
+
+def load_existing_block_splits(output_path: Path) -> dict[str, dict[str, Any]]:
+    """Return a `{block_hash: cached_split_entry}` map persisted in
+    `block_splits` on the snapshot.
+
+    Each entry has the shape::
+
+        {
+            "reference_candidates": [{reference, title, doi}, ...],
+            "diagnostics": {
+                "reference_split_strategy": "llm" | "fallback_single_block" | "empty",
+                "reference_split_attempts": int,
+                ...
+            },
+        }
+
+    A worker can short-circuit the LLM split call when it computes
+    a block_hash that's already in the map — restoring FR-005 /
+    SC-004 idempotency for the references component.
+    """
+    if not output_path.exists():
+        return {}
+    try:
+        database = load_json(output_path)
+    except json.JSONDecodeError:
+        return {}
+    raw = database.get("block_splits") or {}
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for key, value in raw.items():
+        if isinstance(key, str) and isinstance(value, dict):
+            out[key] = value
+    return out
+
+
 def normalize_cached_reference(reference: dict[str, Any]) -> dict[str, Any]:
     return {
         "reference_key": reference["reference_key"],
@@ -1251,6 +1302,12 @@ async def collect_reference_cache_openai_async(
         key: normalize_cached_reference(value)
         for key, value in load_existing_reference_cache(output_path).items()
     }
+    # FR-005 idempotency for the references component: load
+    # previously-cached per-block splits keyed by
+    # sha256(markdown || model || backend). Workers consult this
+    # before issuing the LLM call so a clean re-run pays zero LLM
+    # cost for already-split blocks.
+    block_splits: dict[str, dict[str, Any]] = dict(load_existing_block_splits(output_path))
     stats = request_counts if request_counts is not None else default_request_counts()
     abstracts = list(abstracts_database.get("abstracts", []))
     pending: asyncio.Queue[tuple[int, dict[str, Any], int]] = asyncio.Queue()
@@ -1318,6 +1375,40 @@ async def collect_reference_cache_openai_async(
                 pending.task_done()
                 continue
 
+            # FR-005: skip the LLM call entirely if a previously
+            # cached split for this exact (block || model || backend)
+            # exists. Restores re-run idempotency for references.
+            block_key = _block_split_cache_hash(
+                markdown, model=reference_splitting_model, backend="openai",
+            )
+            cached_split = block_splits.get(block_key)
+            if cached_split is not None:
+                candidates = [
+                    normalize_reference_split_candidate(c)
+                    for c in cached_split.get("reference_candidates", [])
+                ]
+                candidates = [c for c in candidates if c is not None]
+                stats["reference_split_cache_hits"] = int(stats.get("reference_split_cache_hits", 0)) + 1
+                await completed.put(
+                    (
+                        index,
+                        {
+                            "id": abstract["id"],
+                            "reference_candidates": candidates,
+                            "diagnostics": dict(cached_split.get("diagnostics") or {
+                                "reference_split_strategy": "llm_cached",
+                                "reference_split_attempts": 0,
+                                "reference_split_error": None,
+                                "reference_split_fallback_reason": None,
+                                "reference_split_candidate_count": len(candidates),
+                                "reference_split_estimated_count": None,
+                            }),
+                        },
+                    )
+                )
+                pending.task_done()
+                continue
+
             estimated_count: int | None = None
             await wait_for_capacity()
             stats["reference_split_requests"] = int(stats.get("reference_split_requests", 0)) + 1
@@ -1331,20 +1422,27 @@ async def collect_reference_cache_openai_async(
                 normalized_candidates = [normalize_reference_split_candidate(candidate) for candidate in response_payload.get("references") or []]
                 normalized_candidates = [candidate for candidate in normalized_candidates if candidate is not None]
                 if validate_reference_split_structured_candidates(markdown, normalized_candidates):
+                    diagnostics_record = {
+                        "reference_split_strategy": "llm",
+                        "reference_split_attempts": attempt,
+                        "reference_split_error": None,
+                        "reference_split_fallback_reason": None,
+                        "reference_split_candidate_count": len(normalized_candidates),
+                        "reference_split_estimated_count": estimated_count,
+                    }
+                    # Persist into in-memory block_splits so subsequent
+                    # checkpoint writes carry it.
+                    block_splits[block_key] = {
+                        "reference_candidates": normalized_candidates,
+                        "diagnostics": diagnostics_record,
+                    }
                     await completed.put(
                         (
                             index,
                             {
                                 "id": abstract["id"],
                                 "reference_candidates": normalized_candidates,
-                                "diagnostics": {
-                                    "reference_split_strategy": "llm",
-                                    "reference_split_attempts": attempt,
-                                    "reference_split_error": None,
-                                    "reference_split_fallback_reason": None,
-                                    "reference_split_candidate_count": len(normalized_candidates),
-                                    "reference_split_estimated_count": estimated_count,
-                                },
+                                "diagnostics": diagnostics_record,
                             },
                         )
                     )
@@ -1412,6 +1510,7 @@ async def collect_reference_cache_openai_async(
                     request_counts=stats,
                     status="running",
                     phase="collect",
+                    block_splits=block_splits,
                 )
                 print(
                     json.dumps(
@@ -1421,6 +1520,7 @@ async def collect_reference_cache_openai_async(
                             "reference_split_requests": stats.get("reference_split_requests", 0),
                             "reference_split_requeues": stats.get("reference_split_requeues", 0),
                             "reference_split_rate_limit_requeues": stats.get("reference_split_rate_limit_requeues", 0),
+                            "reference_split_cache_hits": stats.get("reference_split_cache_hits", 0),
                         }
                     )
                 )
@@ -1544,6 +1644,7 @@ def build_reference_metadata_payload(
     request_counts: dict[str, int] | None = None,
     status: str = "completed",
     phase: str = "completed",
+    block_splits: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     abstracts_out: list[dict[str, Any]] = []
     for abstract in abstract_reference_records:
@@ -1599,6 +1700,7 @@ def build_reference_metadata_payload(
         },
         "abstracts": abstracts_out,
         "references": references,
+        "block_splits": dict(block_splits or {}),
     }
 
 
@@ -1611,7 +1713,15 @@ def write_reference_metadata_snapshot(
     request_counts: dict[str, int],
     status: str,
     phase: str,
+    block_splits: dict[str, dict[str, Any]] | None = None,
 ) -> None:
+    # FR-005: if the caller didn't pass block_splits but the
+    # snapshot file already has them, preserve them across this
+    # write. The resolve_*_matches phases don't carry block_splits
+    # through their state machines; without this preservation they
+    # would silently wipe the per-block split cache after collect.
+    if block_splits is None:
+        block_splits = load_existing_block_splits(output_path)
     write_json(
         output_path,
         build_reference_metadata_payload(
@@ -1621,6 +1731,7 @@ def write_reference_metadata_snapshot(
             request_counts=request_counts,
             status=status,
             phase=phase,
+            block_splits=block_splits,
         ),
     )
 
