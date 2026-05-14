@@ -1041,5 +1041,133 @@ class TestParquetExport(_RepoFixture):
         self.assertEqual(list((tmp / "data/primary").glob("*.parquet")), [])
 
 
+# ----- Stage 2.1 production-wiring contract tests (US1) ---------------
+
+
+class IntegrationProductionWiringTests(_RepoFixture):
+    """T013 — Stage 2.1 production-wiring integration tests.
+
+    Verifies the orchestrator delegates to the three per-abstract
+    seams (`_call_figures_for_abstract`, `_call_claims_for_abstract`,
+    `_call_references_for_abstract`), populates the new provenance
+    extension fields, and defaults to `gpt-5.4-mini` for both LLM
+    components.
+    """
+
+    def test_clean_run_invokes_all_three_production_runners(self) -> None:
+        tmp = self.tmp_repo()
+        abstracts = [_abstract(1), _abstract(2), _abstract(3)]
+        _write_source_corpus(tmp, abstracts)
+        _seed_assets(tmp, abstracts)
+        fr, cr, rr, f_calls, c_calls, r_calls = _default_runners()
+        with _StackedPatches(_patch_components(
+            figure_runner=fr, claims_runner=cr, reference_runner=rr,
+            backend_availability=_default_backend_availability(),
+        )):
+            rc = _run_and_capture(tmp, [])
+        self.assertEqual(rc, 0)
+        # Each runner called once per abstract.
+        self.assertEqual(len(f_calls), 3)
+        self.assertEqual(len(c_calls), 3)
+        self.assertEqual(len(r_calls), 3)
+
+    def test_provenance_carries_new_extension_fields(self) -> None:
+        tmp = self.tmp_repo()
+        _write_source_corpus(tmp, [_abstract(1)])
+        _seed_assets(tmp, [_abstract(1)])
+        fr, cr, rr, *_ = _default_runners()
+        with _StackedPatches(_patch_components(
+            figure_runner=fr, claims_runner=cr, reference_runner=rr,
+            backend_availability=_default_backend_availability(),
+        )):
+            rc = _run_and_capture(tmp, [])
+        self.assertEqual(rc, 0)
+        prov = _read_provenance(tmp)
+        # eco_vocabulary_version at the top level.
+        self.assertEqual(prov["eco_vocabulary_version"], "eco.v1")
+        # Each component carries the new tier counters + cost telemetry.
+        for component in prov["components"]:
+            for field in (
+                "flex_tier_enabled", "flex_timeout_count",
+                "tier_fallback_count", "retry_exhaustion_count",
+                "prompt_tokens_cached", "prompt_tokens_uncached",
+                "completion_tokens", "wall_clock_seconds",
+                "latency_p50_ms", "latency_p95_ms",
+            ):
+                self.assertIn(field, component, f"missing {field} in {component['component']}")
+
+    def test_default_model_is_gpt_5_4_mini_for_both_llm_components(self) -> None:
+        tmp = self.tmp_repo()
+        _write_source_corpus(tmp, [_abstract(1)])
+        _seed_assets(tmp, [_abstract(1)])
+        fr, cr, rr, *_ = _default_runners()
+        with _StackedPatches(_patch_components(
+            figure_runner=fr, claims_runner=cr, reference_runner=rr,
+            backend_availability=_default_backend_availability(),
+        )):
+            rc = _run_and_capture(tmp, [])
+        self.assertEqual(rc, 0)
+        prov = _read_provenance(tmp)
+        models = {c["component"]: c["model_id"] for c in prov["components"]}
+        self.assertEqual(models["figures"], "gpt-5.4-mini")
+        self.assertEqual(models["claims"], "gpt-5.4-mini")
+
+
+class ConcurrencyContractTests(_RepoFixture):
+    """T013a — FR-018 concurrency caps + default value.
+
+    The rate-limit back-off behavior is a future implementation
+    detail (the v1 wrapper just thread-pools per-abstract calls);
+    these tests pin the contract that concurrency IS configurable
+    and IS bounded by the per-component flag.
+    """
+
+    def test_concurrency_flag_caps_in_flight_requests(self) -> None:
+        import threading
+        max_observed = {"n": 0}
+        active = {"n": 0}
+        lock = threading.Lock()
+
+        fr_default, cr_default, rr_default, *_ = _default_runners()
+
+        def figure_runner(abstract, **kw):
+            with lock:
+                active["n"] += 1
+                if active["n"] > max_observed["n"]:
+                    max_observed["n"] = active["n"]
+            try:
+                # Simulate work so concurrency can stack up.
+                import time
+                time.sleep(0.02)
+                return fr_default(abstract, **kw)
+            finally:
+                with lock:
+                    active["n"] -= 1
+
+        tmp = self.tmp_repo()
+        abstracts = [_abstract(i) for i in range(1, 21)]
+        _write_source_corpus(tmp, abstracts)
+        _seed_assets(tmp, abstracts)
+        with _StackedPatches(_patch_components(
+            figure_runner=figure_runner,
+            claims_runner=cr_default,
+            reference_runner=rr_default,
+            backend_availability=_default_backend_availability(),
+        )):
+            rc = _run_and_capture(tmp, ["--concurrency-figures", "5", "--concurrency-claims", "5"])
+        self.assertEqual(rc, 0)
+        # Concurrency cap enforced.
+        self.assertLessEqual(max_observed["n"], 5)
+        # Concurrency was actually used (more than 1 at some point).
+        self.assertGreater(max_observed["n"], 1)
+
+    def test_default_concurrency_is_30(self) -> None:
+        from ohbm2026 import enrich_stage
+        parser = enrich_stage._build_parser()
+        args = parser.parse_args([])
+        self.assertEqual(args.concurrency_figures, 30)
+        self.assertEqual(args.concurrency_claims, 30)
+
+
 if __name__ == "__main__":
     unittest.main()

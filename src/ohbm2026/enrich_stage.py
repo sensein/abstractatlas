@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import concurrent.futures
 import hashlib
 import io
 import json
@@ -34,11 +35,12 @@ import re
 import sqlite3
 import subprocess
 import sys
+import threading
 import uuid
 import zlib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any, Callable, Iterable, Iterator, Optional
 
 from ohbm2026 import artifacts as artifacts_module
 from ohbm2026 import enrich_storage
@@ -784,6 +786,172 @@ def _delta_vs_previous(
     }
 
 
+# ----- Concurrency wrapper (FR-018, T020a) ----------------------------
+
+# Shared lock for summary-counter mutations across worker threads.
+# Summary mutations are tiny (an int increment); contention is
+# minimal compared with the per-abstract LLM call.
+_SUMMARY_LOCK = threading.Lock()
+
+
+@dataclasses.dataclass
+class _PerAbstractResult:
+    enriched_record: dict
+    figure_inputs: int
+    figure_failures: int
+    claim_inputs: int
+    claim_failures: int
+    reference_inputs: int
+    reference_failures: int
+    cache_version_error: bool = False
+
+
+def _process_abstract(
+    abstract: dict,
+    *,
+    args: Any,
+    summaries: dict[str, "_ComponentSummary"],
+    cache_root: Path,
+    cwd: Path,
+    flex_figures: bool,
+    flex_claims: bool,
+) -> _PerAbstractResult:
+    """Run all three components for one abstract. Returns failure
+    counts so the orchestrator can aggregate them after the
+    parallel pool completes.
+
+    CacheVersionError is captured (not re-raised) because the
+    orchestrator's outer aggregation needs to short-circuit the
+    whole run if even one abstract trips a cache-version
+    mismatch.
+    """
+    figure_inputs = len(abstract.get("figure_urls") or [])
+    figure_failures = 0
+    claim_inputs = 0
+    claim_failures = 0
+    reference_inputs = 0
+    reference_failures = 0
+    cache_version_error = False
+
+    figures_out: list[dict] = []
+    try:
+        figures_out = _run_figure_component(
+            abstract,
+            model_id=args.figure_model_id,
+            invalidated=summaries["figures"].cache_invalidated,
+            summary=summaries["figures"],
+            cache_root=cache_root,
+            cwd=cwd,
+            flex_enabled=flex_figures,
+        )
+    except CacheVersionError:
+        cache_version_error = True
+    except EnrichmentError as exc:
+        figure_failures = max(figure_inputs, 1)
+        with _SUMMARY_LOCK:
+            summaries["figures"].failure_count += figure_failures
+        print(
+            f"figure enrichment failed for abstract {abstract.get('id')}: {exc}",
+            file=sys.stderr,
+        )
+
+    claims_out: list[dict] = []
+    if not cache_version_error:
+        try:
+            claims_out = _run_claims_component(
+                abstract,
+                model_id=args.claims_model_id,
+                invalidated=summaries["claims"].cache_invalidated,
+                summary=summaries["claims"],
+                cache_root=cache_root,
+                flex_enabled=flex_claims,
+                figure_interpretations=figures_out,
+            )
+            claim_inputs = 1
+        except CacheVersionError:
+            cache_version_error = True
+        except EnrichmentError as exc:
+            claim_failures = 1
+            claim_inputs = 1
+            with _SUMMARY_LOCK:
+                summaries["claims"].failure_count += 1
+            print(
+                f"claims enrichment failed for abstract {abstract.get('id')}: {exc}",
+                file=sys.stderr,
+            )
+
+    references_out: list[dict] = []
+    if not cache_version_error:
+        ref_block = _extract_reference_block(abstract)
+        ref_lines = _split_references(ref_block)
+        reference_inputs = len(ref_lines)
+        try:
+            references_out = _run_references_component(
+                abstract,
+                strategy_id=args.reference_strategy_id,
+                invalidated=summaries["references"].cache_invalidated,
+                summary=summaries["references"],
+                cache_root=cache_root,
+            )
+        except CacheVersionError:
+            cache_version_error = True
+        except EnrichmentError as exc:
+            reference_failures = max(reference_inputs, 1)
+            with _SUMMARY_LOCK:
+                summaries["references"].failure_count += reference_failures
+            print(
+                f"reference enrichment failed for abstract {abstract.get('id')}: {exc}",
+                file=sys.stderr,
+            )
+
+    enriched_record = dict(abstract)
+    enriched_record["figure_interpretation"] = figures_out
+    enriched_record["claims"] = claims_out
+    enriched_record["references"] = references_out
+
+    return _PerAbstractResult(
+        enriched_record=enriched_record,
+        figure_inputs=figure_inputs,
+        figure_failures=figure_failures,
+        claim_inputs=claim_inputs,
+        claim_failures=claim_failures,
+        reference_inputs=reference_inputs,
+        reference_failures=reference_failures,
+        cache_version_error=cache_version_error,
+    )
+
+
+def _run_component_concurrent(
+    accepted: list[dict],
+    *,
+    process: Callable[[dict], _PerAbstractResult],
+    concurrency: int,
+) -> list[_PerAbstractResult]:
+    """Fan out per-abstract work across a thread pool. Returns
+    results in input order.
+
+    The per-abstract closure handles its own component-runner
+    invocations; summary counters protect themselves with the
+    module-level lock.
+    """
+    if concurrency <= 1 or len(accepted) <= 1:
+        return [process(ab) for ab in accepted]
+
+    results: list[_PerAbstractResult | None] = [None] * len(accepted)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+        future_to_index = {
+            executor.submit(process, ab): i for i, ab in enumerate(accepted)
+        }
+        for future in concurrent.futures.as_completed(future_to_index):
+            idx = future_to_index[future]
+            results[idx] = future.result()
+    out: list[_PerAbstractResult] = []
+    for r in results:
+        assert r is not None
+        out.append(r)
+    return out
+
+
 # ----- Main orchestrator ---------------------------------------------
 
 
@@ -908,87 +1076,40 @@ def main(argv: list[str] | None = None) -> int:
 
     enriched_records: list[dict] = []
 
-    # Process each accepted abstract.
-    for abstract in accepted:
-        # Figures
-        figure_inputs = len(abstract.get("figure_urls") or [])
-        figure_input_total += figure_inputs
-        try:
-            figures_out = _run_figure_component(
-                abstract,
-                model_id=args.figure_model_id,
-                invalidated=summaries["figures"].cache_invalidated,
-                summary=summaries["figures"],
-                cache_root=cache_root,
-                cwd=cwd,
-                flex_enabled=flex_figures,
-            )
-        except CacheVersionError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return _EXIT_CACHE_VERSION
-        except EnrichmentError as exc:
-            figure_failure_count += max(figure_inputs, 1)
-            summaries["figures"].failure_count += max(figure_inputs, 1)
-            figures_out = []
-            print(
-                f"figure enrichment failed for abstract {abstract.get('id')}: {exc}",
-                file=sys.stderr,
-            )
+    # Per-abstract closure that the concurrency wrapper fans out.
+    # Use the smaller of the two per-component concurrency caps as
+    # the pool size — figures and claims serialize within one
+    # abstract anyway.
+    concurrency = max(1, min(
+        getattr(args, "concurrency_figures", _DEFAULT_CONCURRENCY),
+        getattr(args, "concurrency_claims", _DEFAULT_CONCURRENCY),
+    ))
 
-        # Claims
-        try:
-            claims_out = _run_claims_component(
-                abstract,
-                model_id=args.claims_model_id,
-                invalidated=summaries["claims"].cache_invalidated,
-                summary=summaries["claims"],
-                cache_root=cache_root,
-                flex_enabled=flex_claims,
-                figure_interpretations=figures_out,
-            )
-            claim_input_total += 1
-        except CacheVersionError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return _EXIT_CACHE_VERSION
-        except EnrichmentError as exc:
-            claim_failure_count += 1
-            claim_input_total += 1
-            summaries["claims"].failure_count += 1
-            claims_out = []
-            print(
-                f"claims enrichment failed for abstract {abstract.get('id')}: {exc}",
-                file=sys.stderr,
-            )
+    def _process(abstract: dict) -> _PerAbstractResult:
+        return _process_abstract(
+            abstract,
+            args=args,
+            summaries=summaries,
+            cache_root=cache_root,
+            cwd=cwd,
+            flex_figures=flex_figures,
+            flex_claims=flex_claims,
+        )
 
-        # References
-        ref_block = _extract_reference_block(abstract)
-        ref_lines = _split_references(ref_block)
-        reference_input_total += len(ref_lines)
-        try:
-            references_out = _run_references_component(
-                abstract,
-                strategy_id=args.reference_strategy_id,
-                invalidated=summaries["references"].cache_invalidated,
-                summary=summaries["references"],
-                cache_root=cache_root,
-            )
-        except CacheVersionError as exc:
-            print(f"error: {exc}", file=sys.stderr)
+    results = _run_component_concurrent(
+        accepted, process=_process, concurrency=concurrency
+    )
+    for result in results:
+        if result.cache_version_error:
+            print("error: cache version mismatch (one or more components)", file=sys.stderr)
             return _EXIT_CACHE_VERSION
-        except EnrichmentError as exc:
-            reference_failure_count += max(len(ref_lines), 1)
-            summaries["references"].failure_count += max(len(ref_lines), 1)
-            references_out = []
-            print(
-                f"reference enrichment failed for abstract {abstract.get('id')}: {exc}",
-                file=sys.stderr,
-            )
-
-        enriched_record = dict(abstract)
-        enriched_record["figure_interpretation"] = figures_out
-        enriched_record["claims"] = claims_out
-        enriched_record["references"] = references_out
-        enriched_records.append(enriched_record)
+        figure_input_total += result.figure_inputs
+        figure_failure_count += result.figure_failures
+        claim_input_total += result.claim_inputs
+        claim_failure_count += result.claim_failures
+        reference_input_total += result.reference_inputs
+        reference_failure_count += result.reference_failures
+        enriched_records.append(result.enriched_record)
 
     # Threshold check AFTER the loop — Principle VI: fail loud, do
     # NOT write a clobbering enriched corpus when a component breached
