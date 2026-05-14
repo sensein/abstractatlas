@@ -106,13 +106,24 @@ The defaults that future users should treat as current project reality are:
 - raw accepted abstracts live in `data/primary/abstracts.json`
 - the preferred figure-analysis path for the main corpus is OpenAI-backed, not
   the local Ollama route
-- the main enriched corpus is `data/primary/abstracts_enriched.json`
-- the primary semantic embedding reference is
-  `data/outputs/experiments/embeddings/voyage_stage2_published`
-- the main benchmarked semantic UI lens is the `25`-cluster benchmark on the
-  published Voyage stage-2 space
-- the claims-focused UI lens is the `28`-cluster benchmark on
-  `data/outputs/experiments/embeddings/minilm_claims`
+- the main enriched corpus is the SQLite + zlib(json) store at
+  `data/primary/abstracts_enriched.sqlite` (the Stage 2.1 canonical
+  artifact; the legacy `abstracts_enriched.json` is archived)
+- Stage 3 embeddings are per-component bundles under
+  `data/outputs/embeddings/<model_key>/<component>/` for `voyage`,
+  `minilm`, `openai`, `pubmedbert`, and the derived `neuroscape`.
+  Multi-component recipes (`stage1`, `methods-results`,
+  `title-results-conclusion`, etc.) are composed at consumption time
+  via `neuroscape.compose_recipe([...], model_key=<m>)` — no
+  multi-component bundles are persisted in v1.
+- the primary semantic embedding lens is the composed
+  `title+introduction+methods+results+conclusion` recipe over the
+  `voyage` per-component bundles, transformed by the published
+  NeuroScape Stage-2 model
+- the claims-focused UI lens is the `minilm/claims` per-component
+  bundle directly (no composition needed; one component)
+- run-level provenance for Stage 3 lives under `data/provenance/`
+  alongside the per-bundle `provenance.json` files
 - the final delivery artifact is the static site under `export/ui-site/`
 
 The local pre-publish exported-site root now lives under
