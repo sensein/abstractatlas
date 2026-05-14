@@ -90,6 +90,7 @@ def openai_reference_split_payload(
     *,
     model: str,
     service_tier: str = "flex",
+    include_verify_tool: bool = False,
 ) -> dict[str, Any]:
     """Build the OpenAI Responses API payload for the reference splitter.
 
@@ -100,11 +101,31 @@ def openai_reference_split_payload(
     timeout naturally requeues and eventually falls back to the
     single-block split if every retry exhausts.
 
+    When `include_verify_tool=True`, the payload registers the
+    `verify_split_candidates` function tool the model can invoke
+    BEFORE emitting its final structured output. This lets the model
+    self-correct in-call instead of round-tripping back to the
+    orchestrator-level retry loop — eliminates most of the
+    `reference_split_requeues` overhead at the cost of a slightly
+    longer single call.
+
     Operators can override via `service_tier="default"` if their
     OpenAI account doesn't support flex for the reference-splitting
     model.
     """
-    return {
+    instructions = reference_split_system_prompt()
+    if include_verify_tool:
+        instructions += (
+            "\n\nBEFORE returning your final JSON, call the "
+            "`verify_split_candidates` tool with the list of "
+            "candidate `reference` strings you intend to emit. The "
+            "tool returns `is_substring: bool` per candidate. If any "
+            "candidate is not a substring of the source reference "
+            "text, fix it (paraphrasing is not allowed — copy "
+            "verbatim) and call the tool again. Only emit the final "
+            "JSON once ALL candidates pass `is_substring=true`."
+        )
+    payload: dict[str, Any] = {
         "model": model,
         "store": False,
         "reasoning": {"effort": "minimal"},
@@ -112,7 +133,7 @@ def openai_reference_split_payload(
         "input": [
             {
                 "role": "system",
-                "content": [{"type": "input_text", "text": reference_split_system_prompt()}],
+                "content": [{"type": "input_text", "text": instructions}],
             },
             {
                 "role": "user",
@@ -128,6 +149,35 @@ def openai_reference_split_payload(
             }
         },
     }
+    if include_verify_tool:
+        payload["tools"] = [
+            {
+                "type": "function",
+                "name": "verify_split_candidates",
+                "description": (
+                    "Verify that each candidate reference is an exact "
+                    "substring of the source reference text. Returns "
+                    "a list of per-candidate {is_substring, candidate} "
+                    "entries in the same order. Use this to validate "
+                    "candidates BEFORE emitting the final JSON; if "
+                    "any candidate returns is_substring=false, fix it "
+                    "and re-verify."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["candidates"],
+                    "properties": {
+                        "candidates": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of candidate reference strings to verify.",
+                        },
+                    },
+                },
+            },
+        ]
+    return payload
 
 
 def default_request_counts() -> dict[str, int]:
@@ -651,25 +701,63 @@ async def openai_reference_split_request_async(
     reference_text: str,
     *,
     model: str = DEFAULT_REFERENCE_SPLIT_MODEL,
+    agentic: bool = True,
+    max_tool_iterations: int = 4,
 ) -> dict[str, Any]:
-    try:
-        response = await client.responses.create(**openai_reference_split_payload(reference_text, model=model))
-    except Exception as exc:  # pragma: no cover - SDK/network wrapper
-        raise exc
+    """Call the reference splitter via the OpenAI Responses API.
 
-    content = getattr(response, "output_text", None) or ""
-    if not content:
-        for item in getattr(response, "output", []) or []:
-            if getattr(item, "type", None) != "message":
-                continue
-            for entry in getattr(item, "content", []) or []:
-                entry_type = getattr(entry, "type", None)
-                text = getattr(entry, "text", None)
-                if entry_type in {"output_text", "text"} and text:
-                    content = text
-                    break
-            if content:
-                break
+    When `agentic=True` (the default in Stage 2.1+), registers the
+    `verify_split_candidates` function tool the model can invoke
+    BEFORE emitting its final structured output. The orchestrator
+    executes the verification (exact-substring check against the
+    source reference text) and feeds the per-candidate results back
+    into the conversation. The model self-corrects until all
+    candidates pass `is_substring=true`, then emits the final JSON.
+
+    This eliminates most of the round-trip retry overhead the
+    legacy one-shot path incurred when the model paraphrased.
+    """
+    initial_payload = openai_reference_split_payload(
+        reference_text, model=model, include_verify_tool=agentic,
+    )
+    accumulated_input = list(initial_payload["input"])
+    response = await client.responses.create(**initial_payload)
+
+    iterations = 0
+    while iterations < max_tool_iterations:
+        tool_calls = _collect_tool_calls(response)
+        if not tool_calls:
+            break
+        iterations += 1
+        # Append the model's tool-call items + each verified result
+        # so the next call sees the full conversation history.
+        accumulated_input.extend(_response_output_items(response))
+        for call in tool_calls:
+            args_raw = _tool_call_field(call, "arguments") or "{}"
+            try:
+                args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+            except json.JSONDecodeError:
+                args = {}
+            candidates = args.get("candidates") or []
+            results = [
+                {
+                    "candidate": cand,
+                    "is_substring": (
+                        normalize_reference_match_text(cand) in normalize_reference_match_text(reference_text)
+                    ),
+                }
+                for cand in candidates
+            ]
+            accumulated_input.append({
+                "type": "function_call_output",
+                "call_id": _tool_call_field(call, "call_id"),
+                "output": json.dumps({"results": results}),
+            })
+        followup_kwargs = dict(initial_payload)
+        followup_kwargs["input"] = accumulated_input
+        response = await client.responses.create(**followup_kwargs)
+
+    content = _extract_text_payload(response)
     if not content:
         raise OpenAlexError("OpenAI reference split returned no content")
     try:
@@ -682,6 +770,40 @@ async def openai_reference_split_request_async(
         "estimated_reference_count": normalized_payload["estimated_reference_count"],
         "references": [reference for reference in normalized_references if reference is not None],
     }
+
+
+def _response_output_items(response: Any) -> list[Any]:
+    out = getattr(response, "output", None) or []
+    return list(out)
+
+
+def _collect_tool_calls(response: Any) -> list[Any]:
+    return [
+        item for item in _response_output_items(response)
+        if (getattr(item, "type", None) == "function_call"
+            or (isinstance(item, dict) and item.get("type") == "function_call"))
+    ]
+
+
+def _tool_call_field(item: Any, name: str) -> Any:
+    if isinstance(item, dict):
+        return item.get(name)
+    return getattr(item, name, None)
+
+
+def _extract_text_payload(response: Any) -> str:
+    content = getattr(response, "output_text", None) or ""
+    if content:
+        return content
+    for item in _response_output_items(response):
+        if getattr(item, "type", None) != "message":
+            continue
+        for entry in getattr(item, "content", []) or []:
+            entry_type = getattr(entry, "type", None)
+            text = getattr(entry, "text", None)
+            if entry_type in {"output_text", "text"} and text:
+                return text
+    return ""
 
 
 def llm_reference_split_request(
