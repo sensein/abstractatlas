@@ -115,6 +115,74 @@ class ComposeRecipeTests(unittest.TestCase):
         np.testing.assert_array_equal(recipe["ids"], [10, 20])
         np.testing.assert_allclose(recipe["matrix"], vecs)
 
+    # ---- Path resolution (state-key keyed layout) ----------------------
+
+    def test_per_model_state_keyed_path_is_preferred(self) -> None:
+        # `data/outputs/embeddings/<model>/<component>__<state_key>/`
+        # is the canonical Stage 3 layout. compose_recipe resolves it
+        # when a corpus_state_key is supplied.
+        vecs = np.array([[7.0, 7.0, 7.0]], dtype=np.float32)
+        bundle_dir = self.fx.path / "voyage" / "title__abc123"
+        embed_storage.write_bundle(
+            bundle_dir, ids=[42], vectors=vecs,
+            metadata={
+                "bundle_name": "title__abc123", "model_key": "voyage",
+                "component": "title", "corpus_state_key": "abc123",
+            },
+        )
+        recipe = embed_compose.compose_recipe(
+            ["title"], model_key="voyage", bundles_root=self.fx.path,
+            corpus_state_key="abc123",
+        )
+        np.testing.assert_array_equal(recipe["ids"], [42])
+        np.testing.assert_allclose(recipe["matrix"], vecs)
+        self.assertTrue(
+            recipe["metadata"]["source_bundles"][0].endswith("title__abc123"),
+            recipe["metadata"]["source_bundles"][0],
+        )
+
+    def test_auto_resolve_picks_lexically_latest_state_key(self) -> None:
+        # When `corpus_state_key` is None and multiple state-keyed
+        # bundles exist for the same component, compose_recipe picks
+        # the lexically-largest (works as a "newest" proxy when state
+        # keys are sha256 prefixes captured at write time).
+        for state in ("aaaa", "bbbb", "cccc"):
+            embed_storage.write_bundle(
+                self.fx.path / "voyage" / f"title__{state}",
+                ids=[1],
+                vectors=np.array([[float(ord(state[0]))]], dtype=np.float32),
+                metadata={
+                    "bundle_name": f"title__{state}", "model_key": "voyage",
+                    "component": "title", "corpus_state_key": state,
+                },
+            )
+        recipe = embed_compose.compose_recipe(
+            ["title"], model_key="voyage", bundles_root=self.fx.path,
+        )
+        self.assertTrue(
+            recipe["metadata"]["source_bundles"][0].endswith("title__cccc"),
+            recipe["metadata"]["source_bundles"][0],
+        )
+
+    def test_falls_back_to_legacy_flat_layout(self) -> None:
+        # When neither state-keyed nor bare per-model directory exists,
+        # compose_recipe falls back to the legacy `<model>_<component>`
+        # flat layout used by archived bundles.
+        vecs = np.array([[5.0]], dtype=np.float32)
+        bundle_dir = self.fx.path / "voyage_title"
+        embed_storage.write_bundle(
+            bundle_dir, ids=[1], vectors=vecs,
+            metadata={
+                "bundle_name": "voyage_title", "model_key": "voyage",
+                "component": "title", "corpus_state_key": "legacy",
+            },
+        )
+        recipe = embed_compose.compose_recipe(
+            ["title"], model_key="voyage", bundles_root=self.fx.path,
+        )
+        np.testing.assert_array_equal(recipe["ids"], [1])
+        np.testing.assert_allclose(recipe["matrix"], vecs)
+
 
 if __name__ == "__main__":
     unittest.main()
