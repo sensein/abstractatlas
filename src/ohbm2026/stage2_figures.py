@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from ohbm2026 import flex_tier
 from ohbm2026 import image_quality
-from ohbm2026.exceptions import EnrichmentError
+from ohbm2026.exceptions import ContextLengthExceededError, EnrichmentError
 
 __all__ = [
     "FigureInterpretationItem",
@@ -92,6 +92,10 @@ class FigureRunSummary:
     prompt_tokens_cached: int = 0
     prompt_tokens_uncached: int = 0
     completion_tokens: int = 0
+    # Set to the fallback model id when the primary model raised
+    # context_length_exceeded and the fallback succeeded; left as
+    # None when no fallback was triggered.
+    fallback_model_used: str | None = None
 
 
 def compress_image(
@@ -258,6 +262,7 @@ def run_figure_component(
     timeout_seconds: float = flex_tier.DEFAULT_FIGURES_TIMEOUT_SECONDS,
     max_dim: int = DEFAULT_MAX_DIM,
     jpeg_quality: int = DEFAULT_JPEG_QUALITY,
+    fallback_model_id: str | None = None,
 ) -> tuple[list[dict], FigureRunSummary]:
     """Run the figures component for one abstract.
 
@@ -267,6 +272,13 @@ def run_figure_component(
     asset on disk, model schema drift, retry-budget exhaustion).
     The caller (orchestrator) catches and counts these against the
     figure-failure threshold.
+
+    If `fallback_model_id` is supplied and the primary model raises
+    `ContextLengthExceededError` (HTTP 400 / context_length_exceeded),
+    the call is retried once with the fallback model. A successful
+    fallback writes its result to a new cache slot keyed by the
+    fallback model id; the summary's `fallback_model_used` records
+    which model produced the kept output.
     """
     figure_urls = abstract.get("figure_urls") or []
     if not figure_urls:
@@ -331,60 +343,83 @@ def run_figure_component(
         figures=figures,
     )
 
-    def call(*, service_tier: str, timeout: float) -> Any:
-        return client.responses.parse(
-            model=model_id,
-            input=input_payload,
-            text_format=FigureInterpretationResponse,
-            service_tier=service_tier,
-            timeout=timeout,
-            prompt_cache_key=f"stage2.figures.{model_id}",
+    def _attempt(active_model_id: str) -> tuple[list[dict], FigureRunSummary]:
+        def call(*, service_tier: str, timeout: float) -> Any:
+            return client.responses.parse(
+                model=active_model_id,
+                input=input_payload,
+                text_format=FigureInterpretationResponse,
+                service_tier=service_tier,
+                timeout=timeout,
+                prompt_cache_key=f"stage2.figures.{active_model_id}",
+            )
+
+        result = flex_tier.call_with_flex_fallback(
+            call,
+            flex_enabled=flex_enabled,
+            timeout_seconds=timeout_seconds,
+            component="figures",
         )
 
-    result = flex_tier.call_with_flex_fallback(
-        call,
-        flex_enabled=flex_enabled,
-        timeout_seconds=timeout_seconds,
-        component="figures",
-    )
+        parsed: FigureInterpretationResponse = result.response.output_parsed
+        if parsed is None or len(parsed.figures) != len(figures):
+            raise EnrichmentError(
+                f"figures: response shape mismatch — expected {len(figures)} figures, "
+                f"got {0 if parsed is None else len(parsed.figures)}"
+            )
 
-    parsed: FigureInterpretationResponse = result.response.output_parsed
-    if parsed is None or len(parsed.figures) != len(figures):
-        raise EnrichmentError(
-            f"figures: response shape mismatch — expected {len(figures)} figures, "
-            f"got {0 if parsed is None else len(parsed.figures)}"
+        usage = getattr(result.response, "usage", None)
+        summary = FigureRunSummary(
+            figure_count=len(figures),
+            flex_timed_out=result.flex_timed_out,
+            tier_used=result.tier_used,
+            attempts=result.attempts,
+            latency_ms=result.latency_ms,
+            prompt_tokens_cached=_get_usage_field(usage, "cached_tokens"),
+            prompt_tokens_uncached=_get_usage_field(usage, "input_tokens") - _get_usage_field(usage, "cached_tokens"),
+            completion_tokens=_get_usage_field(usage, "output_tokens"),
         )
+        # Defensive: usage can underflow if cached_tokens > input_tokens in edge cases.
+        if summary.prompt_tokens_uncached < 0:
+            summary.prompt_tokens_uncached = 0
 
-    usage = getattr(result.response, "usage", None)
-    summary = FigureRunSummary(
-        figure_count=len(figures),
-        flex_timed_out=result.flex_timed_out,
-        tier_used=result.tier_used,
-        attempts=result.attempts,
-        latency_ms=result.latency_ms,
-        prompt_tokens_cached=_get_usage_field(usage, "cached_tokens"),
-        prompt_tokens_uncached=_get_usage_field(usage, "input_tokens") - _get_usage_field(usage, "cached_tokens"),
-        completion_tokens=_get_usage_field(usage, "output_tokens"),
-    )
-    # Defensive: usage can underflow if cached_tokens > input_tokens in edge cases.
-    if summary.prompt_tokens_uncached < 0:
-        summary.prompt_tokens_uncached = 0
+        # Cache keys are model-scoped (sha256(bytes || model_id)) so a
+        # fallback call lands in its own cache slot, independent of the
+        # primary model's.
+        active_cache_keys = [
+            _hash_for_cache(jpeg_bytes, active_model_id)
+            for (_url, jpeg_bytes, _est) in figures
+        ]
 
-    out: list[dict] = []
-    for index, item in enumerate(parsed.figures):
-        out.append({
-            "figure_url": figures[index][0],
-            "local_path": local_paths[index],
-            "question_name": question_names[index],
-            "interpretation": item.interpretation,
-            "keywords": list(item.keywords),
-            "ocr_text": item.ocr_text,
-            "model_quality_estimate": item.model_quality_estimate,
-            "local_quality_estimate": local_estimates[index],
-            "model_id": model_id,
-            "cache_key": cache_keys[index],
-        })
-    return out, summary
+        out: list[dict] = []
+        for index, item in enumerate(parsed.figures):
+            out.append({
+                "figure_url": figures[index][0],
+                "local_path": local_paths[index],
+                "question_name": question_names[index],
+                "interpretation": item.interpretation,
+                "keywords": list(item.keywords),
+                "ocr_text": item.ocr_text,
+                "model_quality_estimate": item.model_quality_estimate,
+                "local_quality_estimate": local_estimates[index],
+                "model_id": active_model_id,
+                "cache_key": active_cache_keys[index],
+            })
+        return out, summary
+
+    try:
+        return _attempt(model_id)
+    except ContextLengthExceededError as exc:
+        if not fallback_model_id or fallback_model_id == model_id:
+            raise
+        print(
+            f"INFO figures: context_length_exceeded on {model_id} for abstract "
+            f"{abstract.get('id')}; retrying with fallback model {fallback_model_id!r}",
+            file=__import__("sys").stderr,
+        )
+        out, summary = _attempt(fallback_model_id)
+        summary.fallback_model_used = fallback_model_id
+        return out, summary
 
 
 def _get_usage_field(usage: Any, name: str) -> int:

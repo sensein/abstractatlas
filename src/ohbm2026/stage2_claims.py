@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 
 from ohbm2026 import flex_tier
 from ohbm2026 import enrichment as enrichment_module
-from ohbm2026.exceptions import EnrichmentError
+from ohbm2026.exceptions import ContextLengthExceededError, EnrichmentError
 
 __all__ = [
     "Claim",
@@ -109,14 +109,47 @@ def load_eco_vocabulary() -> dict[str, Any]:
 
 
 class Claim(BaseModel):
-    """One atomic factual claim, with verification + ECO annotation."""
+    """One atomic factual claim.
 
-    claim_text: str = Field(..., min_length=1)
-    source_quote: str = Field(..., min_length=1)
-    source_quote_verified: bool
-    claim_type: Literal["explicit", "implicit"]
-    evidence_eco_codes: list[str] = Field(..., min_length=1)
-    confidence: float = Field(..., ge=0.0, le=1.0)
+    The first six fields are verbatim cllm `extract.txt` output
+    shape (per project directive "don't deviate from cllm's
+    approach"). The last two fields are Stage 2.1 augmentations:
+
+    - `evidence_eco_codes`: optional ECO v1 annotation, additive
+      to (not a mapping from) `evidence_type`. Empty list is
+      allowed when no v1 code applies; off-vocab codes are
+      filtered post-response but the claim is kept (FR-013).
+    - `source_quote_verified`: bool the model sets to true ONLY
+      after `verify_source_quote` tool returned is_substring=true.
+      The orchestrator independently re-verifies before persisting.
+    """
+
+    # cllm fields (verbatim)
+    claim: str = Field(..., min_length=1, description="Extracted atomic claim text.")
+    claim_type: Literal["EXPLICIT", "IMPLICIT"] = Field(
+        ..., description="EXPLICIT if directly stated; IMPLICIT if logically inferred."
+    )
+    source: str = Field(..., min_length=1, description="Exact source quote or figure reference from the manuscript.")
+    source_type: list[Literal["TEXT", "IMAGE"]] = Field(
+        ..., min_length=1, description="TEXT for direct quotes; IMAGE for figure/table references."
+    )
+    evidence: str = Field(..., min_length=1, description="Brief reasoning for the evidence_type assignment.")
+    evidence_type: list[Literal["DATA", "CITATION", "KNOWLEDGE", "INFERENCE", "SPECULATION"]] = Field(
+        ..., min_length=1, description="One or more cllm evidence categories supporting the claim."
+    )
+
+    # Stage 2.1 augmentations (additive — separate annotation, not a mapping from evidence_type)
+    evidence_eco_codes: list[str] = Field(
+        ...,
+        description=(
+            "Optional ECO v1 annotation, separate from cllm `evidence_type`. "
+            "Each code MUST come from the embedded controlled vocabulary; "
+            "if no ECO code in the v1 vocabulary applies, return an empty list."
+        ),
+    )
+    source_quote_verified: bool = Field(
+        ..., description="True iff the verify_source_quote tool returned is_substring=true for this `source`.",
+    )
 
 
 class ClaimsResponse(BaseModel):
@@ -239,8 +272,12 @@ def _make_tool_executor(
 def _build_eco_primer(vocabulary: dict[str, Any]) -> str:
     lines = [
         "Evidence and Conclusion Ontology (ECO) v1 controlled vocabulary.",
-        "Use ONLY these codes for the evidence_eco_codes field; off-vocabulary "
-        "codes will cause the claim to be dropped:",
+        "These codes are an OPTIONAL secondary annotation, independent of "
+        "the cllm `evidence_type` list. For each claim, judge whether any "
+        "of these top-9 ECO codes describe the evidence backing the claim. "
+        "If one or more apply, list them in `evidence_eco_codes` (drawn "
+        "ONLY from this list). If none apply, return an empty list — "
+        "do NOT invent off-vocabulary codes, and do NOT drop the claim.",
         "",
     ]
     for entry in vocabulary["codes"]:
@@ -261,8 +298,15 @@ class ClaimsRunSummary:
     prompt_tokens_cached: int = 0
     prompt_tokens_uncached: int = 0
     completion_tokens: int = 0
+    # Number of off-vocabulary ECO codes filtered out across all kept claims.
+    # ECO codes are an additive annotation, not a gate — off-vocab codes are
+    # stripped from the claim's `evidence_eco_codes` list but the claim is
+    # otherwise kept.
     dropped_off_vocab_count: int = 0
     dropped_unverified_count: int = 0
+    # Set to the fallback model id when the primary model raised
+    # context_length_exceeded and the fallback succeeded.
+    fallback_model_used: str | None = None
 
 
 # ----- Manuscript builder -------------------------------------------
@@ -364,27 +408,126 @@ def _function_tools() -> list[dict]:
 
 
 def _instructions(eco_primer: str) -> str:
-    return (
-        "You extract atomic factual claims from a scientific abstract. "
-        "For each claim, perform this four-step internal loop within "
-        "THIS call:\n"
-        "  1. EXTRACT — identify an atomic factual claim with a source "
-        "quote that is a verbatim substring of the manuscript.\n"
-        "  2. VERIFY — call the verify_source_quote tool with the "
-        "claim_text and your candidate source_quote; if is_substring is "
-        "false AND candidate_corrections is non-empty, use the best "
-        "correction as the source_quote (re-verify). If still not a "
-        "substring, drop the claim.\n"
-        "  3. ANNOTATE — call the lookup_eco_code tool to find one or "
-        "more applicable evidence codes from the v1 vocabulary. Drop "
-        "claims for which no vocabulary code applies.\n"
-        "  4. DEDUPE — for each new claim, call dedupe_check against "
-        "claims you've already accepted; drop duplicates.\n\n"
-        "Return the final list as a JSON object with key 'claims'. "
-        "Set source_quote_verified=true only after the verify tool "
-        "returned is_substring=true. Confidence is a 0..1 self-rating.\n\n"
+    """Build the claim-extraction system prompt.
+
+    Base (verbatim) is OpenEvalProject/cllm's `extract.txt` — the
+    project's canonical claim-vs-not-claim definition, evidence
+    vocabulary, source-quote rules, and CORRECT/INCORRECT examples.
+    Augmentations layered on top:
+
+    1. Agentic four-step internal loop using the three function tools
+       (verify_source_quote, lookup_eco_code, dedupe_check) for
+       in-call self-correction.
+    2. ECO controlled-vocabulary alignment — every claim must carry
+       ≥1 ECO code in addition to its cllm `evidence_type`.
+    3. Structured-output return shape (extended cllm schema with
+       evidence_eco_codes + source_quote_verified fields).
+    """
+    cllm_base = (
+        "You are a scientist who is an expert at identifying and "
+        "extracting scientific claims. Your task is to accurately "
+        "extract ALL atomic factual claims from a given scientific "
+        "manuscript.\n\n"
+        "NOTE: The manuscript may include figure interpretations and "
+        "images that provide additional context and visual evidence. "
+        "Consider both the text and any included figures when "
+        "extracting claims.\n\n"
+        "# Claim Extraction Guidelines\n"
+        "An atomic factual claim is a single, discrete, factual "
+        "statement that contains an assertion, the supporting "
+        "evidence, and a source from the manuscript.\n\n"
+        "## Definition: Atomic Factual Claim\n"
+        "- Represents ONE specific assertion or assumption about "
+        "the world\n"
+        "- Can be assessed as supported or unsupported\n"
+        "- Is indivisible—cannot be broken down into smaller "
+        "factual units\n\n"
+        "## Claim Types\n"
+        "A claim may be explicit or implicit:\n"
+        "- **EXPLICIT**: Clearly and directly stated in the manuscript\n"
+        "- **IMPLICIT**: Inferred logically from the content, though "
+        "not directly stated\n\n"
+        "## Evidence\n"
+        "Evidence is the data, citation, knowledge, inference, or "
+        "speculation that justifies the claim.\n\n"
+        "### Evidence Types (multiple may apply)\n"
+        "- **DATA**: Supported by experimental data, measurements, "
+        "or observations in the manuscript\n"
+        "- **CITATION**: Supported by references to other scholarly work\n"
+        "- **KNOWLEDGE**: Draws from established scientific "
+        "consensus or knowledge\n"
+        "- **INFERENCE**: Based on logical inference from presented "
+        "information\n"
+        "- **SPECULATION**: Involves hypothetical or speculative "
+        "reasoning\n\n"
+        "## Source\n"
+        "The source is the origin of the claim within the manuscript. "
+        "IMPORTANT: The extracted source text must match EXACTLY with "
+        "the text in the manuscript, including all inline citations.\n\n"
+        "Example of CORRECT extraction:\n"
+        '"Specific responses to different types of green leaf volatiles '
+        "have been reported both at physiological (Hansson et al., 1999; "
+        "Røstelien et al., 2005) and behavioral levels (Reinecke et al., "
+        '2005)"\n\n'
+        "Example of INCORRECT extraction (missing citations):\n"
+        '"Specific responses to different types of green leaf volatiles '
+        "have been reported both at physiological and behavioral "
+        'levels"\n\n'
+        "The source field must preserve:\n"
+        "- All author names and years in parentheses\n"
+        "- All citation markers\n"
+        "- The exact formatting and punctuation around citations\n\n"
+        "Do NOT remove, paraphrase, or omit any citations from the "
+        "extracted text.\n\n"
+        "### Source Types (multiple may apply)\n"
+        "- **TEXT**: Direct quote from the manuscript text\n"
+        '- **IMAGE**: Reference to a figure, table, or image (e.g., '
+        '"Figure 2A shows...")\n\n'
+        "## Extraction Rules\n"
+        "1. Extract ALL factual claims, including primary findings "
+        "and secondary/supporting statements\n"
+        "2. Each extracted claim must be fully self-contained and "
+        "independently understandable\n"
+        "3. Include the exact source (direct quote from manuscript "
+        "or reference to figure/table/image)\n"
+        "4. Specify source type(s): TEXT for text quotes, IMAGE for "
+        "figure/table references\n"
+        "5. Provide a brief explanation for each assigned evidence type\n"
+        "6. DO NOT evaluate the truthfulness of claims, only assess "
+        "whether the claim has supporting evidence of `evidence_type`.\n"
+    )
+    augmentations = (
+        "\n# Stage 2.1 Augmentations (additive — do NOT relax the "
+        "cllm rules above)\n\n"
+        "## Agentic Internal Loop (use the function tools)\n"
+        "For each candidate claim, before adding it to your final "
+        "output:\n"
+        "1. **VERIFY source** — call `verify_source_quote` with the "
+        "candidate `claim` and `source`. If `is_substring=false` AND "
+        "`candidate_corrections` is non-empty, use the best correction "
+        "as `source` and re-verify. If still false after one correction, "
+        "DROP the claim.\n"
+        "2. **DEDUPE** — before emitting a claim, call `dedupe_check` "
+        "against claims you've already accepted. Drop duplicates.\n"
+        "3. **ECO annotation (optional, additive)** — independently of "
+        "the cllm `evidence_type` you assigned, consider whether any "
+        "of the ECO v1 codes below describe the evidence backing the "
+        "claim. You MAY call `lookup_eco_code` to search the vocabulary "
+        "by keyword. List every applicable in-vocabulary code in "
+        "`evidence_eco_codes`. If none apply, return an empty list — "
+        "do NOT drop the claim, and do NOT invent off-vocabulary "
+        "codes. ECO codes are a separate annotation; they do NOT "
+        "replace or override `evidence_type`.\n\n"
+        "## Output Fields\n"
+        "Each emitted claim must include the cllm fields "
+        "(claim, claim_type, source, source_type, evidence, "
+        "evidence_type) PLUS the Stage 2.1 augmentations "
+        "(evidence_eco_codes, source_quote_verified).\n\n"
+        "Set `source_quote_verified=true` ONLY after the verify tool "
+        "returned `is_substring=true` for the final `source`.\n\n"
         f"{eco_primer}"
     )
+    return cllm_base + augmentations
 
 
 def _execute_agentic_loop(
@@ -396,7 +539,7 @@ def _execute_agentic_loop(
     vocabulary: dict[str, Any],
     flex_enabled: bool,
     timeout_seconds: float,
-    max_tool_iterations: int = 16,
+    max_tool_iterations: int = 32,
 ) -> tuple[ClaimsResponse, Any, "_TierTelemetry"]:
     """Drive the Responses API's agentic loop until a final
     structured response is returned.
@@ -624,6 +767,7 @@ def run_claims_component(
     figure_interpretations: list[dict] | None = None,
     vocabulary: dict[str, Any] | None = None,
     timeout_seconds: float = flex_tier.DEFAULT_CLAIMS_TIMEOUT_SECONDS,
+    fallback_model_id: str | None = None,
 ) -> tuple[list[dict], ClaimsRunSummary]:
     """Run the claims component for one abstract.
 
@@ -637,6 +781,11 @@ def run_claims_component(
 
     Raises `EnrichmentError` on agentic-loop failure, retry-budget
     exhaustion, or schema validation failure on the final response.
+
+    If `fallback_model_id` is supplied and the primary model raises
+    `ContextLengthExceededError`, the agentic loop is re-run once
+    with the fallback model. A successful fallback writes to a new
+    cache slot keyed by the fallback model id.
     """
     vocab = vocabulary or load_eco_vocabulary()
     manuscript = _build_manuscript_markdown(abstract, figure_interpretations)
@@ -655,50 +804,79 @@ def run_claims_component(
         )
     fi_text = "\n\n".join(fi_chunks) if fi_chunks else "(no figures)"
 
-    parsed_response, _raw_response, telemetry = _execute_agentic_loop(
-        client,
-        model_id=model_id,
-        manuscript=manuscript,
-        figure_interpretations_text=fi_text,
-        vocabulary=vocab,
-        flex_enabled=flex_enabled,
-        timeout_seconds=timeout_seconds,
-    )
+    try:
+        parsed_response, _raw_response, telemetry = _execute_agentic_loop(
+            client,
+            model_id=model_id,
+            manuscript=manuscript,
+            figure_interpretations_text=fi_text,
+            vocabulary=vocab,
+            flex_enabled=flex_enabled,
+            timeout_seconds=timeout_seconds,
+        )
+        active_model_id = model_id
+        fallback_used: str | None = None
+    except ContextLengthExceededError:
+        if not fallback_model_id or fallback_model_id == model_id:
+            raise
+        print(
+            f"INFO claims: context_length_exceeded on {model_id} for abstract "
+            f"{abstract.get('id')}; retrying with fallback model {fallback_model_id!r}",
+            file=sys.stderr,
+        )
+        parsed_response, _raw_response, telemetry = _execute_agentic_loop(
+            client,
+            model_id=fallback_model_id,
+            manuscript=manuscript,
+            figure_interpretations_text=fi_text,
+            vocabulary=vocab,
+            flex_enabled=flex_enabled,
+            timeout_seconds=timeout_seconds,
+        )
+        active_model_id = fallback_model_id
+        fallback_used = fallback_model_id
 
-    cache_key = _hash_for_cache(manuscript, model_id, vocab["vocabulary_version"])
+    cache_key = _hash_for_cache(manuscript, active_model_id, vocab["vocabulary_version"])
     vocab_ids = vocab["_id_set"]
 
     out: list[dict] = []
-    dropped_off_vocab = 0
+    filtered_off_vocab_codes = 0
     dropped_unverified = 0
     for claim in parsed_response.claims:
-        # Post-response verification — re-check the substring
-        # condition (don't trust the model's flag alone) and the
-        # ECO vocabulary membership.
-        if claim.source_quote not in manuscript:
+        # Post-response verification: re-check the substring condition
+        # (Principle VI — don't trust the model's flag alone). The
+        # source quote MUST be present in the manuscript, else drop.
+        if claim.source not in manuscript:
             dropped_unverified += 1
             print(
-                f"WARN claims: dropping unverifiable quote: {claim.claim_text[:80]!r}",
+                f"WARN claims: dropping unverifiable quote: {claim.claim[:80]!r}",
                 file=sys.stderr,
             )
             continue
-        if not set(claim.evidence_eco_codes).issubset(vocab_ids):
-            dropped_off_vocab += 1
-            off = set(claim.evidence_eco_codes) - vocab_ids
+        # ECO codes are an additive annotation, not a gate: filter
+        # off-vocabulary codes from the list but KEEP the claim. An
+        # empty result is allowed when no v1 code applies.
+        kept_codes: list[str] = []
+        off_codes: list[str] = []
+        for code in claim.evidence_eco_codes:
+            (kept_codes if code in vocab_ids else off_codes).append(code)
+        if off_codes:
+            filtered_off_vocab_codes += len(off_codes)
             print(
-                f"WARN claims: dropping off-vocab claim {claim.claim_text[:80]!r}"
-                f" (codes={sorted(off)})",
+                f"WARN claims: filtering off-vocab ECO codes "
+                f"{sorted(set(off_codes))} from claim {claim.claim[:80]!r}",
                 file=sys.stderr,
             )
-            continue
         out.append({
-            "claim_text": claim.claim_text,
-            "source_quote": claim.source_quote,
-            "source_quote_verified": True,
+            "claim": claim.claim,
             "claim_type": claim.claim_type,
-            "evidence_eco_codes": list(claim.evidence_eco_codes),
-            "confidence": claim.confidence,
-            "model_id": model_id,
+            "source": claim.source,
+            "source_type": list(claim.source_type),
+            "evidence": claim.evidence,
+            "evidence_type": list(claim.evidence_type),
+            "evidence_eco_codes": kept_codes,
+            "source_quote_verified": True,
+            "model_id": active_model_id,
             "cache_key": cache_key,
         })
 
@@ -711,7 +889,8 @@ def run_claims_component(
         prompt_tokens_cached=telemetry.prompt_tokens_cached,
         prompt_tokens_uncached=telemetry.prompt_tokens_uncached,
         completion_tokens=telemetry.completion_tokens,
-        dropped_off_vocab_count=dropped_off_vocab,
+        dropped_off_vocab_count=filtered_off_vocab_codes,
         dropped_unverified_count=dropped_unverified,
+        fallback_model_used=fallback_used,
     )
     return out, summary

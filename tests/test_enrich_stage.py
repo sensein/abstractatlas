@@ -139,12 +139,14 @@ def _fake_claim_record(model_id: str, abstract_id: int, index: int, manuscript: 
     sentinel = f"Methods text {abstract_id}"
     source_quote = sentinel if sentinel in manuscript else manuscript[:20].strip() or "Synthetic abstract"
     return {
-        "claim_text": f"claim[{model_id}][{abstract_id}].{index}",
-        "source_quote": source_quote,
-        "source_quote_verified": True,
-        "claim_type": "explicit",
+        "claim": f"claim[{model_id}][{abstract_id}].{index}",
+        "claim_type": "EXPLICIT",
+        "source": source_quote,
+        "source_type": ["TEXT"],
+        "evidence": "Synthetic supporting evidence statement.",
+        "evidence_type": ["DATA"],
         "evidence_eco_codes": ["ECO:0000006"],
-        "confidence": 0.85,
+        "source_quote_verified": True,
         "model_id": model_id,
         "cache_key": _sha256_of(f"{abstract_id}||{model_id}||claim.{index}"),
     }

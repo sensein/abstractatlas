@@ -207,6 +207,95 @@ class PerAbstractGroupingTests(unittest.TestCase):
         self.assertIn("local asset missing", str(ctx.exception))
 
 
+# ----- Larger-model fallback ----------------------------------------
+
+
+class _FallbackClientFigures:
+    """Two-attempt client: primary model raises context_length_exceeded,
+    fallback model returns the canned items.
+
+    Tracks which model id was passed on each call so the test can
+    assert the fallback was actually exercised."""
+
+    def __init__(self, items, primary_model_id: str, fallback_model_id: str) -> None:
+        self._items = items
+        self._primary = primary_model_id
+        self._fallback = fallback_model_id
+        self.models_called: list[str] = []
+        self.responses = self
+
+    def parse(self, **kwargs):
+        import openai
+        model = kwargs.get("model")
+        self.models_called.append(model)
+        if model == self._primary:
+            class _StubResp:
+                status_code = 400
+                headers: dict = {}
+                request = None
+                def json(self):
+                    return {"error": {"code": "context_length_exceeded"}}
+            raise openai.BadRequestError(
+                "Your input exceeds the context window of this model.",
+                response=_StubResp(),
+                body={"error": {"code": "context_length_exceeded"}},
+            )
+        return _FakeResponseFigures(self._items)
+
+    def create(self, **kwargs):
+        return self.parse(**kwargs)
+
+
+class FallbackModelTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.fx = _Fixture()
+        self.addCleanup(self.fx.cleanup)
+
+    def test_context_length_exceeded_retries_with_fallback_and_marks_summary(self) -> None:
+        abstract = _abstract_with_figures(2, cwd=self.fx.tmp)
+        items = [
+            stage2_figures.FigureInterpretationItem(
+                figure_index=i + 1, interpretation=f"interp {i+1}",
+                keywords=[], ocr_text=None, model_quality_estimate="high",
+            )
+            for i in range(2)
+        ]
+        client = _FallbackClientFigures(
+            items, primary_model_id="gpt-5.4-mini", fallback_model_id="gpt-5.4",
+        )
+        records, summary = stage2_figures.run_figure_component(
+            abstract,
+            model_id="gpt-5.4-mini",
+            flex_enabled=True,
+            client=client,
+            cwd=self.fx.tmp,
+            fallback_model_id="gpt-5.4",
+        )
+        self.assertEqual(client.models_called, ["gpt-5.4-mini", "gpt-5.4"])
+        self.assertEqual(len(records), 2)
+        # Kept records are tagged with the fallback model so the
+        # cache slot and provenance reflect what actually ran.
+        for record in records:
+            self.assertEqual(record["model_id"], "gpt-5.4")
+        self.assertEqual(summary.fallback_model_used, "gpt-5.4")
+
+    def test_no_fallback_when_unset_propagates_typed_error(self) -> None:
+        from ohbm2026.exceptions import ContextLengthExceededError
+        abstract = _abstract_with_figures(1, cwd=self.fx.tmp)
+        client = _FallbackClientFigures(
+            [], primary_model_id="gpt-5.4-mini", fallback_model_id="gpt-5.4",
+        )
+        with self.assertRaises(ContextLengthExceededError):
+            stage2_figures.run_figure_component(
+                abstract,
+                model_id="gpt-5.4-mini",
+                flex_enabled=True,
+                client=client,
+                cwd=self.fx.tmp,
+                fallback_model_id=None,
+            )
+
+
 # ----- Model quality enum enforcement -------------------------------
 
 
