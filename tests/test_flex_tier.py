@@ -104,6 +104,41 @@ class CallWithFlexFallbackTests(unittest.TestCase):
         self.assertEqual(result.tier_used, "standard")
         self.assertTrue(result.flex_timed_out)
 
+    def test_bad_request_error_does_not_retry_and_raises_typed(self) -> None:
+        # `openai.BadRequestError` (e.g. context_length_exceeded) is
+        # deterministic — retrying with the same input on a different
+        # tier will fail identically. The wrapper must surface it as
+        # a typed EnrichmentError on the FIRST occurrence so the
+        # orchestrator's per-abstract failure-threshold handles it.
+        from ohbm2026.exceptions import EnrichmentError
+
+        calls = []
+
+        class _StubResponse:
+            status_code = 400
+            headers: dict = {}
+            request = None
+
+            def json(self):
+                return {"error": {"code": "context_length_exceeded"}}
+
+        def fake_call(*, service_tier: str, timeout: float):
+            calls.append(service_tier)
+            raise openai.BadRequestError(
+                "Your input exceeds the context window of this model.",
+                response=_StubResponse(),
+                body=None,
+            )
+
+        with self.assertRaises(EnrichmentError) as ctx:
+            flex_tier.call_with_flex_fallback(
+                fake_call, flex_enabled=True, timeout_seconds=5.0, component="figures",
+            )
+        self.assertIn("figures", str(ctx.exception))
+        self.assertIn("BadRequestError", str(ctx.exception))
+        # MUST NOT retry on standard tier — the same input would fail.
+        self.assertEqual(calls, ["flex"])
+
 
 if __name__ == "__main__":
     unittest.main()

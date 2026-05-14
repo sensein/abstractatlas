@@ -22,7 +22,7 @@ from typing import Any, Callable, Literal
 
 import openai
 
-from ohbm2026.exceptions import EnrichmentError
+from ohbm2026.exceptions import ContextLengthExceededError, EnrichmentError
 
 __all__ = [
     "FlexTierResult",
@@ -58,6 +58,19 @@ _FLEX_RETRYABLE: tuple[type[BaseException], ...] = (
     openai.APIConnectionError,
     openai.InternalServerError,
 )
+
+
+def _extract_error_code(exc: openai.BadRequestError) -> str | None:
+    """Pull the `error.code` field out of an SDK BadRequestError body
+    (it's not always exposed as an attribute on older SDK builds)."""
+    body = getattr(exc, "body", None) or {}
+    if isinstance(body, dict):
+        err = body.get("error") or {}
+        if isinstance(err, dict):
+            code = err.get("code")
+            if isinstance(code, str):
+                return code
+    return None
 
 
 def call_with_flex_fallback(
@@ -99,6 +112,22 @@ def call_with_flex_fallback(
         start = time.perf_counter()
         try:
             response = client_call(service_tier=tier, timeout=timeout_seconds)
+        except openai.BadRequestError as exc:
+            # Deterministic input-side rejection. Retrying with the
+            # same input — even on a different tier — fails identically,
+            # so surface as a typed failure for the orchestrator
+            # (Principle VI). `context_length_exceeded` gets its own
+            # subclass so callers can attempt a larger-model fallback.
+            code = (getattr(exc, "code", None)
+                    or _extract_error_code(exc)
+                    or getattr(exc, "status_code", "?"))
+            if code == "context_length_exceeded":
+                raise ContextLengthExceededError(
+                    f"{component}: context_length_exceeded: {exc}"
+                ) from exc
+            raise EnrichmentError(
+                f"{component}: non-retryable BadRequestError ({code}): {exc}"
+            ) from exc
         except _FLEX_RETRYABLE as exc:
             last_exc = exc
             if tier == "flex":

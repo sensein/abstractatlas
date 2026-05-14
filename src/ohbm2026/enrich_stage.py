@@ -279,16 +279,19 @@ def _call_figures_for_abstract(
     flex_enabled: bool,
     cwd: Path,
     client: Any,
+    fallback_model_id: str | None = None,
 ) -> tuple[list[dict], "stage2_figures.FigureRunSummary"]:
     """Stage 2.1 figures runner — one OpenAI Responses API call per
     abstract carrying all of that abstract's figures + the manuscript
-    context."""
+    context. `fallback_model_id`, when provided, is used only when
+    the primary model rejects the request with context_length_exceeded."""
     return stage2_figures.run_figure_component(
         abstract,
         model_id=model_id,
         flex_enabled=flex_enabled,
         client=client,
         cwd=cwd,
+        fallback_model_id=fallback_model_id,
     )
 
 
@@ -299,16 +302,20 @@ def _call_claims_for_abstract(
     flex_enabled: bool,
     figure_interpretations: list[dict] | None,
     client: Any,
+    fallback_model_id: str | None = None,
 ) -> tuple[list[dict], "stage2_claims.ClaimsRunSummary"]:
     """Stage 2.1 claims runner — one agentic OpenAI Responses API call
     per abstract with three function tools (verify_source_quote,
-    lookup_eco_code, dedupe_check)."""
+    lookup_eco_code, dedupe_check). `fallback_model_id`, when provided,
+    is used only when the primary model rejects the request with
+    context_length_exceeded."""
     return stage2_claims.run_claims_component(
         abstract,
         model_id=model_id,
         flex_enabled=flex_enabled,
         figure_interpretations=figure_interpretations,
         client=client,
+        fallback_model_id=fallback_model_id,
     )
 
 
@@ -394,6 +401,13 @@ class _ComponentSummary:
     completion_tokens: int = 0
     wall_clock_seconds: float = 0.0
     latencies_ms: list[float] = dataclasses.field(default_factory=list)
+    # When set, the larger-model id used to retry abstracts whose
+    # primary call returned context_length_exceeded.
+    fallback_model_id: str | None = None
+    # Number of abstracts where the fallback actually produced the
+    # kept output (i.e., primary failed with context_length_exceeded
+    # and the retry succeeded).
+    fallback_invocation_count: int = 0
 
 
 def _record_run_telemetry(
@@ -413,6 +427,8 @@ def _record_run_telemetry(
     summary.wall_clock_seconds += latency / 1000.0
     if latency > 0:
         summary.latencies_ms.append(latency)
+    if getattr(run_summary, "fallback_model_used", None):
+        summary.fallback_invocation_count += 1
 
 
 def _run_figure_component(
@@ -425,6 +441,7 @@ def _run_figure_component(
     cwd: Path,
     flex_enabled: bool = True,
     client: Any | None = None,
+    fallback_model_id: str | None = None,
 ) -> list[dict]:
     """Stage 2.1: one OpenAI call per abstract carrying all of that
     abstract's figures. Per-figure cache entries are still written
@@ -508,6 +525,7 @@ def _run_figure_component(
         flex_enabled=flex_enabled,
         cwd=cwd,
         client=client,
+        fallback_model_id=fallback_model_id,
     )
     _record_run_telemetry(summary, run_summary)
 
@@ -516,6 +534,23 @@ def _run_figure_component(
     # have computed its own key, but the orchestrator-level cache
     # uses content-derived keys.
     canonical_keys_by_url = {url: key for url, key, _lp, _pb in per_figure_keys}
+    # When the fallback model produced the records, the per-record
+    # `model_id` is the fallback. Rebuild canonical keys under the
+    # fallback's namespace so the cache write lands in a fresh slot
+    # rather than overwriting the primary model's entry.
+    fallback_used = getattr(run_summary, "fallback_model_used", None)
+    if fallback_used:
+        canonical_keys_by_url = {
+            url: (
+                _sha256_hex(png_bytes + fallback_used.encode("utf-8"))
+                if png_bytes is not None
+                else _sha256_hex(url.encode("utf-8") + fallback_used.encode("utf-8"))
+            )
+            for (url, _ck, _lp, png_bytes) in per_figure_keys
+        }
+        # Re-bind model_id so the cache-entry record reflects the
+        # model that actually produced the kept output.
+        model_id = fallback_used
     cached_url_set = set(cached_payloads.keys())
     out: list[dict] = []
     for record in records:
@@ -552,6 +587,7 @@ def _run_claims_component(
     flex_enabled: bool = True,
     client: Any | None = None,
     figure_interpretations: list[dict] | None = None,
+    fallback_model_id: str | None = None,
 ) -> list[dict]:
     """Stage 2.1: one agentic OpenAI call per abstract. Cache key
     includes the ECO vocabulary version so a vocabulary bump
@@ -587,9 +623,26 @@ def _run_claims_component(
         flex_enabled=flex_enabled,
         figure_interpretations=figure_interpretations,
         client=client,
+        fallback_model_id=fallback_model_id,
     )
     _record_run_telemetry(summary, run_summary)
     summary.cache_miss_count += 1
+
+    # If the fallback model produced the output, re-key the cache
+    # slot under the fallback's namespace so a future run with the
+    # same fallback configuration hits cache, and the primary
+    # model's slot stays empty (we never had a primary result).
+    fallback_used = getattr(run_summary, "fallback_model_used", None)
+    if fallback_used:
+        active_model_id = fallback_used
+        cache_key = _sha256_hex(
+            manuscript.encode("utf-8")
+            + b"||" + active_model_id.encode("utf-8")
+            + b"||" + vocab_version.encode("utf-8")
+        )
+        cache_path = cache_root / "claim_analysis" / f"{cache_key}.json"
+    else:
+        active_model_id = model_id
 
     # Override every claim's cache_key to the per-abstract key for
     # this layer (production runner generated its own per-claim
@@ -605,7 +658,7 @@ def _run_claims_component(
         cache_path,
         component="claims",
         cache_key=cache_key,
-        model_id=model_id,
+        model_id=active_model_id,
         input_hash=_hash_text(manuscript),
         payload={"claims": out, "vocabulary_version": vocab_version},
     )
@@ -740,6 +793,22 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--figure-model-id", default=_DEFAULT_FIGURE_MODEL_ID)
     parser.add_argument("--claims-model-id", default=_DEFAULT_CLAIMS_MODEL_ID)
+    parser.add_argument(
+        "--figure-fallback-model-id",
+        default=None,
+        help=(
+            "Larger-context model to retry with when the primary figure "
+            "model returns context_length_exceeded. No fallback when unset."
+        ),
+    )
+    parser.add_argument(
+        "--claims-fallback-model-id",
+        default=None,
+        help=(
+            "Larger-context model to retry with when the primary claims "
+            "model returns context_length_exceeded. No fallback when unset."
+        ),
+    )
     parser.add_argument(
         "--reference-strategy-id", default=_DEFAULT_REFERENCE_STRATEGY_ID
     )
@@ -985,6 +1054,7 @@ def _process_abstract(
             cwd=cwd,
             flex_enabled=flex_figures,
             client=client,
+            fallback_model_id=getattr(args, "figure_fallback_model_id", None),
         )
     except CacheVersionError:
         cache_version_error = True
@@ -1009,6 +1079,7 @@ def _process_abstract(
                 flex_enabled=flex_claims,
                 figure_interpretations=figures_out,
                 client=client,
+                fallback_model_id=getattr(args, "claims_fallback_model_id", None),
             )
             claim_inputs = 1
         except CacheVersionError:
@@ -1217,12 +1288,14 @@ def main(argv: list[str] | None = None) -> int:
             model_id=args.figure_model_id,
             cache_invalidated="figures" in invalidated_components,
             flex_tier_enabled=flex_figures,
+            fallback_model_id=getattr(args, "figure_fallback_model_id", None),
         ),
         "claims": _ComponentSummary(
             component="claims",
             model_id=args.claims_model_id,
             cache_invalidated="claims" in invalidated_components,
             flex_tier_enabled=flex_claims,
+            fallback_model_id=getattr(args, "claims_fallback_model_id", None),
         ),
         "references": _ComponentSummary(
             component="references",
@@ -1433,6 +1506,8 @@ def main(argv: list[str] | None = None) -> int:
                 "wall_clock_seconds": round(s.wall_clock_seconds, 3),
                 "latency_p50_ms": round(_percentile(s.latencies_ms, 50.0), 3),
                 "latency_p95_ms": round(_percentile(s.latencies_ms, 95.0), 3),
+                "fallback_model_id": s.fallback_model_id,
+                "fallback_invocation_count": s.fallback_invocation_count,
             }
             for s in (summaries["figures"], summaries["claims"], summaries["references"])
         ],

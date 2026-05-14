@@ -85,49 +85,43 @@ class FunctionToolHandlerTests(unittest.TestCase):
 class ClaimsResponseSchemaTests(unittest.TestCase):
     def test_well_formed_claim_validates(self) -> None:
         claim = {
-            "claim_text": "test claim",
-            "source_quote": "some quote",
-            "source_quote_verified": True,
-            "claim_type": "explicit",
+            "claim": "test claim",
+            "claim_type": "EXPLICIT",
+            "source": "some quote",
+            "source_type": ["TEXT"],
+            "evidence": "test reasoning",
+            "evidence_type": ["DATA"],
             "evidence_eco_codes": ["ECO:0000006"],
-            "confidence": 0.8,
+            "source_quote_verified": True,
         }
         stage2_claims.Claim.model_validate(claim)
 
-    def test_empty_eco_codes_rejected(self) -> None:
+    def test_empty_eco_codes_allowed(self) -> None:
+        # ECO is an additive annotation, not a gate: empty list is
+        # legitimate when no v1 code applies.
         claim = {
-            "claim_text": "test claim",
-            "source_quote": "some quote",
-            "source_quote_verified": True,
-            "claim_type": "explicit",
+            "claim": "test claim",
+            "claim_type": "EXPLICIT",
+            "source": "some quote",
+            "source_type": ["TEXT"],
+            "evidence": "test reasoning",
+            "evidence_type": ["DATA"],
             "evidence_eco_codes": [],
-            "confidence": 0.8,
-        }
-        from pydantic import ValidationError
-        with self.assertRaises(ValidationError):
-            stage2_claims.Claim.model_validate(claim)
-
-    def test_confidence_out_of_range_rejected(self) -> None:
-        claim = {
-            "claim_text": "test claim",
-            "source_quote": "some quote",
             "source_quote_verified": True,
-            "claim_type": "explicit",
-            "evidence_eco_codes": ["ECO:0000006"],
-            "confidence": 1.5,
         }
-        from pydantic import ValidationError
-        with self.assertRaises(ValidationError):
-            stage2_claims.Claim.model_validate(claim)
+        parsed = stage2_claims.Claim.model_validate(claim)
+        self.assertEqual(parsed.evidence_eco_codes, [])
 
     def test_invalid_claim_type_rejected(self) -> None:
         claim = {
-            "claim_text": "test claim",
-            "source_quote": "some quote",
-            "source_quote_verified": True,
+            "claim": "test claim",
             "claim_type": "neither",
+            "source": "some quote",
+            "source_type": ["TEXT"],
+            "evidence": "test reasoning",
+            "evidence_type": ["DATA"],
             "evidence_eco_codes": ["ECO:0000006"],
-            "confidence": 0.8,
+            "source_quote_verified": True,
         }
         from pydantic import ValidationError
         with self.assertRaises(ValidationError):
@@ -191,12 +185,14 @@ class AgenticClaimsTests(unittest.TestCase):
         sentence = "We observed a 23 percent decrease in BOLD signal in auditory cortex."
         self.assertIn(sentence, manuscript)
         claim = stage2_claims.Claim(
-            claim_text="BOLD signal decreased in auditory cortex by 23%.",
-            source_quote=sentence,
-            source_quote_verified=True,
-            claim_type="explicit",
+            claim="BOLD signal decreased in auditory cortex by 23%.",
+            claim_type="EXPLICIT",
+            source=sentence,
+            source_type=["TEXT"],
+            evidence="Quantified measurement reported in the results section.",
+            evidence_type=["DATA"],
             evidence_eco_codes=["ECO:0000006"],
-            confidence=0.9,
+            source_quote_verified=True,
         )
         client = _FakeClient([_FakeFinalResponse([claim])])
         records, summary = stage2_claims.run_claims_component(
@@ -208,41 +204,60 @@ class AgenticClaimsTests(unittest.TestCase):
         self.assertEqual(len(records), 1)
         self.assertTrue(records[0]["source_quote_verified"])
         self.assertEqual(records[0]["evidence_eco_codes"], ["ECO:0000006"])
+        self.assertEqual(records[0]["claim_type"], "EXPLICIT")
+        self.assertEqual(records[0]["evidence_type"], ["DATA"])
         self.assertEqual(summary.dropped_off_vocab_count, 0)
         self.assertEqual(summary.dropped_unverified_count, 0)
 
-    def test_off_vocabulary_eco_code_drops_claim(self) -> None:
+    def test_off_vocabulary_eco_codes_are_filtered_not_dropped(self) -> None:
+        # ECO codes are an additive annotation, not a gate. Off-vocab
+        # codes get filtered from the list, but the claim is kept.
         abstract = _make_abstract()
         manuscript = stage2_claims._build_manuscript_markdown(abstract, [])
         sentence = "We observed a 23 percent decrease in BOLD signal in auditory cortex."
-        # The on-vocab one + the off-vocab one.
         on_vocab = stage2_claims.Claim(
-            claim_text="A", source_quote=sentence,
-            source_quote_verified=True, claim_type="explicit",
-            evidence_eco_codes=["ECO:0000006"], confidence=0.8,
+            claim="A",
+            claim_type="EXPLICIT",
+            source=sentence,
+            source_type=["TEXT"],
+            evidence="Direct measurement.",
+            evidence_type=["DATA"],
+            evidence_eco_codes=["ECO:0000006"],
+            source_quote_verified=True,
         )
         off_vocab = stage2_claims.Claim(
-            claim_text="B", source_quote=sentence,
-            source_quote_verified=True, claim_type="explicit",
-            evidence_eco_codes=["ECO:9999999"], confidence=0.8,
+            claim="B",
+            claim_type="EXPLICIT",
+            source=sentence,
+            source_type=["TEXT"],
+            evidence="Direct measurement.",
+            evidence_type=["DATA"],
+            evidence_eco_codes=["ECO:9999999"],
+            source_quote_verified=True,
         )
         client = _FakeClient([_FakeFinalResponse([on_vocab, off_vocab])])
         records, summary = stage2_claims.run_claims_component(
             abstract, model_id="gpt-5.4-mini", flex_enabled=True, client=client,
         )
-        self.assertEqual(len(records), 1)
+        # Both claims survive; the off-vocab claim has its codes filtered to [].
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0]["evidence_eco_codes"], ["ECO:0000006"])
+        self.assertEqual(records[1]["evidence_eco_codes"], [])
+        # Counter tracks number of off-vocab codes filtered.
         self.assertEqual(summary.dropped_off_vocab_count, 1)
 
     def test_unverifiable_quote_drops_claim(self) -> None:
         abstract = _make_abstract()
         # Quote that's NOT in the manuscript.
         ghost = stage2_claims.Claim(
-            claim_text="ghost claim",
-            source_quote="this exact wording is nowhere in the abstract",
-            source_quote_verified=True,  # model claims true; orchestrator re-verifies
-            claim_type="explicit",
+            claim="ghost claim",
+            claim_type="EXPLICIT",
+            source="this exact wording is nowhere in the abstract",
+            source_type=["TEXT"],
+            evidence="Fabricated.",
+            evidence_type=["DATA"],
             evidence_eco_codes=["ECO:0000006"],
-            confidence=0.8,
+            source_quote_verified=True,  # model claims true; orchestrator re-verifies
         )
         client = _FakeClient([_FakeFinalResponse([ghost])])
         records, summary = stage2_claims.run_claims_component(

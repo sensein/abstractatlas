@@ -27,6 +27,7 @@ __all__ = [
     "FigureFailureError",
     "Stage2Error",
     "EnrichmentError",
+    "ContextLengthExceededError",
     "CacheVersionError",
     "ComponentFailureThresholdError",
 ]
@@ -94,6 +95,18 @@ class EnrichmentError(Stage2Error):
     reference resolution) — including schema-drift on the LLM
     response (Principle VII: discovered mismatches surface loudly,
     never as silent fallbacks).
+    """
+
+
+class ContextLengthExceededError(EnrichmentError):
+    """The model rejected the request because the input exceeded its
+    context window (HTTP 400, code=context_length_exceeded).
+
+    Distinct from generic EnrichmentError so callers can attempt a
+    larger-model fallback (deterministic input rejection — same bytes
+    will fail identically on any retry of the same model). Still an
+    EnrichmentError, so handlers that just count typed failures keep
+    working unchanged.
     """
 
 
