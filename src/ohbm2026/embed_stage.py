@@ -337,17 +337,25 @@ def run_single_bundle(
     missing_count = len(missing_ids)
 
     # 2. Coverage gate (FR-007).
+    #
+    # DEFAULT_COMPONENTS (title, introduction, methods, results,
+    # conclusion, claims) are allowed to have missing rows silently —
+    # the missing_ids are recorded in metadata.json and the bundle
+    # has fewer than `count` rows. Operators only need --allow-partial
+    # for components NOT in the default set (e.g. inference_claims).
     allow_partial = component in (getattr(args, "allow_partial", None) or [])
+    is_default_component = component in embed_components.DEFAULT_COMPONENTS
     partial_suffix = False
     if missing_count > 0:
-        if not allow_partial:
+        if not (allow_partial or is_default_component):
             raise EmbeddingError(
                 f"partial-coverage refusal: component {component!r} is present on "
                 f"only {present_count}/{total_count} abstracts "
                 f"({present_count / total_count * 100:.1f}%). "
                 f"Pass --allow-partial {component} to opt in."
             )
-        partial_suffix = True
+        # The _partial suffix only applies to non-default components.
+        partial_suffix = not is_default_component
 
     bundle_dir = _bundle_dir_for(
         model_key, component, embeddings_root, partial=partial_suffix
