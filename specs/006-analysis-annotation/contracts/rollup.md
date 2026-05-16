@@ -26,9 +26,9 @@ For the canonical default matrix (5 models × 2 inputs), the column count is:
 - 1 id
 - 5 models × 5 UMAP-coord columns (`umap2d_x/y` + `umap3d_x/y/z`) = 25
 - 5 models × 2 inputs × 2 cluster-id columns (community + topic_cluster) = 20
-- 2 models (voyage, neuroscape) × 2 inputs × 2 columns (neuroscape_cluster_id + neuroscape_cluster_distance) = 8
+- 1 model (`neuroscape`) × 2 inputs × 2 columns (neuroscape_cluster_id + neuroscape_cluster_distance) = 4
 
-Total: **54 columns** for the default full run. Sparser runs (e.g., one model) emit a subset; `neuroscape_cluster_*` columns are absent for non-compatible source models because their bundles are auto-skipped.
+Total: **50 columns** for the default full run. Sparser runs (e.g., one model) emit a subset; `neuroscape_cluster_*` columns are absent for non-compatible source models because their bundles are auto-skipped.
 
 ## `cluster_topics` table
 

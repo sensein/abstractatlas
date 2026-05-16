@@ -32,7 +32,7 @@ Stage 4 turns Stage 3 embedding bundles into analysis artifacts the UI and organ
 **Target Platform**: macOS / Linux workstation (single-machine pipeline; no GPU required — FAISS-CPU is the chosen backend; Stage-2 model already runs on CPU via existing `apply_stage2_model`).
 **Project Type**: Single-project CLI + library, mirroring Stages 1–3 layout.
 **Performance Goals**:
-- SC-001: Default matrix (**34 bundles**: 10 projections + 10 communities + 10 topic_clusters + 4 neuroscape_clusters; minilm/openai/pubmedbert auto-skipped for `neuroscape_clusters` per FR-002's dim-compat constraint) in < 30 min wall-clock against corpus `f0c51e80dc0e` (3,244 rows).
+- SC-001: Default matrix (**32 bundles**: 10 projections + 10 communities + 10 topic_clusters + 2 neuroscape_clusters; voyage/minilm/openai/pubmedbert auto-skipped for `neuroscape_clusters` because the published NeuroScape centroids live in the domain-embedding space) in < 30 min wall-clock against corpus `f0c51e80dc0e` (3,244 rows).
 - SC-002: Cached re-run < 60 s.
 - SC-005: Voyage manuscript-recipe communities ≥ 12 with largest ≤ 30%.
 - SC-006: NeuroScape angular-distance distribution sane (mean ≥ 0.15, std ≥ 0.05).
@@ -42,7 +42,7 @@ Stage 4 turns Stage 3 embedding bundles into analysis artifacts the UI and organ
 - No backward-compat shim for `ohbm2026.analyze`. Every caller (`cli.py`, scripts/, tests/, `ui.py`, `category_evaluation.py`, `poster_layout.py`, `embed/neuroscape.py`) migrates in the same change.
 - LLM topic-grouping is **opt-out** via `--skip-llm-topics`; default run uses it.
 **Scale/Scope**:
-- 3,244 abstracts × 34 default bundles + 1 rollup pair (parquet + sqlite). Default matrix: 5×2 projections + 5×2 communities + 5×2 topic_clusters + 2×2 neuroscape_clusters (voyage + neuroscape only).
+- 3,244 abstracts × 32 default bundles + 1 rollup pair (parquet + sqlite). Default matrix: 5×2 projections + 5×2 communities + 5×2 topic_clusters + 1×2 neuroscape_clusters (`neuroscape` domain embedding only).
 - LLM topic grouping: ≈ 75 cluster-summary calls per full run (2 LLM-eligible clustering methods — communities + topic_clusters — across 10 (model, input) cells × ~25 mean clusters each, minus cache hits; `neuroscape_clusters` uses the verbatim `cluster_table.csv` labels and does NOT invoke the LLM), ~3k tokens per call, ~$0.15 total cost at `gpt-5.4-mini` flex.
 - UI export step (`ohbmcli export-ui` / `build-ui`) is **updated in this change** to consume the new rollup; legacy UI consumption path is replaced, not preserved.
 - Reorganization touches ~12 importing modules and ~3 tests.

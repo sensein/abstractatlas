@@ -107,13 +107,13 @@ class BuildPlanTests(unittest.TestCase):
             plan = build_plan(config)
             # 5 models × 2 inputs × 4 kinds = 40 entries (incl. skips)
             self.assertEqual(len(plan.entries), 40)
-            # 3 models × 2 inputs × 1 kind = 6 should be marked skipped
+            # 4 incompatible models × 2 inputs × 1 kind = 8 should be marked skipped
             skipped = [e for e in plan.entries if e.skipped]
-            self.assertEqual(len(skipped), 6)
+            self.assertEqual(len(skipped), 8)
             for entry in skipped:
                 self.assertEqual(entry.kind, "neuroscape_clusters")
-                self.assertNotIn(entry.model_key, {"voyage", "neuroscape"})
-                self.assertEqual(entry.skip_reason, "dim_incompatible")
+                self.assertNotEqual(entry.model_key, "neuroscape")
+                self.assertEqual(entry.skip_reason, "non_neuroscape_source")
 
     def test_strict_matrix_raises_for_dim_incompat(self) -> None:
         with _isolated_cwd() as tmp:

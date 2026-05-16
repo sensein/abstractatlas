@@ -17,11 +17,17 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from ohbm2026.analyze.centroids import (
+    assign_nearest_centroid,
+    load_centroid_table,
+    write_neuroscape_clusters_bundle,
+)
 from ohbm2026.analyze.provenance import write_bundle_provenance
 from ohbm2026.analyze.stage import (
     AnalysisConfig,
@@ -40,9 +46,10 @@ from ohbm2026.analyze.umap import (
     fit_umap_3d,
     write_projections_bundle,
 )
+from ohbm2026.exceptions import AnalysisError
 
 
-__all__ = ["projections_runner"]
+__all__ = ["projections_runner", "neuroscape_clusters_runner"]
 
 
 # ---------------------------------------------------------------------------
@@ -220,5 +227,161 @@ def projections_runner(config: AnalysisConfig, entry: PlanEntry) -> dict[str, An
     }
 
 
+# ---------------------------------------------------------------------------
+# neuroscape_clusters runner
+# ---------------------------------------------------------------------------
+
+
+def _neuroscape_algorithm_config(config: AnalysisConfig) -> dict[str, Any]:
+    """The algorithm config hashed into the neuroscape_clusters cache key."""
+    return {
+        "centroid_table_dir": str(config.neuroscape_centroids_dir),
+        "seed": config.seed,
+    }
+
+
+def _read_stage3_neuroscape_checkpoint_sha(
+    config: AnalysisConfig, entry: PlanEntry
+) -> str | None:
+    """Read the `domain_model_checkpoint_sha256` from the Stage 3 neuroscape
+    bundle's provenance, if recorded.
+
+    The Stage 3 neuroscape derivation step writes the checkpoint SHA into
+    the bundle's provenance so Stage 4 can refuse to assign centroids
+    that were derived from a different checkpoint.
+    """
+    component = "title" if entry.input_source == "abstract" else entry.input_source
+    bundle = (
+        config.embeddings_root
+        / entry.model_key
+        / f"{component}__{config.corpus_state_key}"
+    )
+    prov_path = bundle / "provenance.json"
+    if not prov_path.exists():
+        return None
+    try:
+        data = json.loads(prov_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data.get("domain_model_checkpoint_sha256")
+
+
+def neuroscape_clusters_runner(
+    config: AnalysisConfig, entry: PlanEntry
+) -> dict[str, Any]:
+    """Assign each row of the `(neuroscape, input)` matrix to its nearest
+    published NeuroScape centroid by spherical angular distance.
+
+    Only runs for `model_key == "neuroscape"` — the published centroids
+    live in the domain-embedding space, so we consume the Stage 3
+    neuroscape bundle directly (no on-the-fly Stage-2 projection). If
+    invoked against any other model (e.g., direct programmatic call
+    bypassing build_plan), raises `AnalysisError`.
+
+    Before assignment, compares the centroid metadata's recorded
+    `domain_model_checkpoint_sha256` against the Stage 3 neuroscape
+    bundle's provenance (when available) and refuses on mismatch.
+    """
+    if entry.model_key != "neuroscape":
+        raise AnalysisError(
+            f"neuroscape_clusters_runner: model_key={entry.model_key!r} is "
+            f"unsupported. The published NeuroScape centroids live in the "
+            f"domain-embedding space; only `model == 'neuroscape'` is valid."
+        )
+
+    ids, vectors, assembly_hash = _load_input_matrix(config, entry)
+
+    centroid_table = load_centroid_table(config.neuroscape_centroids_dir)
+
+    # Checkpoint-SHA gate: if the centroid metadata recorded a checkpoint
+    # SHA AND the Stage 3 neuroscape bundle recorded one too, they must
+    # match — otherwise the centroids were derived from a different
+    # Stage-2 lens than the one that produced the input vectors.
+    centroid_sha = centroid_table.domain_model_checkpoint_sha256
+    stage3_sha = _read_stage3_neuroscape_checkpoint_sha(config, entry)
+    if centroid_sha and stage3_sha and centroid_sha != stage3_sha:
+        from ohbm2026.exceptions import CentroidTableVersionMismatch
+
+        raise CentroidTableVersionMismatch(
+            f"NeuroScape Stage-2 checkpoint mismatch: centroid metadata "
+            f"recorded {centroid_sha!r}; Stage 3 neuroscape bundle "
+            f"provenance recorded {stage3_sha!r}. Re-derive the centroid "
+            f"table from the matching checkpoint or re-run Stage 3 with "
+            f"the matching checkpoint."
+        )
+
+    # Stage 3 `neuroscape` bundles are already in the 64-dim published
+    # domain-embedding space, so the vectors go straight into the
+    # nearest-centroid assignment with no re-projection.
+    cluster_ids, distances = assign_nearest_centroid(vectors, centroid_table)
+
+    algorithm_config = _neuroscape_algorithm_config(config)
+    cache_key_payload = {
+        "input_source_assembly_hash": assembly_hash,
+        "centroid_table_version": centroid_table.table_version,
+        "algorithm_config": algorithm_config,
+        "seed": config.seed,
+    }
+    cache_key = "sha256:" + sha256(
+        json.dumps(cache_key_payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+    bundle_dir = _bundle_output_path(config, entry)
+    if "neuroscape_clusters" not in config.invalidate_kinds and _cache_hit_compatible(
+        bundle_dir, cache_key
+    ):
+        return {
+            "cache": "hit",
+            "n_rows": int(ids.shape[0]),
+            "n_centroids": int(centroid_table.centroids.shape[0]),
+        }
+
+    started_at = datetime.now(timezone.utc).isoformat()
+    write_neuroscape_clusters_bundle(
+        bundle_dir,
+        ids=ids,
+        cluster_ids=cluster_ids,
+        distances=distances,
+        centroid_table=centroid_table,
+        source_model=entry.model_key,
+        seed=config.seed,
+    )
+    completed_at = datetime.now(timezone.utc).isoformat()
+    # Replace the placeholder provenance the writer used with the real one.
+    write_bundle_provenance(
+        bundle_dir / "provenance.json",
+        {
+            "schema_version": "stage4.provenance.v1",
+            "stage": "analysis",
+            "kind": "neuroscape_clusters",
+            "bundle_path": str(
+                bundle_dir.relative_to(Path.cwd())
+                if bundle_dir.is_absolute()
+                and Path.cwd() in bundle_dir.parents
+                else bundle_dir
+            ),
+            "corpus_state_key": config.corpus_state_key,
+            "input_source_assembly_hash": assembly_hash or _kind_state_key(config, entry),
+            "algorithm_config_canonical_json": json.dumps(
+                algorithm_config, sort_keys=True
+            ),
+            "cache_key": cache_key,
+            "code_revision": config.code_revision,
+            "command": config.command_line,
+            "seed": config.seed,
+            "started_at": started_at,
+            "completed_at": completed_at,
+        },
+    )
+    return {
+        "cache": "miss",
+        "n_rows": int(ids.shape[0]),
+        "n_centroids": int(centroid_table.centroids.shape[0]),
+        "distance_mean": float(distances.mean()),
+        "distance_std": float(distances.std()),
+    }
+
+
 # Register on import.
 register_kind_runner("projections", projections_runner)
+register_kind_runner("neuroscape_clusters", neuroscape_clusters_runner)

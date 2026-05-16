@@ -15,15 +15,22 @@ UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python ".[analysis]"
 UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python ".[analysis-sci]"
 .venv/bin/python -m spacy download en_core_sci_lg  # via scispacy
 
-# One-off NeuroScape centroid derivation (downloads + groups the published table).
-# Place the NeuroScape data under data/inputs/neuroscape/ first (DomainEmbeddings/*.h5
-# + neuroscience_articles_1999-2023.csv + neuroscience_clusters_1999-2023.csv).
+# One-off NeuroScape centroid derivation (groups the published table).
+# The published NeuroScape Zenodo deposit (https://zenodo.org/records/14865161)
+# ships as `NeuroScape_v101.zip`. After unzipping, the script discovers both
+# the published nested layout (`CSV/`, `HDF5/DomainEmbeddings/`,
+# `Models/domain_embedding_model.pth`) and the compact flat layout used in
+# tests.
 PYTHONPATH=src .venv/bin/python scripts/derive_neuroscape_centroids.py \
-    --input-root data/inputs/neuroscape \
+    --input-root <path-to-unzipped-NeuroScape_v101> \
     --output-root data/inputs/neuroscape
 # Produces:
 #   data/inputs/neuroscape/centroids__<version>.npy
 #   data/inputs/neuroscape/cluster_table.csv
+#   data/inputs/neuroscape/centroid_metadata.json
+# The published `Models/domain_embedding_model.pth` MUST remain available on
+# disk (its sha256 is recorded in centroid_metadata.json and validated against
+# the Stage 3 `neuroscape` bundle's provenance at analyze-matrix runtime).
 ```
 
 ## 1. Run the default analysis matrix
@@ -34,7 +41,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-matrix
 PYTHONPATH=src .venv/bin/python scripts/run_analyze_matrix.py
 ```
 
-By default this produces **40 bundles** (5 models × 2 inputs × 4 kinds) + 1 canonical rollup file pair (parquet + sqlite). Wall-clock budget: < 30 min (SC-001).
+By default this produces **34 bundles** (10 projections + 10 communities + 10 topic_clusters + 4 neuroscape_clusters, with 6 dim-incompatible NeuroScape-cluster cells skipped) + 1 canonical rollup file pair (parquet + sqlite). Wall-clock budget: < 30 min (SC-001).
 
 Each bundle directory looks like:
 ```

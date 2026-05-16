@@ -68,7 +68,7 @@ __all__ = [
 DEFAULT_MODELS = ("voyage", "minilm", "openai", "pubmedbert", "neuroscape")
 DEFAULT_INPUTS = ("abstract", "claims")
 DEFAULT_KINDS = ("projections", "communities", "neuroscape_clusters", "topic_clusters")
-NEUROSCAPE_COMPATIBLE_MODELS = frozenset({"voyage", "neuroscape"})
+NEUROSCAPE_COMPATIBLE_MODELS = frozenset({"neuroscape"})
 
 
 @dataclass(frozen=True)
@@ -188,9 +188,10 @@ def build_plan(config: AnalysisConfig) -> MatrixPlan:
     Pre-flight validation:
     - Every `(model, input)` referenced MUST resolve to a Stage 3 bundle
       on disk (`InputBundleMissing` otherwise).
-    - `(model, neuroscape_clusters)` is auto-skipped for
-      `model ∉ {voyage, neuroscape}` (Stage-2 lens is Voyage-dim-specific).
-      `strict_matrix=True` turns the skip into a typed error.
+    - `(model, neuroscape_clusters)` is auto-skipped for `model != "neuroscape"`
+      because the published NeuroScape centroids live in the
+      domain-embedding space (FR-002). `strict_matrix=True` turns the
+      skip into a typed error.
     """
     plan = MatrixPlan()
     for model in config.models:
@@ -205,10 +206,11 @@ def build_plan(config: AnalysisConfig) -> MatrixPlan:
                 if kind == "neuroscape_clusters" and model not in NEUROSCAPE_COMPATIBLE_MODELS:
                     if config.strict_matrix:
                         raise AnalysisError(
-                            f"--strict-matrix: ({model}, neuroscape_clusters) is "
-                            f"dim-incompatible (model is not in "
-                            f"{sorted(NEUROSCAPE_COMPATIBLE_MODELS)}); the "
-                            f"published Stage-2 lens requires Voyage-dim input."
+                            f"--strict-matrix: ({model}, neuroscape_clusters) — "
+                            f"this kind only runs for `model == 'neuroscape'`. "
+                            f"The published NeuroScape centroids live in the "
+                            f"domain-embedding space; consume the Stage 3 "
+                            f"neuroscape bundle directly."
                         )
                     plan.entries.append(
                         PlanEntry(
@@ -217,7 +219,7 @@ def build_plan(config: AnalysisConfig) -> MatrixPlan:
                             kind=kind,
                             bundle_path=bundle_path,
                             skipped=True,
-                            skip_reason="dim_incompatible",
+                            skip_reason="non_neuroscape_source",
                         )
                     )
                     continue
@@ -361,8 +363,8 @@ def run_matrix(config: AnalysisConfig) -> int:
                 "input_key": f"{entry.model_key}_{entry.input_source}",
                 "kind": entry.kind,
                 "reason": entry.skip_reason,
-                "model_vector_dim": None,
-                "stage2_expected_dim": 1024,
+                "required_source_model": "neuroscape",
+                "actual_source_model": entry.model_key,
             })
             bundles_skipped += 1
             continue

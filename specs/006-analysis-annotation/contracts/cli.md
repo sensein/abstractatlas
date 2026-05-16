@@ -49,7 +49,7 @@ PYTHONPATH=src .venv/bin/python scripts/run_analyze_matrix.py [OPTIONS]
 | `--seed` | `42` | Forwarded to umap, leidenalg, topic_clusters. |
 | `--cache-root` | `data/cache/analysis` | |
 | `--invalidate KIND` | unset (repeatable) | Force-recompute one analysis kind (e.g., `--invalidate projections`). |
-| `--strict-matrix` | unset | When set, dim-incompatible `(model, neuroscape_clusters)` pairs raise `AnalysisError`. Default behavior is to auto-skip with a structured `skipped` event on stdout. |
+| `--strict-matrix` | unset | When set, `(model, neuroscape_clusters)` pairs where `model != "neuroscape"` raise `AnalysisError` instead of auto-skipping. Default behavior is to auto-skip with a structured `skipped` event on stdout. |
 
 ### Output + provenance
 | Flag | Default | Notes |
@@ -71,9 +71,9 @@ One JSON object per bundle on completion, then a final summary line. Identical t
 
 ```json
 {"event":"bundle_complete","input_key":"voyage_abstract","kind":"communities","bundle_path":"data/outputs/analysis/voyage_abstract/communities__abc123def456/","n_rows":3244,"n_communities":18,"largest_community_share":0.214,"cache":"miss","duration_seconds":12.4}
-{"event":"bundle_skipped","input_key":"minilm_abstract","kind":"neuroscape_clusters","reason":"dim_incompatible","model_vector_dim":384,"stage2_expected_dim":1024}
+{"event":"bundle_skipped","input_key":"voyage_abstract","kind":"neuroscape_clusters","reason":"non_neuroscape_source","required_source_model":"neuroscape","actual_source_model":"voyage"}
 ...
-{"event":"matrix_complete","run_state_key":"...","bundles_written":34,"bundles_skipped":6,"bundles_cached":0,"rollup_path":"data/outputs/analysis/annotations__f0c51e80dc0e.parquet","duration_seconds":1683.2}
+{"event":"matrix_complete","run_state_key":"...","bundles_written":32,"bundles_skipped":8,"bundles_cached":0,"rollup_path":"data/outputs/analysis/annotations__f0c51e80dc0e.parquet","duration_seconds":1683.2}
 ```
 
 ## Exit codes

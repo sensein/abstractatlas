@@ -92,7 +92,7 @@ Files:
 ```
 
 ### neuroscape_clusters (nearest-centroid in published space)
-**Model-compat constraint**: this kind is only computed for `model_key ∈ {voyage, neuroscape}`. Other models are auto-skipped at orchestration time; `--strict-matrix` makes the skip a typed error.
+**Model-compat constraint**: this kind is only computed for `model_key == "neuroscape"`. The published NeuroScape centroids live in the domain-embedding space (64-dim), so the runner consumes the Stage 3 `neuroscape` bundle directly. Every other model is auto-skipped at orchestration time; `--strict-matrix` makes the skip a typed error.
 
 Files:
 - `neuroscape_cluster_ids.npy` — int32, shape `(n,)`
@@ -101,11 +101,11 @@ Files:
 `metadata.json` additions:
 ```json
 {
-  "source_model": "voyage | neuroscape",
-  "stage2_applied": true,
-  "centroid_table_version": "ns2632-v1",
-  "centroid_table_path": "data/inputs/neuroscape/centroids__ns2632-v1.npy",
-  "n_centroids": 2632,
+  "source_model": "neuroscape",
+  "centroid_table_version": "ab12cd34ef56",
+  "centroid_table_path": "data/inputs/neuroscape/centroids__ab12cd34ef56.npy",
+  "domain_model_checkpoint_sha256": "9f...",
+  "n_centroids": 175,
   "distance_mean": 0.31,
   "distance_std": 0.09,
   "distance_percentile_10": 0.18,
@@ -113,7 +113,7 @@ Files:
 }
 ```
 
-(`stage2_applied: true` for `source_model=voyage`; `false` for `source_model=neuroscape` because those vectors are already in the published 64-dim space.)
+(`n_centroids` is discovered at runtime from `cluster_table.csv`; the NeuroScape v1.0.1 snapshot publishes 175 flat clusters.)
 
 Note: there is **no** `topics.json` for this bundle — the NeuroScape cluster labels live in `cluster_table.csv` and join into the `cluster_topics` rollup table directly.
 

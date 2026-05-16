@@ -23,8 +23,8 @@ class AnalysisRun:
 Validation:
 - Every `(model, input)` referenced MUST resolve to a valid Stage 3 bundle on disk before any analysis fires.
 - `run_state_key` is derived from `(corpus_state_key, requested_models, requested_inputs, requested_kinds, seed, skip_llm_topics, strict_matrix, code_revision)`.
-- The orchestrator auto-skips `(model, "neuroscape_clusters")` for `model ∈ {minilm, openai, pubmedbert}` because the published Stage-2 lens is Voyage-dim-specific. Set `strict_matrix=True` to convert the auto-skip into a typed `AnalysisError`.
-- Default matrix size: **34 bundles** (10 projections + 10 communities + 10 topic_clusters + 4 neuroscape_clusters).
+- The orchestrator auto-skips `(model, "neuroscape_clusters")` for `model ∈ {voyage, minilm, openai, pubmedbert}` because the published NeuroScape centroids live in the domain-embedding space and the runner consumes the Stage 3 `neuroscape` bundle directly. Set `strict_matrix=True` to convert the auto-skip into a typed `AnalysisError`.
+- Default matrix size: **32 bundles** (10 projections + 10 communities + 10 topic_clusters + 2 neuroscape_clusters).
 
 ## 2. InputSource
 
@@ -127,8 +127,8 @@ topics = None  # NeuroScape clusters carry their own Title/Description/Keywords/
 ```
 
 Validation:
-- The kind is only computed for dim-compatible source models: `model_key ∈ {voyage, neuroscape}`. For `model_key == "voyage"`, vectors are first projected via `embed.neuroscape.apply_stage2_model`. For `model_key == "neuroscape"`, the Stage 3 bundle is already in the published 64-dim space. For other models (`minilm`, `openai`, `pubmedbert`), the orchestrator auto-skips with a structured `skipped` event; `strict_matrix=True` makes it raise `AnalysisError`.
-- Refuse if `centroid_table_version` is missing or the version recorded inside `cluster_table.csv` mismatches the Stage-2 checkpoint's expected version (CA-007 + edge case 3).
+- The kind is **only** computed for `model_key == "neuroscape"` — the published NeuroScape centroids live in the domain-embedding space, so the runner consumes the Stage 3 `neuroscape` bundle directly. For every other model (`voyage`, `minilm`, `openai`, `pubmedbert`), the orchestrator auto-skips with a structured `skipped` event; `strict_matrix=True` makes it raise `AnalysisError`.
+- Centroid bundle metadata MUST carry: `centroid_table_version`, source CSV sha256s (articles + clusters), HDF5 shard manifest hash, discovered `cluster_count`, discovered `cluster_ids` list, and the `domain_model_checkpoint_sha256`. Before assignment, the runner compares the recorded checkpoint SHA against the Stage 3 `neuroscape` bundle's provenance; mismatch raises `CentroidTableVersionMismatch` (CA-007 + edge case 3).
 
 ### 3d. TopicClustersBundle (kind="topic_clusters")
 
