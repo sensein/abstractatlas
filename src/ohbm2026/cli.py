@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ohbm2026 import analyze as neuroscape
 from ohbm2026 import (
     artifacts,
     assets,
@@ -11,7 +10,10 @@ from ohbm2026 import (
     titles,
     ui,
 )
+from ohbm2026.analyze import clusters as analyze_clusters
+from ohbm2026.analyze import projections as analyze_projections
 from ohbm2026.analyze import stage as analyze_stage
+from ohbm2026.embed import neuroscape as embed_neuroscape
 from ohbm2026.enrich import stage as enrich_stage
 from ohbm2026.fetch import stage as fetch_stage
 from ohbm2026.embed import stage as embed_stage
@@ -98,49 +100,49 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     stage2_parser = subparsers.add_parser("embed-stage2", help="Train and apply a local NeuroScape stage-2 model")
-    _copy_actions(stage2_parser, neuroscape.build_stage2_parser())
+    _copy_actions(stage2_parser, embed_neuroscape.build_stage2_parser())
 
     published_stage2_parser = subparsers.add_parser(
         "apply-published-stage2",
         help="Apply the published NeuroScape stage-2 model to a compatible embedding bundle",
     )
-    _copy_actions(published_stage2_parser, neuroscape.build_apply_pretrained_stage2_parser())
+    _copy_actions(published_stage2_parser, embed_neuroscape.build_apply_pretrained_stage2_parser())
 
     cluster_benchmark_parser = subparsers.add_parser(
         "cluster-benchmark",
         help="Benchmark label-independent clustering methods over a local embedding bundle",
     )
-    _copy_actions(cluster_benchmark_parser, neuroscape.build_cluster_benchmark_parser())
+    _copy_actions(cluster_benchmark_parser, analyze_clusters.build_cluster_benchmark_parser())
 
     semantic_analysis_parser = subparsers.add_parser(
         "semantic-analysis",
         help="Build a semantic graph, communities, and cluster summaries from a local embedding bundle",
     )
-    _copy_actions(semantic_analysis_parser, neuroscape.build_semantic_analysis_parser())
+    _copy_actions(semantic_analysis_parser, analyze_clusters.build_semantic_analysis_parser())
 
     umap_parser = subparsers.add_parser(
         "umap-plot",
         help="Project a local embedding bundle to 2D with UMAP and write an interactive Plotly HTML",
     )
-    _copy_actions(umap_parser, neuroscape.build_umap_parser())
+    _copy_actions(umap_parser, analyze_projections.build_umap_parser())
 
     projection_compare_parser = subparsers.add_parser(
         "compare-projections",
         help="Write a linked UMAP/t-SNE comparison HTML for a local embedding bundle",
     )
-    _copy_actions(projection_compare_parser, neuroscape.build_projection_compare_parser())
+    _copy_actions(projection_compare_parser, analyze_projections.build_projection_compare_parser())
 
     projection_optimize_parser = subparsers.add_parser(
         "optimize-projections",
         help="Score UMAP/t-SNE parameter sets for more separable projected clusters",
     )
-    _copy_actions(projection_optimize_parser, neuroscape.build_projection_optimize_parser())
+    _copy_actions(projection_optimize_parser, analyze_projections.build_projection_optimize_parser())
 
     analyze_stage2_parser = subparsers.add_parser(
         "analyze-stage2",
         help="Compatibility alias for semantic analysis on a local embedding bundle",
     )
-    _copy_actions(analyze_stage2_parser, neuroscape.build_stage2_analysis_parser())
+    _copy_actions(analyze_stage2_parser, analyze_clusters.build_stage2_analysis_parser())
 
     title_audit_parser = subparsers.add_parser(
         "title-audit",
@@ -161,7 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
     _copy_actions(build_ui_parser, ui.build_ui_parser())
 
     manifest_parser = subparsers.add_parser("write-manifest", help="Write the NeuroScape handoff manifest")
-    _copy_actions(manifest_parser, neuroscape.build_manifest_parser())
+    _copy_actions(manifest_parser, embed_neuroscape.build_manifest_parser())
 
     return parser
 
@@ -256,21 +258,21 @@ def main(argv: list[str] | None = None) -> int:
     if command == "analyze-umap-project":
         return _run_analyze_umap_project(subcommand_argv)
     if command == "embed-stage2":
-        return neuroscape.stage2_main(subcommand_argv)
+        return embed_neuroscape.stage2_main(subcommand_argv)
     if command == "apply-published-stage2":
-        return neuroscape.apply_pretrained_stage2_main(subcommand_argv)
+        return embed_neuroscape.apply_pretrained_stage2_main(subcommand_argv)
     if command == "cluster-benchmark":
-        return neuroscape.cluster_benchmark_main(subcommand_argv)
+        return analyze_clusters.cluster_benchmark_main(subcommand_argv)
     if command == "semantic-analysis":
-        return neuroscape.semantic_analysis_main(subcommand_argv)
+        return analyze_clusters.semantic_analysis_main(subcommand_argv)
     if command == "umap-plot":
-        return neuroscape.umap_main(subcommand_argv)
+        return analyze_projections.umap_main(subcommand_argv)
     if command == "compare-projections":
-        return neuroscape.projection_compare_main(subcommand_argv)
+        return analyze_projections.projection_compare_main(subcommand_argv)
     if command == "optimize-projections":
-        return neuroscape.projection_optimize_main(subcommand_argv)
+        return analyze_projections.projection_optimize_main(subcommand_argv)
     if command == "analyze-stage2":
-        return neuroscape.stage2_analysis_main(subcommand_argv)
+        return analyze_clusters.stage2_analysis_main(subcommand_argv)
     if command == "title-audit":
         return titles.main(subcommand_argv)
     if command == "export-ui":
@@ -278,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
     if command == "build-ui":
         return ui.build_ui_main(subcommand_argv)
     if command == "write-manifest":
-        return neuroscape.manifest_main(subcommand_argv)
+        return embed_neuroscape.manifest_main(subcommand_argv)
 
     raise AssertionError(f"Unhandled command: {command}")
 
