@@ -186,22 +186,22 @@ description: "Task list for Stage 4 — Analysis & Annotation"
 
 ### Tests for User Story 4 (REQUIRED FOR BEHAVIOR CHANGES) ⚠️
 
-- [ ] T066 [P] [US4] Write `tests/test_analyze_communities.py::test_faiss_knn_normalized_recipe` — synthetic 100×16 random + L2-normalize → FAISS `IndexFlatIP` kNN with k=10 returns indices + similarities ∈ [0,1] (since vectors are unit-norm)
-- [ ] T067 [P] [US4] Write `tests/test_analyze_communities.py::test_symmetrization_preserves_edges` — `(A + A.T) / 2` retains every original edge weight ≥ original/2
-- [ ] T068 [P] [US4] Write `tests/test_analyze_communities.py::test_leiden_cpm_recovers_duplicates` — 200 rows with 3 near-identical → run Leiden CPM at the resolution that maximizes modularity → the 3 land in one community
-- [ ] T069 [P] [US4] Write `tests/test_analyze_communities.py::test_resolution_sweep_records_every_point` — 20-point linear sweep over `(0.001, 0.1]` records `{resolution, n_communities, modularity}` for each point
-- [ ] T070 [P] [US4] Write `tests/test_analyze_communities.py::test_largest_community_index_zero` — output `community_ids` are sorted by descending community size; `0` is the largest
-- [ ] T071 [P] [US4] Write `tests/test_analyze_communities.py::test_determinism_seed` — same seed → byte-identical `community_ids`
-- [ ] T072 [P] [US4] Write `tests/test_analyze_communities.py::test_degenerate_resolution_warning` — single dominant community holding >90% → `CommunityResolutionDegenerate` warning emitted; bundle still written
+- [X] T066 [P] [US4] Write `tests/test_analyze_communities.py::test_faiss_knn_normalized_recipe` — synthetic 100×16 random + L2-normalize → FAISS `IndexFlatIP` kNN with k=10 returns indices + similarities ∈ [0,1] (since vectors are unit-norm)
+- [X] T067 [P] [US4] Write `tests/test_analyze_communities.py::test_symmetrization_preserves_edges` — `(A + A.T) / 2` retains every original edge weight ≥ original/2
+- [X] T068 [P] [US4] Write `tests/test_analyze_communities.py::test_leiden_cpm_recovers_duplicates` — 200 rows with 3 near-identical → run Leiden CPM at the resolution that maximizes modularity → the 3 land in one community
+- [X] T069 [P] [US4] Write `tests/test_analyze_communities.py::test_resolution_sweep_records_every_point` — 20-point linear sweep over `(0.001, 0.1]` records `{resolution, n_communities, modularity}` for each point
+- [X] T070 [P] [US4] Write `tests/test_analyze_communities.py::test_largest_community_index_zero` — output `community_ids` are sorted by descending community size; `0` is the largest
+- [X] T071 [P] [US4] Write `tests/test_analyze_communities.py::test_determinism_seed` — same seed → byte-identical `community_ids`
+- [X] T072 [P] [US4] Write `tests/test_analyze_communities.py::test_degenerate_resolution_warning` — single dominant community holding >90% → `CommunityResolutionDegenerate` warning emitted; bundle still written
 
 ### Implementation for User Story 4
 
-- [ ] T073 [P] [US4] Implement `src/ohbm2026/analyze/communities.py::build_faiss_knn(vectors, *, k)` — L2-normalize → `faiss.IndexFlatIP` → search top-k → return `(indices, similarities)` (float32)
-- [ ] T074 [P] [US4] Implement `src/ohbm2026/analyze/communities.py::knn_to_graph(indices, similarities, *, symmetrize=True)` — convert to `igraph.Graph` with weighted symmetric edges
-- [ ] T075 [P] [US4] Implement `src/ohbm2026/analyze/communities.py::leiden_cpm_partition(graph, *, resolution, seed)` — calls `leidenalg.find_partition(graph, leidenalg.CPMVertexPartition, weights="weight", resolution_parameter=resolution, seed=seed)`; returns `(community_ids, modularity)`
-- [ ] T076 [P] [US4] Implement `src/ohbm2026/analyze/communities.py::resolution_sweep(graph, *, resolution_min, resolution_max, points, seed)` — linear sweep across `(min, max]`; per point: partition, modularity, n_communities; returns the sweep list plus the chosen plateau-elbow resolution
-- [ ] T077 [P] [US4] Implement `src/ohbm2026/analyze/communities.py::write_communities_bundle(bundle_dir, ids, community_ids, knn_indices, knn_similarities, sweep, selected_resolution, modularity, ...)` — per `contracts/bundle.md` communities section; emits `topics.json` placeholder (filled in by US5's topics stage; or left empty when `--skip-llm-topics` is also passed at run time without US5 wired)
-- [ ] T078 [US4] Wire `communities` dispatch in `src/ohbm2026/analyze/stage.py` — runs `build_faiss_knn` → `knn_to_graph` → `resolution_sweep` → `write_communities_bundle`; sorts ids by descending community size before emitting
+- [X] T073 [P] [US4] Implement `src/ohbm2026/analyze/communities.py::build_faiss_knn(vectors, *, k)` — L2-normalize → `faiss.IndexFlatIP` → search top-k → return `(indices, similarities)` (float32)
+- [X] T074 [P] [US4] Implement `src/ohbm2026/analyze/communities.py::knn_to_graph(indices, similarities, *, symmetrize=True)` — convert to `igraph.Graph` with weighted symmetric edges
+- [X] T075 [P] [US4] Implement `src/ohbm2026/analyze/communities.py::leiden_cpm_partition(graph, *, resolution, seed)` — calls `leidenalg.find_partition(graph, leidenalg.CPMVertexPartition, weights="weight", resolution_parameter=resolution, seed=seed)`; returns `(community_ids, modularity)`
+- [X] T076 [P] [US4] Implement `src/ohbm2026/analyze/communities.py::resolution_sweep(graph, *, resolution_min, resolution_max, points, seed)` — linear sweep across `(min, max]`; per point: partition, modularity, n_communities; returns the sweep list plus the chosen plateau-elbow resolution
+- [X] T077 [P] [US4] Implement `src/ohbm2026/analyze/communities.py::write_communities_bundle(bundle_dir, ids, community_ids, knn_indices, knn_similarities, sweep, selected_resolution, modularity, ...)` — per `contracts/bundle.md` communities section; emits `topics.json` placeholder (filled in by US5's topics stage; or left empty when `--skip-llm-topics` is also passed at run time without US5 wired)
+- [X] T078 [US4] Wire `communities` dispatch in `src/ohbm2026/analyze/stage.py` — runs `build_faiss_knn` → `knn_to_graph` → `resolution_sweep` → `write_communities_bundle`; sorts ids by descending community size before emitting
 
 **Checkpoint**: `ohbmcli analyze-matrix --kinds communities` runs end-to-end and emits 10 bundles + community columns in the rollup. SC-005 verification (≥12 communities, largest ≤30% on Voyage abstract) is exercised in Polish.
 
@@ -258,6 +258,7 @@ description: "Task list for Stage 4 — Analysis & Annotation"
 - [ ] T106 Verify Principle VII compliance — centroid table version is read from `cluster_table.csv` (not hardcoded); UMAP bundle's `supported_algorithms` is discovered from the artifacts actually persisted (not a baked allow-list)
 - [ ] T107 Verify Principle VIII compliance — every bundle's `provenance.json` carries project-relative paths only; `_assert_paths_safe` rejects absolute paths in unit tests + at runtime
 - [ ] T108 Run `.specify/scripts/bash/constitution-check.sh --full` and address any reported violations
+- [ ] T108b Implement spec clarification Q2 (Session 2026-05-15): empty `src/ohbm2026/analyze/__init__.py` of its package-level re-export shell (drop ~120 import lines, leave only the module docstring) and migrate every consumer to explicit submodule paths: `src/ohbm2026/cli.py`, `src/ohbm2026/ui.py`, `src/ohbm2026/poster_layout.py`, `src/ohbm2026/category_evaluation.py`, plus the scripts `plot_voyage_stage2_umap_3d.py`, `write_topic_group_report.py`, `run_gmm_overlap_experiment.py`, `plot_poster_layout_floorplan.py`, `cluster_projection_silhouette.py`, and tests `test_neuroscape.py`, `test_neuroscape_derivation.py`. The test suite must stay at ≥548 passing / 1 pre-existing baseline error.
 - [ ] T109 Final live `ohbmcli analyze-matrix --skip-llm-topics` run — verify zero OpenAI requests fire (verify against the runner's stdout summary which records `llm_calls: 0`)
 
 ---

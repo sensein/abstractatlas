@@ -28,6 +28,14 @@ from ohbm2026.analyze.centroids import (
     load_centroid_table,
     write_neuroscape_clusters_bundle,
 )
+from ohbm2026.analyze.communities import (
+    DEFAULT_KNN_K,
+    DEFAULT_RESOLUTION_MAX,
+    DEFAULT_RESOLUTION_MIN,
+    DEFAULT_RESOLUTION_POINTS,
+    detect_communities,
+    write_communities_bundle,
+)
 from ohbm2026.analyze.provenance import write_bundle_provenance
 from ohbm2026.analyze.stage import (
     AnalysisConfig,
@@ -49,7 +57,7 @@ from ohbm2026.analyze.umap import (
 from ohbm2026.exceptions import AnalysisError
 
 
-__all__ = ["projections_runner", "neuroscape_clusters_runner"]
+__all__ = ["projections_runner", "neuroscape_clusters_runner", "communities_runner"]
 
 
 # ---------------------------------------------------------------------------
@@ -382,6 +390,111 @@ def neuroscape_clusters_runner(
     }
 
 
+# ---------------------------------------------------------------------------
+# communities runner
+# ---------------------------------------------------------------------------
+
+
+def _communities_algorithm_config() -> dict[str, Any]:
+    """The algorithm config hashed into the communities cache key."""
+    return {
+        "knn_k": DEFAULT_KNN_K,
+        "knn_metric": "ip_normalized",
+        "leiden_partition": "CPMVertexPartition",
+        "resolution_min": DEFAULT_RESOLUTION_MIN,
+        "resolution_max": DEFAULT_RESOLUTION_MAX,
+        "resolution_points": DEFAULT_RESOLUTION_POINTS,
+    }
+
+
+def communities_runner(config: AnalysisConfig, entry: PlanEntry) -> dict[str, Any]:
+    """Run FAISS+Leiden+CPM community detection for `(model, input)`.
+
+    Returns `{"cache": "miss"|"hit", "n_rows": N, "n_communities": K, ...}`.
+
+    Per FR-007 + clarification Session 2026-05-14 Q5: builds a
+    cosine-IP kNN graph over L2-normalized vectors, runs Leiden CPM
+    across a 20-point resolution sweep, picks the modularity plateau,
+    and reorders so the largest community is `0`.
+    """
+    from hashlib import sha256
+
+    ids, vectors, assembly_hash = _load_input_matrix(config, entry)
+
+    algorithm_config = _communities_algorithm_config()
+    cache_key_payload = {
+        "input_source_assembly_hash": assembly_hash,
+        "algorithm_config": algorithm_config,
+        "seed": config.seed,
+    }
+    cache_key = "sha256:" + sha256(
+        json.dumps(cache_key_payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+    bundle_dir = _bundle_output_path(config, entry)
+    if "communities" not in config.invalidate_kinds and _cache_hit_compatible(
+        bundle_dir, cache_key
+    ):
+        return {"cache": "hit", "n_rows": int(ids.shape[0])}
+
+    started_at = datetime.now(timezone.utc).isoformat()
+    result = detect_communities(
+        vectors,
+        knn_k=algorithm_config["knn_k"],
+        resolution_min=algorithm_config["resolution_min"],
+        resolution_max=algorithm_config["resolution_max"],
+        resolution_points=algorithm_config["resolution_points"],
+        seed=config.seed,
+    )
+
+    write_communities_bundle(
+        bundle_dir,
+        ids=ids,
+        result=result,
+        source_model=entry.model_key,
+        input_source=entry.input_source,
+        seed=config.seed,
+        knn_k=algorithm_config["knn_k"],
+        resolution_min=algorithm_config["resolution_min"],
+        resolution_max=algorithm_config["resolution_max"],
+        resolution_points=algorithm_config["resolution_points"],
+        topics=None,  # filled by US5's topics-attachment pass
+    )
+    completed_at = datetime.now(timezone.utc).isoformat()
+    write_bundle_provenance(
+        bundle_dir / "provenance.json",
+        {
+            "schema_version": "stage4.provenance.v1",
+            "stage": "analysis",
+            "kind": "communities",
+            "bundle_path": str(
+                bundle_dir.relative_to(Path.cwd())
+                if bundle_dir.is_absolute() and Path.cwd() in bundle_dir.parents
+                else bundle_dir
+            ),
+            "corpus_state_key": config.corpus_state_key,
+            "input_source_assembly_hash": assembly_hash or _kind_state_key(config, entry),
+            "algorithm_config_canonical_json": json.dumps(
+                algorithm_config, sort_keys=True
+            ),
+            "cache_key": cache_key,
+            "code_revision": config.code_revision,
+            "command": config.command_line,
+            "seed": config.seed,
+            "started_at": started_at,
+            "completed_at": completed_at,
+        },
+    )
+    return {
+        "cache": "miss",
+        "n_rows": int(ids.shape[0]),
+        "n_communities": int(result.n_communities),
+        "selected_resolution": float(result.selected_resolution),
+        "largest_community_share": float(result.largest_community_share),
+    }
+
+
 # Register on import.
 register_kind_runner("projections", projections_runner)
 register_kind_runner("neuroscape_clusters", neuroscape_clusters_runner)
+register_kind_runner("communities", communities_runner)
