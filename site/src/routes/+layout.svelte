@@ -46,11 +46,18 @@
 			}
 			sessionStorage.removeItem(SPA_REDIRECT_KEY);
 			if (stash && stash.startsWith('/') && !stash.startsWith('//')) {
-				// Strip the SvelteKit base path from the front; goto()
-				// expects a route-relative URL.
-				const stripped = base && stash.startsWith(base) ? stash.slice(base.length) : stash;
-				if (stripped && stripped !== '/' && stripped !== window.location.pathname) {
-					void goto(stripped, { replaceState: true });
+				// IMPORTANT: SvelteKit's `goto('/foo')` treats a leading
+				// slash as ORIGIN-absolute (relative to document.baseURI),
+				// NOT base-aware. If we strip the base path before calling
+				// goto, the navigation lands outside the SPA's scope —
+				// in PR-preview mode that means escaping `/pr-N/` and
+				// loading the production root (the placeholder home page).
+				// So pass the FULL stash (with base) to goto: SvelteKit
+				// will recognise it as in-scope and route accordingly.
+				const currentFull =
+					window.location.pathname + window.location.search + window.location.hash;
+				if (stash !== currentFull) {
+					void goto(stash, { replaceState: true });
 				}
 			}
 		} catch {

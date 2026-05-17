@@ -274,22 +274,31 @@
 		};
 		// Second trace: a single halo marker for the user-focused abstract so
 		// it pops above the colour-cluster carpet. Drawn last (on top).
+		// For Plotly's `circle-open` symbol the OUTLINE colour comes from
+		// `marker.color` (not `marker.line.color`). Use a thick filled-circle
+		// outline behind a smaller filled circle in the cluster colour — that
+		// way the highlight reads even if the underlying point is dimmed by
+		// the lasso/facet selection.
 		const traces2d: unknown[] = [t1];
 		if (focusedIdx >= 0) {
+			const haloOutline = t === 'dark' ? '#FFFFFF' : '#000000';
 			traces2d.push({
 				type: 'scatter' as const,
 				mode: 'markers' as const,
+				name: 'focused',
 				x: [s.xs2[focusedIdx]],
 				y: [s.ys2[focusedIdx]],
 				marker: {
-					size: 18,
-					color: 'rgba(0,0,0,0)',
-					line: { color: t === 'dark' ? '#FFFFFF' : '#000000', width: 2.5 },
-					symbol: 'circle-open'
+					size: 22,
+					color: haloOutline,
+					symbol: 'circle-open',
+					line: { width: 3, color: haloOutline },
+					opacity: 1
 				},
 				hovertemplate:
 					'<b>FOCUSED · %{customdata[0]}</b><br>%{customdata[1]}<extra></extra>',
 				customdata: [[s.posters[focusedIdx], s.titles[focusedIdx]]] as unknown as number[][],
+				hoverinfo: undefined,
 				showlegend: false
 			});
 		}
