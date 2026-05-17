@@ -416,14 +416,32 @@
 	function ensureRotate() {
 		stopRotate();
 		if (!autoRotate || !plotly || !chart3dEl) return;
+		// Seed the orbit from the user's CURRENT camera so that pausing,
+		// zooming/orbiting, then unpausing continues from where they left off
+		// instead of snapping back to the hard-coded default (r=2.2, z=0.9).
+		let r = 2.2;
+		let z = 0.9;
+		const flLayout = (
+			chart3dEl as unknown as {
+				_fullLayout?: { scene?: { camera?: { eye?: { x: number; y: number; z: number } } } };
+			}
+		)._fullLayout;
+		const eye0 = flLayout?.scene?.camera?.eye;
+		if (eye0 && typeof eye0.x === 'number') {
+			const r0 = Math.hypot(eye0.x, eye0.y);
+			if (r0 > 1e-6) {
+				r = r0;
+				z = eye0.z;
+				rotateAngle = Math.atan2(eye0.y, eye0.x);
+			}
+		}
 		const step = () => {
 			if (!autoRotate || !plotly || !chart3dEl) return;
 			rotateAngle += 0.004;
-			const r = 2.2;
 			const eye = {
 				x: r * Math.cos(rotateAngle),
 				y: r * Math.sin(rotateAngle),
-				z: 0.9
+				z
 			};
 			try {
 				(plotly as unknown as { relayout: (el: HTMLDivElement, p: unknown) => Promise<unknown> }).relayout(
