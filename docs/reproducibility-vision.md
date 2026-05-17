@@ -68,7 +68,6 @@ These workflows are intentionally more experimental. They are expected to
 produce comparative evidence, not silent replacements for canonical outputs.
 That is why they are concentrated under:
 
-- `experiments/`
 - `data/outputs/proposals/`
 - `scripts/layout/` (parked as of Stage 5)
 
@@ -353,8 +352,7 @@ Before changing defaults or starting a new experiment, inspect:
 1. `README.md` for the current operational runbook
 2. `CONSTITUTION.md` for the project’s non-negotiables
 3. `memory/summary.md` for the condensed project history
-4. the closest plan document under `docs/`
-5. the closest experiment `README.md` under `experiments/`
+4. the closest plan document under `docs/` or the closest Spec Kit plan under `specs/<NNN>-<topic>/`
 
 If your change affects canonical outputs, also ask:
 

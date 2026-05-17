@@ -31,7 +31,6 @@ first.
 Catalogs for the rest of the repository:
 
 - [docs/README.md](docs/README.md)
-- [experiments/README.md](experiments/README.md)
 
 Recommended reading order for a new person or agent:
 
@@ -40,7 +39,7 @@ Recommended reading order for a new person or agent:
 3. [docs/README.md](docs/README.md)
 4. [CONSTITUTION.md](CONSTITUTION.md)
 5. [memory/summary.md](memory/summary.md)
-6. the specific plan or experiment README closest to the work you are changing
+6. the specific plan under `specs/` closest to the work you are changing
 
 ## What The Pipeline Produces
 
@@ -224,7 +223,7 @@ Use this as the quick answer to "what do I need before I run this step?"
 | `ohbmcli semantic-analysis` / `cluster-benchmark` / `umap-plot` / `compare-projections` / `optimize-projections` | none | optional `plotly`, `umap-learn` | Purely local once embeddings exist |
 | `scripts/optimize_poster_layout.py` / `scripts/analyze_poster_layout.py` | none | none | Uses local proposal inputs, authors, and layout assets |
 | poster sequencing scripts under `scripts/` | none | none | Use local proposals and embeddings |
-| `ohbmcli export-ui` / `build-ui` | none | none | Consumes local corpora, caches, clusters, and manual inputs |
+| `scripts/build_ui_data.py` | none | none | Stage 6: builds the static-JSON data package consumed by the SvelteKit site under `site/` |
 
 ## Setup
 
@@ -290,7 +289,8 @@ Run these in order when rebuilding the main deliverable from upstream data:
 4. one or more embedding commands such as `embed-minilm`, `embed-voyage`, or `embed-openai`
 5. `ohbmcli apply-published-stage2` if you want the published Voyage stage-2 space
 6. `ohbmcli semantic-analysis`, `cluster-benchmark`, `umap-plot`, or `compare-projections` for the cluster and projection products you want the UI to consume
-7. `ohbmcli export-ui` or `ohbmcli build-ui`
+7. `ohbmcli analyze-matrix` (Stage 4 — produces the canonical `data/outputs/analysis/annotations__<state-key>.{parquet,sqlite}` rollup the Stage 6 site consumes)
+8. `scripts/build_ui_data.py` (Stage 6 — see the "Stage 6: UI" section above)
 
 ### Add Or Refresh A Cluster Family
 
@@ -300,7 +300,7 @@ Use this when you already have the corpora and want a new cluster output:
 2. run `ohbmcli semantic-analysis` for community-detection style outputs
 3. run `ohbmcli cluster-benchmark` for k-sweep style outputs
 4. optionally run `scripts/evaluate_label_systems.py` to compare a new cluster family against the submitter taxonomy
-5. point `export-ui`, `build-ui`, or layout scripts at the new cluster directory
+5. point Stage 4 (`ohbmcli analyze-matrix`) or layout scripts at the new cluster directory
 
 ### Generate Or Refresh A Layout Proposal
 
@@ -319,7 +319,7 @@ Use this when you want a new organizer-facing proposal:
 Use this when you already have a base proposal and want comparative sequencing evidence:
 
 1. pick a base proposal under `data/outputs/proposals/`
-2. run one of the sequencing scripts under `scripts/` into a fresh dated experiment directory under `experiments/` or a fresh local output root under `data/outputs/proposals/`
+2. run one of the sequencing scripts under `scripts/` into a fresh local output root under `data/outputs/proposals/`
 3. keep the experiment outputs immutable and compare them rather than overwriting the active proposal set
 
 ### Minimal UI Refresh
@@ -327,7 +327,7 @@ Use this when you already have a base proposal and want comparative sequencing e
 Use this when the data products already exist locally:
 
 1. rerun only the upstream steps that changed
-2. rerun `ohbmcli export-ui` or `ohbmcli build-ui`
+2. rerun `scripts/build_ui_data.py` to refresh the static-JSON shards under `site/static/data/`
 3. do not rerun hosted/API steps unless their inputs or parameters changed
 
 ## End-To-End Workflow
@@ -747,7 +747,7 @@ PYTHONPATH=src .venv/bin/python scripts/benchmark_poster_sequencing.py \
   --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published \
   --claims-cluster-assignments data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_assignments.json \
   --claims-cluster-summaries data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_summaries.json \
-  --output-root experiments/<date>-poster-sequencing-benchmark/runs/<fresh-run-name>
+  --output-root data/outputs/proposals/poster-sequencing-benchmark__<fresh-run-name>
 ```
 
 Advanced non-diffusion global-path experiment:
@@ -760,7 +760,7 @@ PYTHONPATH=src .venv/bin/python scripts/run_advanced_global_path_experiment.py \
   --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published \
   --claims-cluster-assignments data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_assignments.json \
   --claims-cluster-summaries data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30/cluster_summaries.json \
-  --output-root experiments/<date>-advanced-global-path/runs/<fresh-run-name>
+  --output-root data/outputs/proposals/advanced-global-path__<fresh-run-name>
 ```
 
 The same pattern applies to `scripts/sweep_diffusion_variants.py`,
@@ -771,80 +771,35 @@ relying on older baked-in defaults.
 
 ### 10. Build The Static UI
 
-This is the current latest delivery step.
-
-```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui
-```
-
-The current default UI build uses:
-
-- `data/primary/abstracts.json`
-- `data/primary/abstracts_enriched.json`
-- `data/primary/reference_metadata.json`
-- the OpenAI figure-analysis cache under `data/cache/figure_analysis/`
-- `data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark`
-- `data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30`
-- `data/outputs/experiments/embeddings/minilm_stage1/umap_title-introduction-methods-results-conclusion.json`
-
-By default `build-ui` now writes the local bundle under
-`data/outputs/exported-sites/ui-site__<state-key>/` and mirrors that bundle to
-`export/ui-site/`. Pass `--site-output-dir` or `--publish-dir` to override one
-or both locations.
-
-Useful explicit form if you want to point the UI at a different claims-cluster run:
-
-```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli build-ui \
-  --site-output-dir data/outputs/exported-sites/ui-site__<state-key> \
-  --publish-dir export/ui-site \
-  --cluster-25-dir data/outputs/experiments/embeddings/voyage_stage2_published/clustering_benchmark \
-  --claims-cluster-dir data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30
-```
-
-The exported detail payload now includes:
-
-- merged `claim_extraction` from `data/primary/abstracts_enriched.json`
-- `reference_summary` from `data/primary/reference_metadata.json`
-- `semantic_25` and `claims_28` cluster lenses in the facet and detail metadata
-
-Then serve it locally:
-
-```bash
-.venv/bin/python -m http.server 8000
-```
-
-Open:
-
-- `http://localhost:8000/export/ui-site/`
+The current latest delivery step is **Stage 6 — SvelteKit site under `site/`**, fed by the Python data-package builder under `src/ohbm2026/ui_data/`. See the "Stage 6: UI" section near the top of this README for the canonical build recipe (`scripts/build_ui_data.py` then `pnpm dev` / `pnpm build`). The legacy `ohbmcli export-ui` / `build-ui` commands that wrote a hand-rolled HTML+JSON bundle into `data/outputs/exported-sites/ui-site__<state-key>/` have been removed.
 
 ## Suggested Minimal Rebuilds
 
 If you already have raw abstracts:
 
 - rerun `ohbmcli enrich-abstracts` (per-component caches make it cheap; pass `--invalidate <component>` if a single model identifier changed)
-- rerun `build-ui`
+- rerun `scripts/build_ui_data.py` to refresh the Stage 6 data package
 
 If you already have an enriched corpus and only changed UI code:
 
-- rerun `build-ui`
+- rerun `scripts/build_ui_data.py`
 
 If only one component model changed (e.g., new figure model):
 
 - rerun `ohbmcli enrich-abstracts --invalidate figures --figure-model-id <new>`
-- rerun `build-ui`
+- rerun `scripts/build_ui_data.py`
 
 If you already have embeddings but want new cluster evaluations:
 
 - rerun `cluster-benchmark`
 - optionally rerun `scripts/evaluate_label_systems.py`
-- optionally rerun `build-ui`
+- optionally rerun `ohbmcli analyze-matrix` + `scripts/build_ui_data.py`
 
 If you specifically want to refresh the claims-based semantic lens:
 
 - rerun `embed-minilm --fields claims --output-name minilm_claims`
 - rerun `cluster-benchmark --embeddings-dir data/outputs/experiments/embeddings/minilm_claims --output-dir data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30 --k-min 25 --k-max 30`
-- rerun `build-ui`
+- rerun `ohbmcli analyze-matrix` + `scripts/build_ui_data.py`
 
 If you want to regenerate a proposal without touching the corpora:
 
@@ -912,8 +867,8 @@ If you want to rerun sequencing experiments on an existing proposal:
     `enrich_stage.py`'s references component)
 - `src/ohbm2026/neuroscape.py`
   - embeddings, stage-2 paths, semantic analysis, clustering, projections
-- `src/ohbm2026/ui.py`
-  - static UI export/build pipeline
+- `src/ohbm2026/ui_data/`
+  - Stage 6 static-JSON data-package builders (per-shard envelopes + cross-shard invariants + state-key discovery + reference link-check); CLI entry at `scripts/build_ui_data.py`. Consumed by the SvelteKit site under `site/`.
 - `src/ohbm2026/cli.py`
   - unified CLI entrypoint
 
