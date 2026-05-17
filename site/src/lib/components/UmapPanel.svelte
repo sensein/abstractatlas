@@ -763,7 +763,9 @@
 	}
 	.chart {
 		width: 100%;
-		height: clamp(280px, 45vh, 480px);
+		max-width: 100%;
+		height: clamp(260px, 45vh, 480px);
+		overflow: hidden;
 	}
 	.chart-3d {
 		height: clamp(280px, 45vh, 480px);

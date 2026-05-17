@@ -529,18 +529,34 @@
 	}
 	.controls {
 		display: flex;
-		align-items: flex-end;
-		gap: 0.75rem;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.45rem 0.5rem;
+		width: 100%;
 	}
 	.control-toggle {
 		all: unset;
 		cursor: pointer;
-		padding: 0.45rem 0.8rem;
+		padding: 0.4rem 0.7rem;
 		border-radius: 4px;
 		font-size: 0.85rem;
 		border: 1px solid var(--border-strong);
 		background: var(--bg);
 		color: var(--text);
+		white-space: nowrap;
+	}
+	@media (max-width: 480px) {
+		.control-toggle {
+			font-size: 0.78rem;
+			padding: 0.35rem 0.55rem;
+		}
+	}
+	@media (min-width: 720px) {
+		.controls {
+			width: auto;
+			align-items: flex-end;
+			gap: 0.75rem;
+		}
 	}
 	.control-toggle:hover {
 		background: var(--bg-sunken);

@@ -69,7 +69,22 @@
 		border-radius: 4px;
 		background: var(--bg);
 		color: var(--text);
-		min-width: 8rem;
+		min-width: 6rem;
+		max-width: 100%;
+	}
+	@media (max-width: 480px) {
+		.model-selector {
+			gap: 0.3rem;
+			font-size: 0.78rem;
+		}
+		select {
+			min-width: 4.5rem;
+			padding: 0.3rem 0.35rem;
+			font-size: 0.8rem;
+		}
+		.caption {
+			font-size: 0.65rem;
+		}
 	}
 	select:focus {
 		outline: 2px solid var(--accent);
