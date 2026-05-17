@@ -1,1 +1,0 @@
-{"schema_version":"minilm_vectors.v1","build_info":{"corpus_state_key":"65a972cf14c6","code_revision":"46d9e9e2bed2ff40fa4e85df893aea3a7b7bf172","code_revision_short":"46d9e9e","stage4_rollup_state_key":"f0c51e80dc0e","built_at":"2026-05-17T14:06:48+00:00"},"shape":[3243,384],"dtype":"int8","byte_offset_url":"data/search/minilm_vectors.bin"}
