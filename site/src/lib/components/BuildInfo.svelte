@@ -1,17 +1,25 @@
 <script lang="ts">
 	import type { BuildInfo } from '$lib/shards';
 
-	export let buildInfo: BuildInfo | null = null;
+	/** Build info from the live deploy workflow (VITE_BUILD_SHA env var). */
+	export let deployBuildInfo: BuildInfo | null = null;
+	/** Build info from the data package's manifest.json (when the data SHA differs from the deploy SHA). */
+	export let dataBuildInfo: BuildInfo | null = null;
 
 	let expanded = false;
 
 	function toggle() {
 		expanded = !expanded;
 	}
+
+	$: deploySha = deployBuildInfo?.code_revision_short ?? '';
+	$: dataSha = dataBuildInfo?.code_revision_short ?? '';
+	$: shasDiffer = deploySha && dataSha && deploySha !== dataSha;
+	$: primary = deployBuildInfo ?? dataBuildInfo;
 </script>
 
 <footer class="build-info" data-testid="build-info-footer">
-	{#if buildInfo}
+	{#if primary}
 		<button
 			type="button"
 			on:click={toggle}
@@ -20,24 +28,42 @@
 			class="summary"
 		>
 			<span class="label">build</span>
-			<code data-testid="build-info-short-sha">{buildInfo.code_revision_short}</code>
-			<span class="sep">·</span>
-			<span class="corpus" data-testid="build-info-corpus-state">
-				corpus {buildInfo.corpus_state_key}
-			</span>
-			<span class="sep">·</span>
-			<time datetime={buildInfo.built_at}>{buildInfo.built_at}</time>
+			<code data-testid="build-info-short-sha">{deploySha || dataSha}</code>
+			{#if shasDiffer}
+				<span class="sep">·</span>
+				<span class="label">data</span>
+				<code data-testid="build-info-data-sha">{dataSha}</code>
+			{/if}
+			{#if dataBuildInfo}
+				<span class="sep">·</span>
+				<span class="corpus" data-testid="build-info-corpus-state">
+					corpus {dataBuildInfo.corpus_state_key}
+				</span>
+				<span class="sep">·</span>
+				<time datetime={dataBuildInfo.built_at}>{dataBuildInfo.built_at}</time>
+			{:else if deployBuildInfo}
+				<span class="sep">·</span>
+				<time datetime={deployBuildInfo.built_at}>{deployBuildInfo.built_at}</time>
+			{/if}
 		</button>
 		{#if expanded}
 			<dl id="build-info-detail" class="detail">
-				<dt>code_revision</dt>
-				<dd><code>{buildInfo.code_revision}</code></dd>
-				<dt>corpus_state_key</dt>
-				<dd><code>{buildInfo.corpus_state_key}</code></dd>
-				<dt>stage4_rollup_state_key</dt>
-				<dd><code>{buildInfo.stage4_rollup_state_key}</code></dd>
-				<dt>built_at</dt>
-				<dd><code>{buildInfo.built_at}</code></dd>
+				{#if deployBuildInfo}
+					<dt>deploy code_revision</dt>
+					<dd><code>{deployBuildInfo.code_revision}</code></dd>
+					<dt>deploy built_at</dt>
+					<dd><code>{deployBuildInfo.built_at}</code></dd>
+				{/if}
+				{#if dataBuildInfo}
+					<dt>data code_revision</dt>
+					<dd><code>{dataBuildInfo.code_revision}</code></dd>
+					<dt>data corpus_state_key</dt>
+					<dd><code>{dataBuildInfo.corpus_state_key}</code></dd>
+					<dt>data stage4_rollup_state_key</dt>
+					<dd><code>{dataBuildInfo.stage4_rollup_state_key}</code></dd>
+					<dt>data built_at</dt>
+					<dd><code>{dataBuildInfo.built_at}</code></dd>
+				{/if}
 			</dl>
 		{/if}
 	{:else}

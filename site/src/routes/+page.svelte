@@ -105,14 +105,13 @@
 		gap: 1rem;
 	}
 	.search-row {
-		max-width: 60rem;
-		margin: 0 auto;
 		width: 100%;
 	}
 	.layout {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		gap: 1rem;
+		width: 100%;
 	}
 	.list-pane {
 		min-width: 0;
@@ -159,12 +158,19 @@
 
 	@media (min-width: 1024px) {
 		.layout {
-			grid-template-columns: 1fr minmax(20rem, 22rem);
+			grid-template-columns: minmax(0, 1fr) minmax(22rem, 32rem);
 			align-items: start;
 		}
 		.detail-pane {
 			position: sticky;
 			top: 1rem;
+			max-height: calc(100vh - 2rem);
+			overflow-y: auto;
+		}
+	}
+	@media (min-width: 1600px) {
+		.layout {
+			grid-template-columns: minmax(0, 1fr) minmax(28rem, 38rem);
 		}
 	}
 

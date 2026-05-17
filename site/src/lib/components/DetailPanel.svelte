@@ -143,25 +143,28 @@
 			</section>
 		{/if}
 
-		{#if abstract.reference_urls.some(Boolean) || abstract.reference_dois.some(Boolean)}
+		{#if abstract.reference_urls.some(Boolean) || abstract.reference_dois.some(Boolean) || (abstract.reference_titles ?? []).some(Boolean)}
 			<section class="references" data-testid="detail-references">
 				<h2>References</h2>
-				<ul>
+				<ol>
 					{#each abstract.reference_urls as url, i (url + i)}
 						{@const doi = abstract.reference_dois[i] || ''}
+						{@const title = (abstract.reference_titles ?? [])[i] || ''}
+						{@const linkUrl = url || (doi ? `https://doi.org/${doi}` : '')}
 						<li>
-							{#if url}
-								<a href={url} target="_blank" rel="noopener noreferrer">{url}</a>
-							{:else if doi}
-								<a
-									href={`https://doi.org/${doi}`}
-									target="_blank"
-									rel="noopener noreferrer">{doi}</a
-								>
+							{#if linkUrl}
+								<a href={linkUrl} target="_blank" rel="noopener noreferrer">
+									{title || doi || linkUrl}
+								</a>
+								{#if title && doi}
+									<span class="ref-doi" title="DOI">{doi}</span>
+								{/if}
+							{:else if title}
+								<span>{title}</span>
 							{/if}
 						</li>
 					{/each}
-				</ul>
+				</ol>
 			</section>
 		{/if}
 
@@ -312,18 +315,26 @@
 		border-radius: 999px;
 		font-size: 0.8rem;
 	}
-	.references ul {
-		list-style: none;
-		padding: 0;
+	.references ol {
 		margin: 0;
+		padding-left: 1.25rem;
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.35rem;
+		font-size: 0.85rem;
 	}
 	.references a {
-		font-size: 0.85rem;
 		color: #2c5fa3;
-		word-break: break-all;
+		word-break: normal;
+	}
+	.references a:hover {
+		text-decoration: underline;
+	}
+	.ref-doi {
+		color: #888;
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.78rem;
+		margin-left: 0.5rem;
 	}
 	.detail-footer {
 		display: flex;

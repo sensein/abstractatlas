@@ -7,7 +7,9 @@ populates ``author_ids`` referencing the canonical authors shard.
 
 from __future__ import annotations
 
+import html
 import json
+import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -28,6 +30,44 @@ from ohbm2026.ui_data.state_key import Stage6BuildError
 
 
 SCHEMA_VERSION = "abstracts.v1"
+
+_BLOCK_TAGS = re.compile(r"</?(?:p|div|li|ul|ol|h[1-6]|br|tr|table|tbody|thead|section|article)[^>]*>", re.IGNORECASE)
+_TAG = re.compile(r"<[^>]+>")
+_WHITESPACE = re.compile(r"[ \t ]+")
+_BLANK_LINES = re.compile(r"\n{3,}")
+
+
+def _html_to_text(blob: str | None) -> str:
+    """Convert the rich-text editor HTML stored in `responses[].value` into a
+    paragraph-preserving plain-text string the UI can render with `white-space: pre-wrap`.
+
+    Strips all tags, decodes entities, collapses runs of whitespace, and
+    inserts a blank line at every block-level tag boundary so paragraphs
+    survive. Inline tags (span, strong, em, …) are dropped silently.
+    """
+
+    if not blob:
+        return ""
+    text = str(blob)
+    # Insert paragraph boundaries before stripping block tags.
+    text = _BLOCK_TAGS.sub("\n\n", text)
+    # Strip remaining tags.
+    text = _TAG.sub("", text)
+    # Decode HTML entities (&nbsp; → space, &amp; → &, etc.).
+    text = html.unescape(text)
+    # Normalize whitespace + collapse runs of blank lines.
+    text = _WHITESPACE.sub(" ", text)
+    text = _BLANK_LINES.sub("\n\n", text)
+    return text.strip()
+
+
+_SECTION_QUESTION = {
+    "introduction": "Introduction",
+    "methods": "Methods",
+    "results": "Results",
+    "conclusion": "Conclusion",
+    "references": "References/Citations",
+}
 
 
 def _topics(questions: Mapping[str, Any]) -> dict[str, str]:
@@ -79,28 +119,47 @@ def _facets(
     }
 
 
-def _section(enriched: Mapping[str, Any] | None, name: str) -> str:
-    if not enriched:
+def _section(questions: Mapping[str, Any], name: str) -> str:
+    """Render the section text from the raw corpus's responses.
+
+    The submission form stores the body of each section under a fixed
+    question name (Introduction / Methods / Results / Conclusion /
+    References/Citations) as HTML produced by the rich-text editor. We
+    strip the HTML to plain text with paragraph boundaries preserved so the
+    UI can render it with `white-space: pre-wrap`.
+    """
+
+    question = _SECTION_QUESTION.get(name)
+    if question is None:
         return ""
-    return str(enriched.get(f"{name}_markdown") or "")
+    value = questions.get(question)
+    if value is None:
+        return ""
+    return _html_to_text(value)
 
 
-def _references(record_refs: Iterable[Mapping[str, Any]] | None) -> tuple[list[str], list[str]]:
-    """Return ``(reference_dois, reference_urls)`` as parallel arrays.
+def _references(record_refs: Iterable[Mapping[str, Any]] | None) -> tuple[list[str], list[str], list[str]]:
+    """Return ``(reference_dois, reference_urls, reference_titles)`` as parallel arrays.
 
-    Empty string fills the slot if either piece is missing.
+    Empty string fills the slot if a piece is missing. References without any
+    DOI / URL / title are dropped.
     """
 
     dois: list[str] = []
     urls: list[str] = []
+    titles: list[str] = []
     for ref in record_refs or []:
         doi = str(ref.get("doi") or "")
         url = str(ref.get("url") or "")
-        if not doi and not url:
+        if not url and doi:
+            url = f"https://doi.org/{doi}"
+        title = str(ref.get("title") or "")
+        if not doi and not url and not title:
             continue
         dois.append(doi)
         urls.append(url)
-    return dois, urls
+        titles.append(title)
+    return dois, urls, titles
 
 
 def _load_corpus(corpus_path: Path) -> list[dict[str, Any]]:
@@ -119,7 +178,15 @@ def _load_corpus(corpus_path: Path) -> list[dict[str, Any]]:
 
 
 def _load_references_by_id(references_path: Path | None) -> dict[int, list[dict[str, Any]]]:
-    """Read ``data/primary/reference_metadata.json`` if present."""
+    """Read the curated OpenAlex-resolved references shard.
+
+    ``references_path`` defaults (via the builder CLI) to
+    ``data/cache/reference_metadata/openalex_resolved.json`` — the Stage 2.1
+    canonical store. Each record looks like
+    ``{id, references: [{doi, pmid, openalex_id, title_guess, matched, ...}]}``.
+    Only matched references with a usable DOI / openalex_id / title are
+    surfaced to the UI.
+    """
 
     if references_path is None or not Path(references_path).exists():
         return {}
@@ -136,8 +203,23 @@ def _load_references_by_id(references_path: Path | None) -> dict[int, list[dict[
         if abstract_id is None:
             continue
         refs = entry.get("references") or []
-        if isinstance(refs, list):
-            out[int(abstract_id)] = [r for r in refs if isinstance(r, dict)]
+        if not isinstance(refs, list):
+            continue
+        normalized: list[dict[str, Any]] = []
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            doi = ref.get("doi") or ""
+            url = ""
+            if doi:
+                url = f"https://doi.org/{doi}"
+            elif ref.get("openalex_id"):
+                url = str(ref["openalex_id"])
+            title = ref.get("title_guess") or ref.get("title") or ""
+            if not doi and not url and not title:
+                continue
+            normalized.append({"doi": doi, "url": url, "title": title})
+        out[int(abstract_id)] = normalized
     return out
 
 
@@ -215,7 +297,7 @@ def build_abstracts_records(
 
         questions = question_lookup(raw)
         enriched = enriched_by_id.get(int(abstract_id), {})
-        dois, urls = _references(refs_by_id.get(int(abstract_id)))
+        dois, urls, ref_titles = _references(refs_by_id.get(int(abstract_id)))
         authors = raw.get("authors") or []
         raw_author_ids = [
             int(a["id"]) for a in authors if isinstance(a, dict) and a.get("id") is not None
@@ -240,11 +322,11 @@ def build_abstracts_records(
             "title": cleaned_abstract_title(raw.get("title")) or "",
             "accepted_for": raw.get("accepted_for") or "Unknown",
             "sections": {
-                "introduction": _section(enriched, "introduction"),
-                "methods": _section(enriched, "methods"),
-                "results": _section(enriched, "results"),
-                "conclusion": _section(enriched, "conclusion"),
-                "references": _section(enriched, "references"),
+                "introduction": _section(questions, "introduction"),
+                "methods": _section(questions, "methods"),
+                "results": _section(questions, "results"),
+                "conclusion": _section(questions, "conclusion"),
+                "references": _section(questions, "references"),
             },
             "topics": _topics(questions),
             "methods_checklist": parse_string_list_value(
@@ -254,6 +336,7 @@ def build_abstracts_records(
             "author_ids": author_ids,
             "reference_dois": dois,
             "reference_urls": urls,
+            "reference_titles": ref_titles,
         }
         records.append(record)
     if skipped_no_poster_id:

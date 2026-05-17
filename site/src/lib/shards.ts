@@ -76,6 +76,7 @@ export interface AbstractRecord {
 	author_ids: number[];
 	reference_dois: string[];
 	reference_urls: string[];
+	reference_titles?: string[];
 }
 
 export interface AuthorRecord {

@@ -21,7 +21,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--withdrawn", type=Path, default=None)
     parser.add_argument("--authors", required=True, type=Path)
     parser.add_argument("--enriched", type=Path, default=None)
-    parser.add_argument("--references", type=Path, default=None)
+    parser.add_argument(
+        "--references",
+        type=Path,
+        default=Path("data/cache/reference_metadata/openalex_resolved.json"),
+        help="OpenAlex-resolved references shard (curated). Defaults to the Stage 2.1 canonical path.",
+    )
     parser.add_argument("--analysis-root", dest="analysis_root", type=Path, default=None)
     parser.add_argument("--rollup", type=Path, default=None, help="Explicit Stage 4 rollup .sqlite path.")
     parser.add_argument(

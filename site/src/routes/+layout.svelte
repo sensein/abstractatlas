@@ -5,7 +5,7 @@
 
 	let manifest: Manifest | null = null;
 	const envBuildInfo: BuildInfo | null = buildInfoFromEnv();
-	$: effectiveBuildInfo = manifest?.build_info ?? envBuildInfo;
+	$: dataBuildInfo = manifest?.build_info ?? null;
 
 	onMount(async () => {
 		manifest = await loadManifest();
@@ -13,8 +13,10 @@
 </script>
 
 <svelte:head>
-	{#if effectiveBuildInfo}
-		<title>OHBM 2026 — under construction · {effectiveBuildInfo.code_revision_short}</title>
+	{#if envBuildInfo}
+		<title>OHBM 2026 — under construction · {envBuildInfo.code_revision_short}</title>
+	{:else if dataBuildInfo}
+		<title>OHBM 2026 — under construction · {dataBuildInfo.code_revision_short}</title>
 	{:else}
 		<title>OHBM 2026 — under construction</title>
 	{/if}
@@ -32,7 +34,7 @@
 		<slot />
 	</main>
 
-	<BuildInfoFooter buildInfo={effectiveBuildInfo} />
+	<BuildInfoFooter deployBuildInfo={envBuildInfo} {dataBuildInfo} />
 </div>
 
 <style>
@@ -49,9 +51,7 @@
 		flex-direction: column;
 	}
 	header {
-		padding: 2rem 1rem 1rem;
-		max-width: 56rem;
-		margin: 0 auto;
+		padding: 1.25rem clamp(1rem, 2vw, 2rem) 0.75rem;
 		width: 100%;
 		box-sizing: border-box;
 	}
@@ -67,9 +67,7 @@
 	}
 	main {
 		flex: 1;
-		padding: 1rem;
-		max-width: 56rem;
-		margin: 0 auto;
+		padding: 0.5rem clamp(1rem, 2vw, 2rem) 1rem;
 		width: 100%;
 		box-sizing: border-box;
 	}

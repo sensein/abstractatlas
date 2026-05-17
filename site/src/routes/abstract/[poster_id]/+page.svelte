@@ -66,8 +66,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
-		max-width: 56rem;
-		margin: 0 auto;
 		width: 100%;
 	}
 	.back a {
