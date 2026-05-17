@@ -29,21 +29,35 @@
 		>
 			<span class="label">build</span>
 			<code data-testid="build-info-short-sha">{deploySha || dataSha}</code>
+			<!--
+				Timestamp prefers the DEPLOY time — that's the version-of-this-
+				page time, baked at build and stable across the session. The
+				data package's timestamp shows up only when the SHAs differ
+				(so the disclosure has a job to do), and is labelled `data` so
+				it's distinguishable from the deploy time. Earlier versions
+				flipped the displayed timestamp from deploy → data when the
+				manifest loaded, which looked like the build time "rolled back".
+			-->
+			{#if deployBuildInfo}
+				<span class="sep">·</span>
+				<time datetime={deployBuildInfo.built_at}>{deployBuildInfo.built_at}</time>
+			{:else if dataBuildInfo}
+				<span class="sep">·</span>
+				<time datetime={dataBuildInfo.built_at}>{dataBuildInfo.built_at}</time>
+			{/if}
 			{#if shasDiffer}
 				<span class="sep">·</span>
 				<span class="label">data</span>
 				<code data-testid="build-info-data-sha">{dataSha}</code>
+				<time class="data-time" datetime={dataBuildInfo!.built_at}>
+					({dataBuildInfo!.built_at})
+				</time>
 			{/if}
 			{#if dataBuildInfo}
 				<span class="sep">·</span>
 				<span class="corpus" data-testid="build-info-corpus-state">
 					corpus {dataBuildInfo.corpus_state_key}
 				</span>
-				<span class="sep">·</span>
-				<time datetime={dataBuildInfo.built_at}>{dataBuildInfo.built_at}</time>
-			{:else if deployBuildInfo}
-				<span class="sep">·</span>
-				<time datetime={deployBuildInfo.built_at}>{deployBuildInfo.built_at}</time>
 			{/if}
 		</button>
 		{#if expanded}
@@ -99,6 +113,10 @@
 	}
 	.sep {
 		color: var(--text-faint);
+	}
+	.data-time {
+		color: var(--text-faint);
+		font-size: 0.9em;
 	}
 	.detail {
 		margin: 0.5rem 0 0;
