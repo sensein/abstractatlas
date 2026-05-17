@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Loading… · OHBM 2026 Atlas</title>
+		<style>
+			html, body { margin: 0; padding: 0; background: #fafafa; color: #333; font-family: -apple-system, system-ui, sans-serif; }
+			.box { max-width: 28rem; margin: 18vh auto; padding: 2rem; text-align: center; }
+			h1 { font-size: 1rem; font-weight: 600; margin: 0 0 0.5rem; }
+			p { font-size: 0.85rem; color: #666; margin: 0.25rem 0; }
+			@media (prefers-color-scheme: dark) {
+				html, body { background: #121417; color: #ececec; }
+				p { color: #999; }
+			}
+		</style>
+	</head>
+	<body>
+		<noscript>
+			<div class="box">
+				<h1>JavaScript required</h1>
+				<p>This page needs JavaScript to load. Try <a href="/">the home page</a>.</p>
+			</div>
+		</noscript>
+		<div class="box" id="msg">
+			<h1>Loading…</h1>
+			<p>Restoring your deep link.</p>
+		</div>
+		<script>
+			// GitHub Pages 404-fallback redirect for the OHBM 2026 Atlas SPA.
+			// gh-pages serves THIS file for any URL that doesn't match an
+			// existing path. SPA routes like `/abstract/M-AM-101/` (and
+			// PR-preview equivalents `/pr-9/abstract/M-AM-101/`) live behind
+			// the SPA shell at the base root (`/` or `/pr-N/`). We:
+			//   1. Detect the base path from the requested URL.
+			//   2. Stash the full original path in sessionStorage.
+			//   3. Replace location with the SPA shell's index URL.
+			// The layout's onMount reads the stash and uses `goto()` to
+			// client-route to the original deep link.
+			(function () {
+				var loc = window.location;
+				var pathname = loc.pathname || '/';
+				var segments = pathname.replace(/^\/+/, '').split('/').filter(Boolean);
+				var basePath = '';
+				if (segments.length > 0 && /^pr-\d+$/.test(segments[0])) {
+					basePath = '/' + segments[0];
+				}
+				var fullPath = pathname + (loc.search || '') + (loc.hash || '');
+				try {
+					sessionStorage.setItem('ohbm2026.spa.redirect', fullPath);
+				} catch (e) { /* private mode or quota — best effort */ }
+				loc.replace(basePath + '/');
+			})();
+		</script>
+	</body>
+</html>
