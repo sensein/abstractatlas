@@ -14,7 +14,7 @@
 		type Manifest,
 		type TopicShard
 	} from '$lib/shards';
-	import { activeFilters, cartOnly, focusedAbstract, lassoSelection, searchQuery, selectedCell } from '$lib/stores/selection';
+	import { activeFilters, authorChips, cartOnly, focusedAbstract, lassoSelection, searchQuery, selectedCell } from '$lib/stores/selection';
 	import { lexicalSearch } from '$lib/filter';
 	import { filterByFacets, recomputeFacets, type FacetCellContext } from '$lib/facets';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -151,6 +151,9 @@
 	$: facetCtx = buildFacetCtx(cellShard, cellTopics);
 	$: facetIds = filterByFacets(abstracts, $activeFilters, facetCtx);
 	$: cartIds = $cartOnly ? cartIdsFromStore(abstractsByPosterId, $cartStore) : null;
+	// Build a Map<author_name, abstract_ids> on the fly when the chip set
+	// changes, then intersect. Empty chip set → null (no filter).
+	$: authorChipIds = computeAuthorChipIds($authorChips, abstracts, authorsById);
 	// Saved-only is a DOMINANT filter — when ON, it overrides the search /
 	// facet / lasso state so the user sees their full saved list. Toggling
 	// it off restores the prior filter state (search box text, active
@@ -160,10 +163,10 @@
 	// don't further narrow the result list until Saved-only is turned off.
 	$: filteredIds = $cartOnly
 		? cartIds
-		: intersect(intersect(searchIds, $lassoSelection), facetIds);
+		: intersect(intersect(intersect(searchIds, $lassoSelection), facetIds), authorChipIds);
 	$: preFilterForFacetCounts = $cartOnly
 		? cartIds
-		: intersect(searchIds, $lassoSelection);
+		: intersect(intersect(searchIds, $lassoSelection), authorChipIds);
 	$: facetCounts = recomputeFacets(abstracts, $activeFilters, preFilterForFacetCounts, facetCtx);
 
 	function cartIdsFromStore(
@@ -176,6 +179,46 @@
 			if (rec) out.add(rec.abstract_id);
 		}
 		return out;
+	}
+
+	/**
+	 * Given the active author chips, return the union of abstract_ids
+	 * whose author list contains any chip name. Empty chip set returns
+	 * null (= no filter). Names match via case-insensitive + NFD-folded
+	 * comparison so "García" and "Garcia" are equivalent.
+	 */
+	function computeAuthorChipIds(
+		chips: Set<string>,
+		all: AbstractRecord[],
+		byId: Map<number, AuthorRecord>
+	): Set<number> | null {
+		if (!chips.size) return null;
+		const norm = (s: string) =>
+			s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+		const wanted = new Set([...chips].map(norm));
+		const out = new Set<number>();
+		for (const rec of all) {
+			for (const aid of rec.author_ids) {
+				const name = byId.get(aid)?.name;
+				if (name && wanted.has(norm(name))) {
+					out.add(rec.abstract_id);
+					break;
+				}
+			}
+		}
+		return out;
+	}
+
+	function removeChip(name: string) {
+		authorChips.update((s) => {
+			if (!s.has(name)) return s;
+			const next = new Set(s);
+			next.delete(name);
+			return next;
+		});
+	}
+	function clearAllChips() {
+		authorChips.set(new Set());
 	}
 
 	function buildFacetCtx(
@@ -233,6 +276,34 @@
 	<div class="top-row">
 		<div class="search-row">
 			<SearchBar />
+			{#if $authorChips.size > 0}
+				<div class="author-chips" data-testid="author-chips">
+					<span class="chips-label">authors:</span>
+					{#each [...$authorChips] as name (name)}
+						<span class="chip" data-testid="author-chip">
+							<span class="chip-name">{name}</span>
+							<button
+								type="button"
+								class="chip-x"
+								on:click={() => removeChip(name)}
+								aria-label={`Remove ${name} from author filter`}
+								title={`Remove ${name}`}
+								data-testid="author-chip-remove"
+							>×</button>
+						</span>
+					{/each}
+					{#if $authorChips.size > 1}
+						<button
+							type="button"
+							class="chip-clear-all"
+							on:click={clearAllChips}
+							data-testid="author-chips-clear"
+						>
+							clear all
+						</button>
+					{/if}
+				</div>
+			{/if}
 		</div>
 		{#if loaded && !dataMissing}
 			<div class="controls">
@@ -399,6 +470,60 @@
 	.search-row {
 		flex: 1 1 22rem;
 		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	.author-chips {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.35rem;
+	}
+	.chips-label {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		background: var(--accent-soft-bg);
+		color: var(--accent-soft-text, var(--text));
+		padding: 0.15rem 0.5rem 0.15rem 0.6rem;
+		border-radius: 999px;
+		font-size: 0.78rem;
+		border: 1px solid var(--accent);
+	}
+	.chip-x {
+		all: unset;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 0.9rem;
+		height: 0.9rem;
+		line-height: 1;
+		font-size: 0.85rem;
+		color: var(--accent);
+		border-radius: 999px;
+	}
+	.chip-x:hover {
+		background: var(--accent);
+		color: var(--accent-text, white);
+	}
+	.chip-clear-all {
+		all: unset;
+		cursor: pointer;
+		font-size: 0.7rem;
+		color: var(--text-muted);
+		text-decoration: underline;
+		padding: 0.15rem 0.3rem;
+	}
+	.chip-clear-all:hover {
+		color: var(--text);
 	}
 	.controls {
 		display: flex;

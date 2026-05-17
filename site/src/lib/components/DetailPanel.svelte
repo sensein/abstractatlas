@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import { focusedAbstract, searchQuery, activeFilters, lassoSelection } from '$lib/stores/selection';
+	import { focusedAbstract, authorChips } from '$lib/stores/selection';
 	import { cartStore } from '$lib/stores/cart';
 	import {
 		loadAllCellsWithTopics,
@@ -215,28 +215,19 @@
 	}
 
 	/**
-	 * Replace the current search with the author's name. Asks first because
-	 * this overwrites whatever the user had typed, clears any active facet
-	 * filters / lasso selection, and (when on the permalink page) navigates
-	 * away from the abstract they're reading.
+	 * Add the author's name to the active author-chip set and (on the
+	 * permalink page) navigate back to the home page so the result list
+	 * shows the filter result. Non-destructive: chips coexist with the
+	 * search query, facets, and lasso, and can be removed individually.
 	 */
 	async function searchByAuthor(name: string): Promise<void> {
 		if (!name) return;
-		const currentlyTyped = $searchQuery.trim();
-		const hasState =
-			!!currentlyTyped || $activeFilters.size > 0 || $lassoSelection !== null;
-		if (hasState) {
-			const msg =
-				`Search for abstracts by "${name}"?\n\n` +
-				`This will replace your current search` +
-				($activeFilters.size > 0 ? ' and clear active filters' : '') +
-				($lassoSelection !== null ? ' and clear the lasso selection' : '') +
-				'.';
-			if (!window.confirm(msg)) return;
-		}
-		$searchQuery = name;
-		$activeFilters = new Map();
-		$lassoSelection = null;
+		authorChips.update((s) => {
+			if (s.has(name)) return s;
+			const next = new Set(s);
+			next.add(name);
+			return next;
+		});
 		if (!compact) {
 			await goto(`${base}/`);
 		} else if (typeof window !== 'undefined') {
@@ -292,7 +283,7 @@
 		<h1 class="detail-title" data-testid="detail-title">{abstract.title}</h1>
 
 		<section class="authors" data-testid="detail-authors">
-			<h2>Authors <span class="hint-inline">click a name to search</span></h2>
+			<h2>Authors <span class="hint-inline">click to filter by author</span></h2>
 			{#if compact}
 				<p class="author-compact">
 					{#each authorList as author, i (author.author_id)}<!--
@@ -837,6 +828,10 @@
 			column-gap: 1.5rem;
 			row-gap: 0.5rem;
 			align-items: start;
+			/* `dense` lets each section back-fill the first empty cell in its
+			   forced column — without it, DOM-order interleaving leaves vast
+			   gaps because each row only fills one column before advancing. */
+			grid-auto-flow: dense;
 		}
 		.detail-content.zoned > [data-zone='submitter'] {
 			grid-column: 1;

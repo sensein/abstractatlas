@@ -19,3 +19,11 @@ export const focusedAbstract = writable<string | null>(null);
  *  cart. Pairs with the bulk-add affordance: save a set, flip this on,
  *  refine. Default off. Not persisted; resets per session. */
 export const cartOnly = writable<boolean>(false);
+
+/** Active author-name chips. Clicking an author name in any detail view
+ *  adds the name to this set; the result list intersects with abstracts
+ *  whose `author_ids` include any of these names. Render as removable
+ *  chips next to the search bar; clearing them all returns to the
+ *  unfiltered (by author) state. Non-destructive — coexists with the
+ *  search query / facets / lasso. */
+export const authorChips = writable<Set<string>>(new Set());
