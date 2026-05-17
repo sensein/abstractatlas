@@ -1,0 +1,121 @@
+# References registry for the About page + Stage-6 build-time link check.
+#
+# Each entry is HEAD-checked by `src/ohbm2026/ui_data/link_check.py` during
+# the deploy build (T086 + T088). 4xx / 5xx / timeout → non-zero exit →
+# CI fails the deploy. Update entries here when a paper moves / a model
+# card gets a new URL; do not let drift accumulate.
+#
+# `section` groups references by pipeline stage so the about page can
+# render them under the matching deep-dive without hard-coding.
+
+references:
+  # ---- Stage 1 — fetch ----
+  - section: stage1
+    title: Oxford Abstracts platform
+    authors: Oxford Abstracts Ltd.
+    year: 2025
+    url: https://app.oxfordabstracts.com/
+
+  # ---- Stage 2 — enrichment ----
+  - section: stage2
+    title: Evidence and Conclusion Ontology (ECO)
+    authors: Giglio et al.
+    year: 2019
+    url: https://evidenceontology.org/
+    doi: 10.1093/nar/gky1036
+  - section: stage2
+    title: OpenAlex — Open scholarly catalog
+    authors: OurResearch
+    year: 2024
+    url: https://openalex.org/
+  - section: stage2
+    title: GPT-5.4-mini Vision model card
+    authors: OpenAI
+    year: 2026
+    url: https://platform.openai.com/docs/models/gpt-5-4
+
+  # ---- Stage 3 — embeddings ----
+  - section: stage3
+    title: 'MiniLM: Deep Self-Attention Distillation for Task-Agnostic Compression'
+    authors: Wang et al.
+    year: 2020
+    url: https://arxiv.org/abs/2002.10957
+    doi: 10.48550/arXiv.2002.10957
+  - section: stage3
+    title: 'sentence-transformers/all-MiniLM-L6-v2 (HF model card)'
+    authors: Reimers, Sentence-Transformers
+    year: 2022
+    url: https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2
+  - section: stage3
+    title: 'BiomedNLP-PubMedBERT-base-uncased-abstract (HF model card)'
+    authors: Microsoft Research
+    year: 2021
+    url: https://huggingface.co/microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract
+  - section: stage3
+    title: 'OpenAI text-embedding-3-small documentation'
+    authors: OpenAI
+    year: 2024
+    url: https://platform.openai.com/docs/guides/embeddings
+  - section: stage3
+    title: 'Voyage AI — embeddings documentation'
+    authors: Voyage AI
+    year: 2024
+    url: https://docs.voyageai.com/docs/embeddings
+  - section: stage3
+    title: 'NeuroScape — code repository'
+    authors: sensein
+    year: 2024
+    url: https://github.com/sensein/neuroscape
+  - section: stage3
+    title: 'NeuroScape: a domain-specific embedding for neuroscience abstracts'
+    authors: Vali Tehrani et al.
+    year: 2024
+    url: https://apertureneuro.org/article/124574-neuroscape-a-domain-specific-embedding-for-neuroscience-abstracts
+
+  # ---- Stage 4 — analysis ----
+  - section: stage4
+    title: 'UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction'
+    authors: McInnes, Healy & Melville
+    year: 2018
+    url: https://arxiv.org/abs/1802.03426
+    doi: 10.48550/arXiv.1802.03426
+  - section: stage4
+    title: 'From Louvain to Leiden: guaranteeing well-connected communities'
+    authors: Traag, Waltman & van Eck
+    year: 2019
+    url: https://www.nature.com/articles/s41598-019-41695-z
+    doi: 10.1038/s41598-019-41695-z
+  - section: stage4
+    title: 'HDBSCAN: hierarchical density-based clustering'
+    authors: McInnes & Healy
+    year: 2017
+    url: https://joss.theoj.org/papers/10.21105/joss.00205
+    doi: 10.21105/joss.00205
+  - section: stage4
+    title: 'FAISS — Billion-scale similarity search'
+    authors: Johnson, Douze & Jégou
+    year: 2019
+    url: https://arxiv.org/abs/1702.08734
+    doi: 10.48550/arXiv.1702.08734
+  - section: stage4
+    title: 'spaCy — Industrial-strength NLP'
+    authors: Explosion AI
+    year: 2024
+    url: https://spacy.io/
+
+  # ---- Stage 6 — UI ----
+  - section: stage6
+    title: 'OHBM 2026 Atlas — source repository'
+    authors: sensein
+    year: 2026
+    url: https://github.com/sensein/ohbm2026
+  - section: stage6
+    title: 'transformers.js — In-browser ML for the web'
+    authors: Xenova / Hugging Face
+    year: 2024
+    url: https://huggingface.co/docs/transformers.js
+  - section: stage6
+    title: 'LinkML — Linked Data Modeling Language'
+    authors: LinkML community
+    year: 2024
+    url: https://linkml.io/linkml/

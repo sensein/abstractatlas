@@ -219,15 +219,15 @@ The MVP user-facing slice. The first PR that exercises the now-live preview pipe
 
 ### Tests first
 
-- [ ] T077 [P] [US6] Write `site/src/tests/unit/tour.test.ts` — `tourStore.start()` sets `currentStep = 0`; `tourStore.next()` advances; `tourStore.skip()` resets + marks-as-dismissed in localStorage. Red until T078.
+- [X] T077 [P] [US6] Write `site/src/tests/unit/tour.test.ts` — `tourStore.start()` sets `currentStep = 0`; `tourStore.next()` advances; `tourStore.skip()` resets + marks-as-dismissed in localStorage. Red until T078.
 
 ### Implementation
 
-- [ ] T078 [P] [US6] Create `site/src/lib/stores/tour.ts` with a state machine: `idle | running | dismissed`. Persists "user dismissed CTA at least once" + "tour finished/skipped" flags in localStorage under `ohbm2026.ui.tour.v1`. Verify T077 turns green.
-- [ ] T079 [P] [US6] Create `site/src/lib/components/Tour.svelte` using `shepherd.js`. Steps: (1) search bar, (2) model selector, (3) UMAP tab, (4) lasso (desktop only — conditional on viewport), (5) facets, (6) cart. Each step has next/prev/skip; the layout adapts on mobile (tooltip stacks below the highlight).
-- [ ] T080 [US6] Add a "Take the tour" button to the header (always visible) + a "?" help icon (always visible) that re-launches the tour. CTA banner one-time on first visit; dismissible.
+- [X] T078 [P] [US6] Create `site/src/lib/stores/tour.ts` with a state machine: `idle | running | dismissed`. Persists "user dismissed CTA at least once" + "tour finished/skipped" flags in localStorage under `ohbm2026.ui.tour.v1`. Verify T077 turns green.
+- [X] T079 [P] [US6] Create `site/src/lib/components/Tour.svelte` using `shepherd.js`. Steps: (1) search bar, (2) model selector, (3) UMAP tab, (4) lasso (desktop only — conditional on viewport), (5) facets, (6) cart. Each step has next/prev/skip; the layout adapts on mobile (tooltip stacks below the highlight).
+- [X] T080 [US6] Add a "Take the tour" button to the header (always visible) + a "?" help icon (always visible) that re-launches the tour. CTA banner one-time on first visit; dismissible.
 - [ ] T081 [P] [US6] Add Playwright test `site/src/tests/e2e/tour.spec.ts` covering the 2 US6 acceptance scenarios. Verify it passes.
-- [ ] T082 [US6] Commit US6. Tag `stage6-us6-tour`.
+- [X] T082 [US6] Commit US6. Tag `stage6-us6-tour`.
 
 ---
 
@@ -239,16 +239,16 @@ The MVP user-facing slice. The first PR that exercises the now-live preview pipe
 
 ### Tests first
 
-- [ ] T083 [P] [US7] Write `tests/test_ui_data_link_check.py::test_blocks_4xx_url` — given a fixture YAML with one `https://httpbin.org/status/404` URL, the link checker exits non-zero. Use a small fixture YAML; mock the HTTP HEAD via `responses`. Red until T085.
-- [ ] T084 [P] [US7] Write `tests/test_ui_data_link_check.py::test_passes_clean_yaml` — all-200 URL set returns exit 0. Red until T085.
+- [X] T083 [P] [US7] Write `tests/test_ui_data_link_check.py::test_blocks_4xx_url` — given a fixture YAML with one `https://httpbin.org/status/404` URL, the link checker exits non-zero. Use a small fixture YAML; mock the HTTP HEAD via `responses`. Red until T085.
+- [X] T084 [P] [US7] Write `tests/test_ui_data_link_check.py::test_passes_clean_yaml` — all-200 URL set returns exit 0. Red until T085.
 
 ### Implementation
 
-- [ ] T085 [P] [US7] Create `specs/008-ui-rewrite/contracts/references.yaml` — the source-of-truth registry per research.md R9. Initial sections: Stage 1 (Oxford Abstracts GraphQL docs), Stage 2 (figure interpretation: GPT-4-vision model card; claim extraction: ECO ontology paper), Stage 3 (model cards for voyage / minilm / openai / pubmedbert + NeuroScape Stage-2 paper), Stage 4 (UMAP McInnes 2018, Leiden Traag 2019, HDBSCAN McInnes 2017, FAISS Johnson 2017, spaCy + BERTopic). Each entry: `{section, title, authors, year, url, doi?}`.
-- [ ] T086 [P] [US7] Create `src/ohbm2026/ui_data/link_check.py` with `link_check(yaml_path) -> int` — parses YAML, HEADs each URL with 10s timeout, returns 0 on all-200, 3 on any 4xx/5xx (per contracts/data-package.md exit codes). Verify T083 + T084 turn green.
+- [X] T085 [P] [US7] Create `specs/008-ui-rewrite/contracts/references.yaml` — the source-of-truth registry per research.md R9. Initial sections: Stage 1 (Oxford Abstracts GraphQL docs), Stage 2 (figure interpretation: GPT-4-vision model card; claim extraction: ECO ontology paper), Stage 3 (model cards for voyage / minilm / openai / pubmedbert + NeuroScape Stage-2 paper), Stage 4 (UMAP McInnes 2018, Leiden Traag 2019, HDBSCAN McInnes 2017, FAISS Johnson 2017, spaCy + BERTopic). Each entry: `{section, title, authors, year, url, doi?}`.
+- [X] T086 [P] [US7] Create `src/ohbm2026/ui_data/link_check.py` with `link_check(yaml_path) -> int` — parses YAML, HEADs each URL with 10s timeout, returns 0 on all-200, 3 on any 4xx/5xx (per contracts/data-package.md exit codes). Verify T083 + T084 turn green.
 - [X] T087 [P] [US7] `site/src/routes/about/+page.svelte` — overview + 5 collapsible per-stage deep-dives (Stage 1 fetch → Stage 2 enrichment → Stage 3 embeddings → Stage 4 communities/UMAP → Stage 6 this site). References inlined as a typed object literal; build-time YAML + `link_check.py` validation is on the polish list (T083–T088). External links use `target="_blank" rel="noopener noreferrer"`. Linked from the layout header.
-- [ ] T088 [US7] Wire `link_check` into the GitHub Action build path (between data-package build and site build). Exit non-zero blocks the deploy.
-- [ ] T089 [US7] Commit US7. Tag `stage6-us7-about`.
+- [X] T088 [US7] Wire `link_check` into the GitHub Action build path (between data-package build and site build). Exit non-zero blocks the deploy.
+- [X] T089 [US7] Commit US7. Tag `stage6-us7-about`.
 
 ---
 
@@ -256,13 +256,13 @@ The MVP user-facing slice. The first PR that exercises the now-live preview pipe
 
 - [ ] T090 [P] Add a Lighthouse-CI check to the deploy workflow: assert SC-001 (first interactive paint ≤ 3 s) + SC-006 (data package size). Add to `deploy-ui.yml` as a non-blocking warning for the first deploy, then promote to a hard gate after one production run establishes the baseline.
 - [ ] T091 [P] Accessibility audit: run `pnpm exec axe-core` against the rendered HTML; fix any color-contrast, focus-order, or missing-alt issues. Target WCAG 2.1 AA.
-- [ ] T092 [P] Reconcile `CLAUDE.md` after all US merges — verify the SPECKIT block points at `specs/008-ui-rewrite/plan.md` and that the module-list entry for `src/ohbm2026/ui_data/` + `site/` reflects the final shipped surface. The bulk of CLAUDE.md updates rode in with US8 (T027) per Constitution IV; this is the consolidation pass only.
-- [ ] T093 [P] Reconcile `README.md` after all US merges — verify the "Stage 6: UI" section reflects the final command surface. The build-and-serve recipe was added in US1 (T041); the production GitHub Pages URL was added in US8 (T027). This task only patches drift introduced by the intervening user-story PRs.
-- [ ] T094 [P] Update `docs/reproducibility-vision.md` to add Stage 6 to the "Reproduction Ladder" section: the UI build is now part of the canonical pipeline; the data package is the output of `scripts/build_ui_data.py`.
-- [ ] T095 Run the constitution check: `.specify/scripts/bash/constitution-check.sh --full`. Expect exit 0.
+- [X] T092 [P] Reconcile `CLAUDE.md` after all US merges — verify the SPECKIT block points at `specs/008-ui-rewrite/plan.md` and that the module-list entry for `src/ohbm2026/ui_data/` + `site/` reflects the final shipped surface. The bulk of CLAUDE.md updates rode in with US8 (T027) per Constitution IV; this is the consolidation pass only.
+- [X] T093 [P] Reconcile `README.md` after all US merges — verify the "Stage 6: UI" section reflects the final command surface. The build-and-serve recipe was added in US1 (T041); the production GitHub Pages URL was added in US8 (T027). This task only patches drift introduced by the intervening user-story PRs.
+- [X] T094 [P] Update `docs/reproducibility-vision.md` to add Stage 6 to the "Reproduction Ladder" section: the UI build is now part of the canonical pipeline; the data package is the output of `scripts/build_ui_data.py`.
+- [X] T095 Run the constitution check: `.specify/scripts/bash/constitution-check.sh --full`. Expect exit 0.
 - [ ] T096 [P] Full SC sweep against the live preview: SC-001 (Lighthouse), SC-002 (search latency stopwatch), SC-003 (cell-switch timing), SC-004 (mobile Playwright at 360 × 640), SC-005 (data-package scan for withdrawn), SC-006 (`du -sh site/static/data/`), SC-007 (link checker), SC-008 (PR-preview timing observation **— verify the Deployments box, NOT a bot comment, is the surface; sample at least 3 distinct PRs and report median + max rather than computing a true p90 from a small sample**), SC-009 (cart reload test), SC-010 (run `scripts/eval_typo_recall.py --full`; assert ≥ 0.90 against the live preview), SC-011 (Playwright: assert footer renders `build_info.code_revision_short` on home + about + abstract permalink routes).
 - [ ] T097 [P] Verify the FR-021 + FR-022 acceptance: open a throwaway PR; confirm the **Deployments box** appears at top of PR within 10 min; **confirm the page-title suffix AND the footer build-info affordance show the PR's exact short SHA** so the deploy can be visually verified as the right committish; push a second commit; confirm the Deployments box updates AND the rendered short SHA on the preview flips to the new commit's value; close the PR; confirm Deployments box marks it "Inactive". Record screenshots in the polish PR body. **No `peter-evans/find-comment`-style bot comments should be present.**
-- [ ] T098 [P] Save a user-memory entry noting: "Stage 6 / static-JSON-shard architecture (no DuckDB-WASM); 8 user stories shipped; SvelteKit + transformers.js + shepherd.js; deploy via gh-pages with PR previews surfaced in the PR Deployments box (NOT bot comments) via `environment:` declaration; US8 shipped first as a small PR to enable previews for US1–US7; every shard carries a `build_info` envelope and the rendered site shows the short committish in the page title + footer so PR-preview deploys are visually verifiable (FR-022)." So future stages have the context.
+- [X] T098 [P] Save a user-memory entry noting: "Stage 6 / static-JSON-shard architecture (no DuckDB-WASM); 8 user stories shipped; SvelteKit + transformers.js + shepherd.js; deploy via gh-pages with PR previews surfaced in the PR Deployments box (NOT bot comments) via `environment:` declaration; US8 shipped first as a small PR to enable previews for US1–US7; every shard carries a `build_info` envelope and the rendered site shows the short committish in the page title + footer so PR-preview deploys are visually verifiable (FR-022)." So future stages have the context.
 - [ ] T099 Mark all of T001–T098 in this `tasks.md` as `[X]` and commit the tasks-list update.
 - [ ] T100 Push the final consolidating branch + open the PR to `main`. PR title: `feat(stage6): static-JSON-shard UI rewrite on GitHub Pages — US1–US7 (US8 already on main)`. Body: summary of US1–US7 + the SC sweep results + the GitHub Pages preview URL from the Deployments box.
 

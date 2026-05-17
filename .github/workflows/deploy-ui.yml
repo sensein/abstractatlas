@@ -40,6 +40,19 @@ jobs:
         working-directory: site
         run: pnpm test:unit --run
 
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install link-check deps
+        run: pip install requests pyyaml
+
+      - name: References link check (FR-017)
+        # HEAD every URL in the references registry; non-zero exit blocks
+        # the deploy when a citation 4xx's or times out (T086 / T088).
+        run: PYTHONPATH=src python -m ohbm2026.ui_data.link_check specs/008-ui-rewrite/contracts/references.yaml
+
       - name: Build site
         working-directory: site
         env:

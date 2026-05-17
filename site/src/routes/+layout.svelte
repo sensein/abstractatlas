@@ -6,6 +6,8 @@
 	import { buildInfoFromEnv, loadManifest, type BuildInfo, type Manifest } from '$lib/shards';
 	import BuildInfoFooter from '$lib/components/BuildInfo.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import Tour from '$lib/components/Tour.svelte';
+	import { tourStore, tourFlags } from '$lib/stores/tour';
 
 	let manifest: Manifest | null = null;
 	const envBuildInfo: BuildInfo | null = buildInfoFromEnv();
@@ -88,6 +90,15 @@
 				</p>
 			</div>
 			<div class="header-controls">
+				<button
+					type="button"
+					class="header-link header-tour"
+					on:click={() => tourStore.start()}
+					title="Take the guided tour"
+					data-testid="header-tour-button"
+				>
+					Tour
+				</button>
 				<a class="header-link" href={`${base}/about/`} data-testid="header-about-link">
 					About
 				</a>
@@ -96,9 +107,39 @@
 		</div>
 	</header>
 
+	{#if !$tourFlags.ctaDismissed && !$tourFlags.completedOrSkipped}
+		<div class="tour-cta" data-testid="tour-cta">
+			<span>
+				New here? Take a 60-second tour of the search, map, and saved-list features.
+			</span>
+			<button
+				type="button"
+				class="tour-cta-start"
+				on:click={() => {
+					tourStore.dismissCta();
+					tourStore.start();
+				}}
+				data-testid="tour-cta-start"
+			>
+				Start tour
+			</button>
+			<button
+				type="button"
+				class="tour-cta-skip"
+				on:click={() => tourStore.dismissCta()}
+				aria-label="Dismiss"
+				data-testid="tour-cta-skip"
+			>
+				×
+			</button>
+		</div>
+	{/if}
+
 	<main>
 		<slot />
 	</main>
+
+	<Tour />
 
 	<BuildInfoFooter deployBuildInfo={envBuildInfo} {dataBuildInfo} />
 </div>
@@ -152,6 +193,54 @@
 	}
 	.header-link:hover {
 		background: var(--accent-soft-bg);
+	}
+	button.header-link {
+		all: unset;
+		cursor: pointer;
+		color: var(--accent);
+		text-decoration: none;
+		font-size: 0.9rem;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+	}
+	button.header-link:hover {
+		background: var(--accent-soft-bg);
+	}
+	.tour-cta {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		background: var(--accent-soft-bg);
+		color: var(--accent-soft-text, var(--text));
+		padding: 0.5rem 1rem;
+		margin: 0.5rem clamp(1rem, 2vw, 2rem);
+		border: 1px solid var(--accent);
+		border-radius: 6px;
+		font-size: 0.88rem;
+		flex-wrap: wrap;
+	}
+	.tour-cta > span {
+		flex: 1;
+		min-width: 0;
+	}
+	.tour-cta-start {
+		all: unset;
+		cursor: pointer;
+		background: var(--accent);
+		color: var(--accent-text, white);
+		padding: 0.3rem 0.7rem;
+		border-radius: 4px;
+		font-size: 0.82rem;
+	}
+	.tour-cta-skip {
+		all: unset;
+		cursor: pointer;
+		color: var(--text-muted);
+		font-size: 1.2rem;
+		padding: 0 0.4rem;
+	}
+	.tour-cta-skip:hover {
+		color: var(--text);
 	}
 	main {
 		flex: 1;

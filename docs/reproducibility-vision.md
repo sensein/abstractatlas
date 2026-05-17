@@ -196,7 +196,31 @@ The usual order is:
 4. embedding commands such as `embed-minilm`, `embed-voyage`, or
    `apply-published-stage2`
 5. `ohbmcli cluster-benchmark` and related semantic-analysis steps
-6. `ohbmcli build-ui`
+6. **Stage 6 UI data package** (canonical site):
+   ```
+   PYTHONPATH=src .venv/bin/python scripts/build_ui_data.py \
+     --corpus data/primary/abstracts.json \
+     --withdrawn data/primary/abstracts_withdrawn.json \
+     --authors data/primary/authors.json \
+     --enriched data/primary/abstracts_enriched.sqlite \
+     --analysis-root data/outputs/analysis \
+     --discover-rollup \
+     --minilm-root data/outputs/embeddings/minilm \
+     --output site/static/data
+   ```
+   Validate the package against the LinkML schema:
+   ```
+   scripts/validate_ui_data.sh
+   ```
+   Then HEAD-check the references registry (FR-017):
+   ```
+   PYTHONPATH=src .venv/bin/python -m ohbm2026.ui_data.link_check \
+     specs/008-ui-rewrite/contracts/references.yaml
+   ```
+   Re-tar onto the Dropbox shared link (in-place to preserve the inode +
+   share URL) and bump `OHBM2026_UI_DATA_PACKAGE_SHA256` so the deploy
+   workflow picks up the new bundle. The SvelteKit site itself is built +
+   deployed by `.github/workflows/deploy-ui.yml` on merge to `main`.
 
 ### Level 3: Rebuild from the upstream abstract source
 

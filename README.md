@@ -103,11 +103,11 @@ The latest end state of the project is:
    - two semantic cluster lenses:
      - `25-cluster benchmark`
      - `claims 28-cluster benchmark`
-9. **Stage 6 (in progress)** — UI rewrite as a static SvelteKit site served from GitHub Pages, with per-PR preview deploys surfaced in the PR's Deployments box. See `specs/008-ui-rewrite/` for the spec, plan, and tasks; `specs/008-ui-rewrite/quickstart.md` for the local-dev recipe.
+9. **Stage 6 — UI** — static SvelteKit site served from GitHub Pages, with per-PR preview deploys surfaced in the PR's Deployments box (NOT bot comments). US1–US7 + US8 all shipped on `008-ui-rewrite`. Production at `abstractatlas.brainkb.org`; PR previews at `/pr-<N>/`. See `specs/008-ui-rewrite/` for spec/plan/tasks and `specs/008-ui-rewrite/quickstart.md` for the local-dev recipe.
 
-## Stage 6: UI (under construction)
+## Stage 6: UI
 
-The Stage 6 site lives under `site/` (a self-contained SvelteKit project) and the data-package builder lives under `src/ohbm2026/ui_data/`. US8 (deploy workflows + placeholder) shipped first; US1 (search + browse + abstract detail panel with poster_id + ordered authors, mobile-responsive at 360 × 640) is the second.
+The Stage 6 site lives under `site/` (a self-contained SvelteKit project; SvelteKit 2 + Vite 6 + Svelte 5). The data-package builder lives under `src/ohbm2026/ui_data/`. Capabilities: typo-tolerant lexical search, transformers.js-backed semantic search (MiniLM-L6 ONNX in a Web Worker against an int8-quantised corpus matrix), 2D + 3D UMAP with lasso + cluster colour-coding, interactive facets, cart + email-my-list, a guided tour (shepherd.js), and an About page whose external citations are HEAD-checked at build time (`link_check.py`).
 
 Build the data package + the site locally:
 
