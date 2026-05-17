@@ -12,6 +12,7 @@
 
 	let abstractRecord: AbstractRecord | null = null;
 	let authorsById: Map<number, AuthorRecord> = new Map();
+	let abstractsById: Map<number, AbstractRecord> = new Map();
 	let loaded = false;
 	let unknown = false;
 
@@ -25,6 +26,7 @@
 			return;
 		}
 		authorsById = new Map(au.authors.map((x) => [x.author_id, x]));
+		abstractsById = new Map(a.abstracts.map((x) => [x.abstract_id, x]));
 		const target = a.abstracts.find((x) => x.poster_id === posterId) ?? null;
 		abstractRecord = target;
 		unknown = target === null;
@@ -57,7 +59,7 @@
 			</p>
 		</section>
 	{:else if abstractRecord}
-		<DetailPanel abstract={abstractRecord} {authorsById} dismissable={false} />
+		<DetailPanel abstract={abstractRecord} {authorsById} {abstractsById} dismissable={false} />
 	{/if}
 </div>
 

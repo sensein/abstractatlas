@@ -132,6 +132,18 @@ export interface TopicShard {
 	topics: TopicRecord[];
 }
 
+export interface NeighborsShard {
+	schema_version: string;
+	build_info: BuildInfo;
+	cell_key: string;
+	k: number;
+	abstract_ids: number[];
+	nearest_ids: number[][];
+	nearest_distances: number[][];
+	farthest_ids: number[][];
+	farthest_distances: number[][];
+}
+
 /**
  * Per-(shard kind) lookups now read from a single in-memory `Map<path, json>`
  * built by `loadDataPackage()` on first paint. The path keys are tar-relative,
@@ -171,6 +183,10 @@ export function loadCell(cellKey: string): Promise<CellShard | null> {
 
 export function loadTopics(cellKey: string, kind: string): Promise<TopicShard | null> {
 	return getFromPackage<TopicShard>(`data/topics/${cellKey}_${kind}.json`);
+}
+
+export function loadNeighbors(cellKey: string): Promise<NeighborsShard | null> {
+	return getFromPackage<NeighborsShard>(`data/neighbors/${cellKey}.json`);
 }
 
 export function resetCachesForTests(): void {

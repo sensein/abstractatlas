@@ -22,6 +22,7 @@
 	let abstracts: AbstractRecord[] = [];
 	let authorsById: Map<number, AuthorRecord> = new Map();
 	let abstractsByPosterId: Map<string, AbstractRecord> = new Map();
+	let abstractsById: Map<number, AbstractRecord> = new Map();
 	let loaded = false;
 	let dataMissing = false;
 	let showMap = false;
@@ -36,6 +37,7 @@
 			abstractsByPosterId = new Map(
 				a.abstracts.filter((x) => x.poster_id).map((x) => [x.poster_id, x])
 			);
+			abstractsById = new Map(a.abstracts.map((x) => [x.abstract_id, x]));
 			// Test-only debug global used by Playwright accepted-only invariant guard.
 			if (typeof window !== 'undefined') {
 				(window as unknown as { __abstracts: AbstractRecord[] }).__abstracts = abstracts;
@@ -112,7 +114,7 @@
 			</div>
 			<div class="detail-pane" class:active={focused !== null}>
 				{#if focused}
-					<DetailPanel abstract={focused} {authorsById} />
+					<DetailPanel abstract={focused} {authorsById} {abstractsById} />
 				{:else}
 					<aside class="detail-empty">
 						<p>Tap an abstract to see its details here.</p>

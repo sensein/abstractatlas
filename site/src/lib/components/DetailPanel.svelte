@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { focusedAbstract } from '$lib/stores/selection';
+	import { focusedAbstract, selectedCell } from '$lib/stores/selection';
 	import { cartStore } from '$lib/stores/cart';
-	import type { AbstractRecord, AuthorRecord } from '$lib/shards';
+	import { loadNeighbors, type AbstractRecord, type AuthorRecord, type NeighborsShard } from '$lib/shards';
 
 	export let abstract: AbstractRecord | null = null;
 	export let authorsById: Map<number, AuthorRecord>;
+	export let abstractsById: Map<number, AbstractRecord> = new Map();
 	export let dismissable = true;
 
 	let showAllAuthors = false;
@@ -22,6 +23,56 @@
 
 	function inCart(posterId: string): boolean {
 		return $cartStore.has(posterId);
+	}
+
+	// --- Related abstracts via the per-cell neighbors shard --------------
+	$: cellKey = `${$selectedCell.model}_${$selectedCell.input}`;
+	let neighborsShard: NeighborsShard | null = null;
+	let neighborsLoading = false;
+
+	$: void (async () => {
+		const key = cellKey;
+		neighborsLoading = true;
+		const shard = await loadNeighbors(key);
+		if (key === cellKey) {
+			neighborsShard = shard;
+			neighborsLoading = false;
+		}
+	})();
+
+	type RelatedEntry = { abstract: AbstractRecord; distance: number };
+
+	function buildRelated(
+		shard: NeighborsShard | null,
+		focusedId: number | undefined,
+		kind: 'nearest' | 'farthest',
+		limit = 5
+	): RelatedEntry[] {
+		if (!shard || focusedId === undefined) return [];
+		const row = shard.abstract_ids.indexOf(focusedId);
+		if (row < 0) return [];
+		const ids = kind === 'nearest' ? shard.nearest_ids[row] : shard.farthest_ids[row];
+		const dist = kind === 'nearest' ? shard.nearest_distances[row] : shard.farthest_distances[row];
+		const out: RelatedEntry[] = [];
+		for (let i = 0; i < Math.min(ids.length, limit); i++) {
+			const rec = abstractsById.get(ids[i]);
+			if (rec) out.push({ abstract: rec, distance: dist[i] });
+		}
+		return out;
+	}
+
+	$: focusedId = abstract?.abstract_id;
+	$: nearest = buildRelated(neighborsShard, focusedId, 'nearest', 5);
+	$: farthest = buildRelated(neighborsShard, focusedId, 'farthest', 5);
+
+	function focusRelated(posterId: string) {
+		if (posterId) $focusedAbstract = posterId;
+	}
+
+	function leadAuthor(record: AbstractRecord): string {
+		const id = record.author_ids[0];
+		if (id === undefined) return '';
+		return authorsById.get(id)?.name ?? '';
 	}
 </script>
 
@@ -140,6 +191,66 @@
 						<li>{m}</li>
 					{/each}
 				</ul>
+			</section>
+		{/if}
+
+		{#if neighborsShard && (nearest.length || farthest.length)}
+			<section class="related" data-testid="detail-related">
+				<h2>
+					Related abstracts
+					<span class="muted">— from <code>{cellKey}</code></span>
+				</h2>
+				{#if nearest.length}
+					<div class="related-block">
+						<h3 class="related-heading">Most similar</h3>
+						<ul class="related-list">
+							{#each nearest as entry, i (entry.abstract.abstract_id)}
+								<li>
+									<button
+										type="button"
+										class="related-link"
+										on:click={() => focusRelated(entry.abstract.poster_id)}
+										disabled={!entry.abstract.poster_id}
+										data-testid="related-nearest"
+									>
+										<span class="related-rank">#{i + 1}</span>
+										<span class="related-poster">{entry.abstract.poster_id || '—'}</span>
+										<span class="related-title">{entry.abstract.title}</span>
+										<span class="related-distance" title="cosine distance">d={entry.distance.toFixed(3)}</span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+				{#if farthest.length}
+					<div class="related-block">
+						<h3 class="related-heading">Most different</h3>
+						<ul class="related-list">
+							{#each farthest as entry, i (entry.abstract.abstract_id)}
+								<li>
+									<button
+										type="button"
+										class="related-link"
+										on:click={() => focusRelated(entry.abstract.poster_id)}
+										disabled={!entry.abstract.poster_id}
+										data-testid="related-farthest"
+									>
+										<span class="related-rank">#{i + 1}</span>
+										<span class="related-poster">{entry.abstract.poster_id || '—'}</span>
+										<span class="related-title">{entry.abstract.title}</span>
+										<span class="related-distance" title="cosine distance">d={entry.distance.toFixed(3)}</span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+			</section>
+		{:else if neighborsLoading}
+			<section class="related" data-testid="detail-related-loading">
+				<h2>Related abstracts</h2>
+				<p class="muted">Loading neighbors…</p>
 			</section>
 		{/if}
 
@@ -370,5 +481,78 @@
 	.permalink:hover {
 		color: var(--accent);
 		text-decoration: underline;
+	}
+	.related h2 {
+		display: flex;
+		gap: 0.4rem;
+		align-items: baseline;
+	}
+	.related h2 code {
+		font-size: 0.7rem;
+		text-transform: none;
+		letter-spacing: 0;
+		font-weight: 400;
+	}
+	.related-block {
+		margin-top: 0.4rem;
+	}
+	.related-heading {
+		margin: 0 0 0.25rem;
+		font-size: 0.78rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--text-faint);
+		font-weight: 600;
+	}
+	.related-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+	.related-link {
+		all: unset;
+		cursor: pointer;
+		display: grid;
+		grid-template-columns: 2rem minmax(4rem, 6rem) 1fr auto;
+		gap: 0.5rem;
+		align-items: baseline;
+		padding: 0.3rem 0.5rem;
+		border-radius: 4px;
+		border: 1px solid transparent;
+		font-size: 0.85rem;
+		color: var(--text);
+	}
+	.related-link:hover {
+		background: var(--bg-sunken);
+		border-color: var(--border);
+	}
+	.related-link:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.related-rank {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.72rem;
+		color: var(--text-faint);
+	}
+	.related-poster {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.8rem;
+		color: var(--accent);
+		font-weight: 600;
+	}
+	.related-title {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--text);
+	}
+	.related-distance {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.72rem;
+		color: var(--text-muted);
 	}
 </style>
