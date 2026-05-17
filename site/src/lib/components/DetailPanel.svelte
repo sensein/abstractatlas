@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
-	import { focusedAbstract } from '$lib/stores/selection';
+	import { goto } from '$app/navigation';
+	import { focusedAbstract, searchQuery, activeFilters, lassoSelection } from '$lib/stores/selection';
 	import { cartStore } from '$lib/stores/cart';
 	import {
 		loadAllCellsWithTopics,
@@ -213,6 +214,36 @@
 		if (posterId) $focusedAbstract = posterId;
 	}
 
+	/**
+	 * Replace the current search with the author's name. Asks first because
+	 * this overwrites whatever the user had typed, clears any active facet
+	 * filters / lasso selection, and (when on the permalink page) navigates
+	 * away from the abstract they're reading.
+	 */
+	async function searchByAuthor(name: string): Promise<void> {
+		if (!name) return;
+		const currentlyTyped = $searchQuery.trim();
+		const hasState =
+			!!currentlyTyped || $activeFilters.size > 0 || $lassoSelection !== null;
+		if (hasState) {
+			const msg =
+				`Search for abstracts by "${name}"?\n\n` +
+				`This will replace your current search` +
+				($activeFilters.size > 0 ? ' and clear active filters' : '') +
+				($lassoSelection !== null ? ' and clear the lasso selection' : '') +
+				'.';
+			if (!window.confirm(msg)) return;
+		}
+		$searchQuery = name;
+		$activeFilters = new Map();
+		$lassoSelection = null;
+		if (!compact) {
+			await goto(`${base}/`);
+		} else if (typeof window !== 'undefined') {
+			window.scrollTo({ top: 0, behavior: 'smooth' });
+		}
+	}
+
 	function leadAuthor(record: AbstractRecord): string {
 		const id = record.author_ids[0];
 		if (id === undefined) return '';
@@ -261,19 +292,31 @@
 		<h1 class="detail-title" data-testid="detail-title">{abstract.title}</h1>
 
 		<section class="authors" data-testid="detail-authors">
-			<h2>Authors</h2>
+			<h2>Authors <span class="hint-inline">click a name to search</span></h2>
 			{#if compact}
-				<!-- Compact: all author names inline, comma-separated, no
-					 institutions. The full author/affiliation grid lives on
-					 the permalink page. -->
 				<p class="author-compact">
-					{authorList.map((a) => a.name).join(', ')}
+					{#each authorList as author, i (author.author_id)}<!--
+					-->{#if i > 0}<span class="author-sep">, </span>{/if}<!--
+					--><button
+							type="button"
+							class="author-link"
+							on:click={() => searchByAuthor(author.name)}
+							title={`Search abstracts by ${author.name}`}
+							data-testid="author-search"
+						>{author.name}</button><!--
+					-->{/each}
 				</p>
 			{:else}
 				<ol class="author-list">
 					{#each visibleAuthors as author (author.author_id)}
 						<li>
-							<span class="author-name">{author.name}</span>
+							<button
+								type="button"
+								class="author-link"
+								on:click={() => searchByAuthor(author.name)}
+								title={`Search abstracts by ${author.name}`}
+								data-testid="author-search"
+							>{author.name}</button>
 							{#if author.affiliations[0]}
 								<span class="author-aff">— {author.affiliations[0]}</span>
 							{/if}
@@ -293,11 +336,34 @@
 			{/if}
 		</section>
 
+		<!--
+			Two-zone layout for the permalink (non-compact) view: submitter
+			content on the left, computed + AI insights on the right. CSS
+			Grid places each section into its column via `data-zone`. On
+			mobile (< 980 px) the grid collapses to a single column and
+			sections render in source order. Compact mode (home pane) keeps
+			everything stacked linearly — the grid still applies but with
+			one column.
+		-->
+		<div class="detail-content" class:zoned={!compact}>
+			{#if !compact}
+				<div class="zone-header zone-header-submitter" data-zone="submitter">
+					<span class="zone-title">From the submitter</span>
+					<span class="zone-sub">verbatim from the submission</span>
+				</div>
+				<div class="zone-header zone-header-computed" data-zone="computed">
+					<span class="zone-title">Computed insights</span>
+					<span class="zone-sub">
+						algorithmic; <span class="ai-pill-inline">✨ AI</span> sections labelled
+					</span>
+				</div>
+			{/if}
+
 		{#if !compact}
 			{#each [ ['introduction','Introduction'], ['methods','Methods'], ['results','Results'], ['conclusion','Conclusion'] ] as [skey, slabel] (skey)}
 				{@const sbody = abstract.sections[skey]}
 				{#if sbody}
-					<section class="section collapsible" data-testid={`section-${skey}`}>
+					<section class="section collapsible" data-testid={`section-${skey}`} data-zone="submitter">
 						<button
 							type="button"
 							class="section-header"
@@ -316,7 +382,7 @@
 		{/if}
 
 		{#if enrichment && enrichment.claims.length}
-			<section class="section collapsible" data-testid="section-claims">
+			<section class="section collapsible" data-testid="section-claims" data-zone="computed">
 				<button
 					type="button"
 					class="section-header"
@@ -383,7 +449,7 @@
 		{/if}
 
 		{#if !compact && enrichment && enrichment.figures.length}
-			<section class="section collapsible" data-testid="section-figures">
+			<section class="section collapsible" data-testid="section-figures" data-zone="computed">
 				<button
 					type="button"
 					class="section-header"
@@ -456,7 +522,7 @@
 			lives behind the permalink.
 		-->
 		{#if !compact && (abstract.topics.primary || abstract.topics.secondary)}
-			<section class="extra topics" data-testid="extra-topics">
+			<section class="extra topics" data-testid="extra-topics" data-zone="submitter">
 				<h2>Topics</h2>
 				<dl>
 					{#if abstract.topics.primary}
@@ -480,7 +546,7 @@
 		{/if}
 
 		{#if !compact && abstract.methods_checklist.length}
-			<section class="extra methods-checklist" data-testid="extra-methods">
+			<section class="extra methods-checklist" data-testid="extra-methods" data-zone="submitter">
 				<h2>Methods</h2>
 				<ul class="chips">
 					{#each abstract.methods_checklist as m (m)}
@@ -491,7 +557,7 @@
 		{/if}
 
 		{#if clusterMemberships.length}
-			<section class="extra clusters" data-testid="extra-clusters">
+			<section class="extra clusters" data-testid="extra-clusters" data-zone="computed">
 				<h2>Cluster membership <span class="muted">— per (model × input)</span></h2>
 				<ul class="cluster-grid">
 					{#each clusterMemberships as row (row.cellKey)}
@@ -506,7 +572,7 @@
 		{/if}
 
 		{#if allNeighbors && (nearest.length || farthest.length)}
-			<section class="related" data-testid="detail-related">
+			<section class="related" data-testid="detail-related" data-zone="computed">
 				<h2>
 					Related abstracts
 					<span class="muted">— across all {allNeighbors.size} maps</span>
@@ -689,14 +755,14 @@
 				{/if}
 			</section>
 		{:else if neighborsLoading}
-			<section class="related" data-testid="detail-related-loading">
+			<section class="related" data-testid="detail-related-loading" data-zone="computed">
 				<h2>Related abstracts</h2>
 				<p class="muted">Loading neighbors…</p>
 			</section>
 		{/if}
 
 		{#if !compact && (abstract.reference_urls.some(Boolean) || abstract.reference_dois.some(Boolean) || (abstract.reference_titles ?? []).some(Boolean))}
-			<section class="references" data-testid="detail-references">
+			<section class="references" data-testid="detail-references" data-zone="submitter">
 				<h2>References</h2>
 				<ol>
 					{#each abstract.reference_urls as url, i (url + i)}
@@ -719,6 +785,7 @@
 				</ol>
 			</section>
 		{/if}
+		</div><!-- /.detail-content -->
 
 		<footer class="detail-footer">
 			{#if inCart(abstract.poster_id)}
@@ -750,6 +817,96 @@
 {/if}
 
 <style>
+	/* Two-zone layout. `.detail-content` is the post-header container that
+	   wraps every section. On mobile + compact, it's a simple flex column;
+	   on landscape desktop (>= 980 px) it becomes a 2-column CSS grid with
+	   sections placed via `data-zone`. Zone headers (one per column) are
+	   only rendered in non-compact mode. */
+	.detail-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+	.zone-header {
+		display: none; /* mobile / compact: hide */
+	}
+	@media (min-width: 980px) {
+		.detail-content.zoned {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+			column-gap: 1.5rem;
+			row-gap: 0.5rem;
+			align-items: start;
+		}
+		.detail-content.zoned > [data-zone='submitter'] {
+			grid-column: 1;
+		}
+		.detail-content.zoned > [data-zone='computed'] {
+			grid-column: 2;
+		}
+		.detail-content.zoned > .zone-header {
+			display: flex;
+			flex-direction: column;
+			gap: 0.1rem;
+			grid-row: 1;
+			margin-bottom: 0.4rem;
+			padding-bottom: 0.4rem;
+			border-bottom: 1.5px solid var(--border-strong);
+		}
+		.detail-content.zoned > .zone-header.zone-header-computed {
+			padding-left: 0.5rem;
+			border-left: 1px solid var(--border);
+			margin-left: -0.5rem;
+		}
+		.detail-content.zoned > [data-zone='computed']:not(.zone-header) {
+			padding-left: 0.5rem;
+			border-left: 1px solid var(--border);
+			margin-left: -0.5rem;
+		}
+	}
+	.zone-title {
+		font-size: 0.85rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--text);
+	}
+	.zone-sub {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+	.ai-pill-inline {
+		display: inline-block;
+		font-size: 0.65rem;
+		font-weight: 600;
+		color: var(--accent-soft-text);
+		background: var(--accent-soft-bg);
+		padding: 0 0.4rem;
+		border-radius: 999px;
+		letter-spacing: 0.04em;
+		vertical-align: middle;
+	}
+	.author-link {
+		all: unset;
+		cursor: pointer;
+		color: var(--accent);
+		border-bottom: 1px dotted transparent;
+	}
+	.author-link:hover {
+		border-bottom-color: var(--accent);
+	}
+	.author-sep {
+		color: var(--text-faint);
+	}
+	.hint-inline {
+		font-size: 0.7rem;
+		text-transform: none;
+		letter-spacing: 0;
+		color: var(--text-faint);
+		font-weight: 400;
+		margin-left: 0.4rem;
+	}
+
 	.detail {
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
