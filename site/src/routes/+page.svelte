@@ -10,11 +10,13 @@
 		type BuildInfo,
 		type Manifest
 	} from '$lib/shards';
-	import { focusedAbstract, searchQuery } from '$lib/stores/selection';
+	import { focusedAbstract, lassoSelection, searchQuery } from '$lib/stores/selection';
 	import { searchAbstracts } from '$lib/filter';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import ResultList from '$lib/components/ResultList.svelte';
 	import DetailPanel from '$lib/components/DetailPanel.svelte';
+	import ModelSelector from '$lib/components/ModelSelector.svelte';
+	import UmapPanel from '$lib/components/UmapPanel.svelte';
 
 	let manifest: Manifest | null = null;
 	let abstracts: AbstractRecord[] = [];
@@ -22,6 +24,7 @@
 	let abstractsByPosterId: Map<string, AbstractRecord> = new Map();
 	let loaded = false;
 	let dataMissing = false;
+	let showMap = false;
 	const envBuildInfo: BuildInfo | null = buildInfoFromEnv();
 
 	onMount(async () => {
@@ -43,14 +46,46 @@
 		loaded = true;
 	});
 
-	$: filteredIds = searchAbstracts(abstracts, authorsById, $searchQuery);
+	$: searchIds = searchAbstracts(abstracts, authorsById, $searchQuery);
+	$: filteredIds = intersect(searchIds, $lassoSelection);
 	$: focused = $focusedAbstract ? (abstractsByPosterId.get($focusedAbstract) ?? null) : null;
+
+	function intersect(a: Set<number> | null, b: Set<number> | null): Set<number> | null {
+		if (a === null && b === null) return null;
+		if (a === null) return b;
+		if (b === null) return a;
+		const out: Set<number> = new Set();
+		const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+		for (const id of small) if (large.has(id)) out.add(id);
+		return out;
+	}
 </script>
 
 <div class="home" class:has-focus={focused !== null}>
-	<div class="search-row">
-		<SearchBar />
+	<div class="top-row">
+		<div class="search-row">
+			<SearchBar />
+		</div>
+		{#if loaded && !dataMissing}
+			<div class="controls">
+				<ModelSelector {manifest} />
+				<button
+					type="button"
+					class="map-toggle"
+					class:active={showMap}
+					on:click={() => (showMap = !showMap)}
+					aria-pressed={showMap}
+					data-testid="toggle-map"
+				>
+					{showMap ? '✕ Hide map' : '🗺  Show map'}
+				</button>
+			</div>
+		{/if}
 	</div>
+
+	{#if showMap && loaded && !dataMissing}
+		<UmapPanel {abstracts} />
+	{/if}
 
 	{#if !loaded}
 		<p class="status">Loading…</p>
@@ -104,8 +139,39 @@
 		flex-direction: column;
 		gap: 1rem;
 	}
+	.top-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1rem;
+		align-items: center;
+		justify-content: space-between;
+	}
 	.search-row {
-		width: 100%;
+		flex: 1 1 22rem;
+		min-width: 0;
+	}
+	.controls {
+		display: flex;
+		align-items: flex-end;
+		gap: 0.75rem;
+	}
+	.map-toggle {
+		all: unset;
+		cursor: pointer;
+		padding: 0.45rem 0.8rem;
+		border-radius: 4px;
+		font-size: 0.85rem;
+		border: 1px solid #d0d0d0;
+		background: #fff;
+		color: #444;
+	}
+	.map-toggle:hover {
+		background: #f7f7f7;
+	}
+	.map-toggle.active {
+		background: #2c5fa3;
+		color: #fff;
+		border-color: #2c5fa3;
 	}
 	.layout {
 		display: grid;

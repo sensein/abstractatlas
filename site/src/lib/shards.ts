@@ -98,9 +98,27 @@ export interface AuthorsShard {
 	authors: AuthorRecord[];
 }
 
+export interface CellRow {
+	abstract_id: number;
+	umap2d: [number, number];
+	umap3d: [number, number, number];
+	community_id: number;
+	topic_cluster_id: number;
+	neuroscape_cluster_id?: number;
+	neuroscape_cluster_distance?: number;
+}
+
+export interface CellShard {
+	schema_version: string;
+	build_info: BuildInfo;
+	cell_key: string;
+	rows: CellRow[];
+}
+
 let manifestCache: Promise<Manifest | null> | null = null;
 let abstractsCache: Promise<AbstractsShard | null> | null = null;
 let authorsCache: Promise<AuthorsShard | null> | null = null;
+const cellCache: Map<string, Promise<CellShard | null>> = new Map();
 
 async function fetchJson<T>(url: string, fetcher: typeof fetch): Promise<T | null> {
 	try {
@@ -133,8 +151,23 @@ export function loadAuthors(fetcher: typeof fetch = fetch): Promise<AuthorsShard
 	return authorsCache;
 }
 
+/**
+ * Load a per-(model, input) cell shard. Cached per cell_key so switching
+ * back to a previously-viewed cell is instant.
+ */
+export function loadCell(
+	cellKey: string,
+	fetcher: typeof fetch = fetch
+): Promise<CellShard | null> {
+	if (!cellCache.has(cellKey)) {
+		cellCache.set(cellKey, fetchJson<CellShard>(`${base}/data/cells/${cellKey}.json`, fetcher));
+	}
+	return cellCache.get(cellKey)!;
+}
+
 export function resetCachesForTests(): void {
 	manifestCache = null;
 	abstractsCache = null;
 	authorsCache = null;
+	cellCache.clear();
 }

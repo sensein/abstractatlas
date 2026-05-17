@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	loadAbstracts,
 	loadAuthors,
+	loadCell,
 	loadManifest,
 	resetCachesForTests,
 	type AbstractsShard,
 	type AuthorsShard,
+	type CellShard,
 	type Manifest
 } from '$lib/shards';
 
@@ -145,5 +147,53 @@ describe('shard loaders', () => {
 		await loadManifest(fetcher);
 		await loadManifest(fetcher);
 		expect((fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+	});
+});
+
+const CELL_FIXTURE: CellShard = {
+	schema_version: 'cell.v1',
+	build_info: MANIFEST_FIXTURE.build_info,
+	cell_key: 'neuroscape_abstract',
+	rows: [
+		{
+			abstract_id: 1001,
+			umap2d: [0.1, 0.2],
+			umap3d: [0.1, 0.2, 0.3],
+			community_id: 7,
+			topic_cluster_id: 100,
+			neuroscape_cluster_id: 42,
+			neuroscape_cluster_distance: 0.5
+		}
+	]
+};
+
+describe('loadCell', () => {
+	beforeEach(() => resetCachesForTests());
+	afterEach(() => resetCachesForTests());
+
+	it('fetches the per-cell shard at the cell_key path', async () => {
+		const fetcher = mockFetch({
+			'/data/cells/neuroscape_abstract.json': CELL_FIXTURE
+		}) as unknown as typeof fetch;
+		const shard = await loadCell('neuroscape_abstract', fetcher);
+		expect(shard?.cell_key).toBe('neuroscape_abstract');
+		expect(shard?.rows[0].neuroscape_cluster_id).toBe(42);
+	});
+
+	it('returns null when the cell shard 404s', async () => {
+		const fetcher = mockFetch({}) as unknown as typeof fetch;
+		expect(await loadCell('missing_cell', fetcher)).toBeNull();
+	});
+
+	it('caches by cell_key (multiple cells share the same module-level Map)', async () => {
+		const fetcher = mockFetch({
+			'/data/cells/neuroscape_abstract.json': CELL_FIXTURE,
+			'/data/cells/voyage_methods.json': { ...CELL_FIXTURE, cell_key: 'voyage_methods' }
+		}) as unknown as typeof fetch & ReturnType<typeof vi.fn>;
+		await loadCell('neuroscape_abstract', fetcher);
+		await loadCell('neuroscape_abstract', fetcher); // cache hit
+		await loadCell('voyage_methods', fetcher); // distinct fetch
+		const calls = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls;
+		expect(calls.length).toBe(2);
 	});
 });
