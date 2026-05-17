@@ -345,14 +345,12 @@
 						<span class="zone-sub">verbatim from the submission</span>
 					</div>
 					{@render bodyBlock()}
-								FR-011: only Topics + Methods of the submission-form extras render.
-			Other extra-question fields (study_type, population, field_strength,
-			processing_packages, …) are stored in `facets` for filtering but MUST
-			NOT surface in the detail panel.
-			Hidden in `compact` mode — the home pane focuses on cross-cell
-			cluster context + related abstracts; full topic / methods detail
-			lives behind the permalink.
-		-->
+					<!--
+						FR-011: only Topics + Methods of the submission-form extras render
+						here. Other extra-question fields (study_type, population,
+						field_strength, processing_packages, …) are stored in `facets` for
+						filtering but MUST NOT surface in the detail panel.
+					-->
 					{@render topicsBlock()}
 					{@render methodsBlock()}
 					{@render referencesBlock()}
