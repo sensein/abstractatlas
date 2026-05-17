@@ -456,7 +456,10 @@
 	<header class="umap-header">
 		<div class="title-block">
 			<h3>UMAP — cell <code>{cellKey}</code></h3>
-			<p class="hint">Lasso on 2D filters the result list. Click any point to open its detail panel.</p>
+			<p class="hint">
+				Points are coloured by <em>cluster</em> (community detected for this cell).
+				Lasso on 2D filters the result list; click any point to open its detail panel.
+			</p>
 		</div>
 		<div class="header-actions">
 			{#if $lassoSelection}

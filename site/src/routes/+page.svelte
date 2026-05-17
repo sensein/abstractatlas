@@ -4,15 +4,19 @@
 		buildInfoFromEnv,
 		loadAbstracts,
 		loadAuthors,
+		loadCell,
 		loadManifest,
+		loadTopics,
 		type AbstractRecord,
 		type AuthorRecord,
 		type BuildInfo,
-		type Manifest
+		type CellShard,
+		type Manifest,
+		type TopicShard
 	} from '$lib/shards';
-	import { activeFilters, focusedAbstract, lassoSelection, searchQuery } from '$lib/stores/selection';
+	import { activeFilters, focusedAbstract, lassoSelection, searchQuery, selectedCell } from '$lib/stores/selection';
 	import { lexicalSearch } from '$lib/filter';
-	import { filterByFacets, recomputeFacets } from '$lib/facets';
+	import { filterByFacets, recomputeFacets, type FacetCellContext } from '$lib/facets';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import ResultList from '$lib/components/ResultList.svelte';
 	import DetailPanel from '$lib/components/DetailPanel.svelte';
@@ -32,6 +36,8 @@
 	let semanticScores: Map<number, number> | null = null;
 	let semanticQuerySerial = 0;
 	let showFacets = false; // mobile drawer state; desktop always-shown
+	let cellShard: CellShard | null = null;
+	let cellTopics: TopicShard | null = null;
 	const envBuildInfo: BuildInfo | null = buildInfoFromEnv();
 
 	onMount(async () => {
@@ -101,10 +107,51 @@
 		? new Set<number>(semanticScores.keys())
 		: null;
 	$: searchIds = mergeSearch(lexicalIds, semanticIdsForMerge, $searchQuery);
-	$: facetIds = filterByFacets(abstracts, $activeFilters);
+
+	// Load the current (model, input) cell + its community topics so the
+	// Cluster facet can offer per-cell options. The same data feeds the
+	// UMAP panel; loadCell/loadTopics are cheap (Map-get from the in-memory
+	// data package) so duplicating the load here is fine.
+	$: cellKey = `${$selectedCell.model}_${$selectedCell.input}`;
+	$: void (async () => {
+		const key = cellKey;
+		const [c, t] = await Promise.all([loadCell(key), loadTopics(key, 'communities')]);
+		// Guard against late-arriving results after the user switched cells.
+		if (key === cellKey) {
+			cellShard = c;
+			cellTopics = t;
+		}
+	})();
+	$: facetCtx = buildFacetCtx(cellShard, cellTopics);
+	$: facetIds = filterByFacets(abstracts, $activeFilters, facetCtx);
 	$: preFilterForFacetCounts = intersect(searchIds, $lassoSelection);
-	$: facetCounts = recomputeFacets(abstracts, $activeFilters, preFilterForFacetCounts);
+	$: facetCounts = recomputeFacets(abstracts, $activeFilters, preFilterForFacetCounts, facetCtx);
 	$: filteredIds = intersect(intersect(searchIds, $lassoSelection), facetIds);
+
+	function buildFacetCtx(
+		shard: CellShard | null,
+		topics: TopicShard | null
+	): FacetCellContext {
+		const labelByCluster = new Map<number, string>();
+		if (topics) {
+			for (const t of topics.topics) {
+				const label = t.title
+					? t.title
+					: t.keywords.length
+						? t.keywords.slice(0, 3).join(', ')
+						: `cluster ${t.cluster_id}`;
+				labelByCluster.set(t.cluster_id, label);
+			}
+		}
+		const clusterLabelByAbstractId = new Map<number, string>();
+		if (shard) {
+			for (const row of shard.rows) {
+				const label = labelByCluster.get(row.community_id);
+				if (label) clusterLabelByAbstractId.set(row.abstract_id, label);
+			}
+		}
+		return { clusterLabelByAbstractId };
+	}
 
 	function mergeSearch(
 		lex: Set<number> | null,

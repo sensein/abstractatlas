@@ -31,11 +31,13 @@ const FACETS_FROM_BLOCK = [
 
 export type FacetKey =
 	| 'accepted_for'
+	| 'cluster'
 	| 'topic'
 	| 'subcategory'
 	| (typeof FACETS_FROM_BLOCK)[number];
 
 export const FACET_KEYS_ORDERED: FacetKey[] = [
+	'cluster',
 	'topic',
 	'subcategory',
 	'methods',
@@ -53,6 +55,7 @@ export const FACET_KEYS_ORDERED: FacetKey[] = [
 
 export const FACET_LABELS: Record<FacetKey, string> = {
 	accepted_for: 'Accepted for',
+	cluster: 'Cluster (current map)',
 	topic: 'Topic',
 	subcategory: 'Subcategory',
 	keywords: 'Keywords',
@@ -67,6 +70,18 @@ export const FACET_LABELS: Record<FacetKey, string> = {
 	brain_networks: 'Brain networks'
 };
 
+/**
+ * Per-(model, input) cell-specific context for facets that derive their
+ * options from the active UMAP layout rather than the abstract record alone.
+ * Currently just the cluster facet — `clusterLabelByAbstractId` maps each
+ * abstract to the community label that the UMAP color-codes it under.
+ */
+export interface FacetCellContext {
+	clusterLabelByAbstractId: Map<number, string>;
+}
+
+const EMPTY_CTX: FacetCellContext = { clusterLabelByAbstractId: new Map() };
+
 function dedupe(values: string[]): string[] {
 	const out: string[] = [];
 	const seen = new Set<string>();
@@ -78,8 +93,12 @@ function dedupe(values: string[]): string[] {
 	return out;
 }
 
-function valuesFor(record: AbstractRecord, key: FacetKey): string[] {
+function valuesFor(record: AbstractRecord, key: FacetKey, ctx: FacetCellContext): string[] {
 	if (key === 'accepted_for') return record.accepted_for ? [record.accepted_for] : [];
+	if (key === 'cluster') {
+		const label = ctx.clusterLabelByAbstractId.get(record.abstract_id);
+		return label ? [label] : [];
+	}
 	// The Topic facet is the UNION of primary + secondary topic values per
 	// abstract (deduped). A selected Topic option matches if EITHER position
 	// equals it — the previous split into primary_topic / secondary_topic
@@ -97,12 +116,13 @@ function valuesFor(record: AbstractRecord, key: FacetKey): string[] {
 function passesFilters(
 	record: AbstractRecord,
 	filters: ActiveFilters,
+	ctx: FacetCellContext,
 	exceptKey: FacetKey | null = null
 ): boolean {
 	for (const [key, options] of filters) {
 		if (!options.size) continue;
 		if (key === exceptKey) continue;
-		const recordValues = valuesFor(record, key as FacetKey);
+		const recordValues = valuesFor(record, key as FacetKey, ctx);
 		let hit = false;
 		for (const v of recordValues) {
 			if (options.has(v)) {
@@ -117,7 +137,8 @@ function passesFilters(
 
 export function filterByFacets(
 	abstracts: AbstractRecord[],
-	filters: ActiveFilters
+	filters: ActiveFilters,
+	ctx: FacetCellContext = EMPTY_CTX
 ): Set<number> | null {
 	let active = false;
 	for (const set of filters.values()) {
@@ -129,7 +150,7 @@ export function filterByFacets(
 	if (!active) return null;
 	const out = new Set<number>();
 	for (const a of abstracts) {
-		if (passesFilters(a, filters)) out.add(a.abstract_id);
+		if (passesFilters(a, filters, ctx)) out.add(a.abstract_id);
 	}
 	return out;
 }
@@ -151,15 +172,16 @@ export type FacetCounts = Map<FacetKey, FacetOption[]>;
 export function recomputeFacets(
 	abstracts: AbstractRecord[],
 	filters: ActiveFilters,
-	preFilteredIds: Set<number> | null
+	preFilteredIds: Set<number> | null,
+	ctx: FacetCellContext = EMPTY_CTX
 ): FacetCounts {
 	const out: FacetCounts = new Map();
 	for (const key of FACET_KEYS_ORDERED) {
 		const counts = new Map<string, number>();
 		for (const record of abstracts) {
 			if (preFilteredIds && !preFilteredIds.has(record.abstract_id)) continue;
-			if (!passesFilters(record, filters, key)) continue;
-			for (const v of valuesFor(record, key)) {
+			if (!passesFilters(record, filters, ctx, key)) continue;
+			for (const v of valuesFor(record, key, ctx)) {
 				counts.set(v, (counts.get(v) ?? 0) + 1);
 			}
 		}

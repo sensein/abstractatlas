@@ -19,7 +19,13 @@
 		'accepted_for'
 	];
 
+	/** Default visible option count per facet; clicking "Show all N" reveals
+	 * the rest inside a scroll container. Keeps the sidebar short on first
+	 * impression — most users only care about the top few. */
+	const COLLAPSED_OPTION_COUNT = 5;
+
 	let expanded: Record<string, boolean> = {};
+	let optionsExpanded: Record<string, boolean> = {};
 	$: for (const key of FACET_KEYS_ORDERED) {
 		if (!(key in expanded)) expanded[key] = !collapsedByDefault.includes(key);
 	}
@@ -34,6 +40,10 @@
 
 	function isActive(key: FacetKey, option: string): boolean {
 		return $activeFilters.get(key)?.has(option) ?? false;
+	}
+
+	function toggleOptions(key: string) {
+		optionsExpanded = { ...optionsExpanded, [key]: !optionsExpanded[key] };
 	}
 
 	$: activeCount = [...$activeFilters.values()].reduce((sum, s) => sum + s.size, 0);
@@ -52,6 +62,9 @@
 	{#each FACET_KEYS_ORDERED as key (key)}
 		{@const options = counts.get(key) ?? []}
 		{@const isOpen = expanded[key]}
+		{@const showAll = optionsExpanded[key]}
+		{@const hasOverflow = options.length > COLLAPSED_OPTION_COUNT}
+		{@const visibleOptions = showAll ? options : options.slice(0, COLLAPSED_OPTION_COUNT)}
 		{#if options.length}
 			<section class="facet" data-testid={`facet-${key}`}>
 				<button
@@ -65,8 +78,8 @@
 					<span class="facet-count">{options.length}</span>
 				</button>
 				{#if isOpen}
-					<ul class="options">
-						{#each options.slice(0, 30) as opt (opt.value)}
+					<ul class="options" class:scroll={showAll && hasOverflow}>
+						{#each visibleOptions as opt (opt.value)}
 							<li>
 								<label
 									class="opt"
@@ -83,10 +96,19 @@
 								</label>
 							</li>
 						{/each}
-						{#if options.length > 30}
-							<li class="more-hint">+ {options.length - 30} more</li>
-						{/if}
 					</ul>
+					{#if hasOverflow}
+						<button
+							type="button"
+							class="show-toggle"
+							on:click={() => toggleOptions(key)}
+							data-testid={`facet-show-toggle-${key}`}
+						>
+							{showAll
+								? `Show top ${COLLAPSED_OPTION_COUNT}`
+								: `Show all ${options.length} ▾`}
+						</button>
+					{/if}
 				{/if}
 			</section>
 		{/if}
@@ -165,6 +187,21 @@
 		flex-direction: column;
 		gap: 0.1rem;
 	}
+	.options.scroll {
+		max-height: 14rem;
+		overflow-y: auto;
+		padding-right: 0.4rem;
+	}
+	.show-toggle {
+		all: unset;
+		cursor: pointer;
+		font-size: 0.72rem;
+		color: var(--accent);
+		padding: 0.15rem 0 0.35rem 1.5rem;
+	}
+	.show-toggle:hover {
+		text-decoration: underline;
+	}
 	.opt {
 		display: flex;
 		align-items: center;
@@ -194,11 +231,5 @@
 		font-size: 0.72rem;
 		color: var(--text-faint);
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	}
-	.more-hint {
-		color: var(--text-faint);
-		font-size: 0.72rem;
-		padding-left: 0.4rem;
-		font-style: italic;
 	}
 </style>
