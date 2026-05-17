@@ -198,12 +198,6 @@
 		} else if (kind === 'detail') {
 			steps.push(
 				{
-					id: 'detail-poster',
-					title: 'Permalink view',
-					text: 'You\'re looking at the full-detail page for this abstract. The URL is shareable — anyone who opens it lands here, regardless of their search state.',
-					attachTo: { element: '[data-testid="detail-poster-id"]', on: place('bottom') }
-				},
-				{
 					id: 'detail-zone-submitter',
 					title: 'Submitter content',
 					text: 'The left column is verbatim from the submission: title, authors, body sections (Intro / Methods / Results / Conclusion), Topics + Methods checklist, and curated references.',
@@ -236,8 +230,14 @@
 				{
 					id: 'detail-cart',
 					title: 'Save it',
-					text: 'The cart action at the bottom adds this abstract to your saved list — the same list the 🛒 button in the home page header surfaces.',
-					attachTo: { element: '[data-testid="detail-cart-add"], [data-testid="detail-cart-remove"]', on: place('top') }
+					text: 'The cart icon next to the poster id adds this abstract to your saved list — the same list the 🛒 button in the home-page header surfaces.',
+					attachTo: { element: '[data-testid="detail-cart-add"], [data-testid="detail-cart-remove"]', on: place('bottom') }
+				},
+				{
+					id: 'detail-back',
+					title: 'Back to the atlas',
+					text: 'When you\'re done reading, the link at the bottom returns you to the search + map view with your saved list and any filters still intact.',
+					attachTo: { element: '[data-testid="detail-back-to-atlas"]', on: place('top') }
 				}
 			);
 		} else if (kind === 'about') {

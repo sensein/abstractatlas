@@ -256,6 +256,37 @@
 				<span class="accepted-for">{abstract.accepted_for}</span>
 			</div>
 			<div class="header-actions">
+				{#if abstract.poster_id}
+					{@const headerInCart = $cartStore.has(abstract.poster_id)}
+					<button
+						type="button"
+						class="cart-icon detail-cart-icon"
+						class:in-cart={headerInCart}
+						on:click={() =>
+							headerInCart
+								? cartStore.remove(abstract.poster_id)
+								: cartStore.add(abstract.poster_id)}
+						aria-label={headerInCart ? 'Remove from your list' : 'Add to your list'}
+						aria-pressed={headerInCart ? 'true' : 'false'}
+						title={headerInCart ? 'In your list — click to remove' : 'Add to your list'}
+						data-testid={headerInCart ? 'detail-cart-remove' : 'detail-cart-add'}
+					>
+						{#if headerInCart}
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<circle cx="9" cy="21" r="1.2" />
+								<circle cx="18" cy="21" r="1.2" />
+								<path d="M2 3h2.5L5.5 7H21l-2 9H7L5.5 7 4.5 3H2zM7 9l1 5h11l1-5z" />
+							</svg>
+							<span class="check-pip" aria-hidden="true">✓</span>
+						{:else}
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<circle cx="9" cy="21" r="1.2" />
+								<circle cx="18" cy="21" r="1.2" />
+								<path d="M2 3h2.5L5.5 7H21l-2 9H7L5.5 7" />
+							</svg>
+						{/if}
+					</button>
+				{/if}
 				{#if abstract.poster_id && compact}
 					<a
 						class="permalink permalink-top"
@@ -815,30 +846,15 @@
 		{/snippet}
 
 		<footer class="detail-footer">
-			{#if inCart(abstract.poster_id)}
-				<button
-					type="button"
-					class="cart-action remove"
-					on:click={() => cartStore.remove(abstract.poster_id)}
-					data-testid="detail-cart-remove"
-				>
-					Remove from list
-				</button>
-			{:else}
-				<button
-					type="button"
-					class="cart-action add"
-					on:click={() => cartStore.add(abstract.poster_id)}
-					disabled={!abstract.poster_id}
-					data-testid="detail-cart-add"
-				>
-					+ add to list
-				</button>
+			{#if !compact}
+				<!-- Permalink page: the last thing on the panel is a way back
+					 to the main atlas. (Cart action moved to the header next to
+					 the poster id; the permalink button itself only renders in
+					 compact / home-pane mode.) -->
+				<a class="back-to-atlas" href={`${base}/`} data-testid="detail-back-to-atlas">
+					← back to the atlas
+				</a>
 			{/if}
-			<!-- permalink link moved to the header (compact mode only) so it's
-				 visible without scrolling the panel; on the permalink page itself
-				 (compact={false}) there's nothing to link to. -->
-
 		</footer>
 	</aside>
 {/if}
@@ -1288,27 +1304,57 @@
 		display: flex;
 		gap: 0.75rem;
 		align-items: center;
-		justify-content: flex-end;
+		justify-content: flex-start;
 		border-top: 1px solid var(--border);
 		padding-top: 0.5rem;
 	}
-	.cart-action {
-		all: unset;
-		cursor: pointer;
-		padding: 0.4rem 0.8rem;
+	.back-to-atlas {
+		color: var(--accent);
+		text-decoration: none;
+		font-size: 0.9rem;
+		padding: 0.35rem 0.6rem;
 		border-radius: 4px;
-		font-size: 0.85rem;
-		background: var(--accent);
-		color: var(--accent-text);
+		border: 1px solid var(--border);
+		background: var(--bg-sunken);
 	}
-	.cart-action.remove {
-		background: var(--bg);
-		color: var(--success);
-		border: 1px solid var(--success);
+	.back-to-atlas:hover {
+		background: var(--accent-soft-bg);
+		text-decoration: none;
 	}
-	.cart-action:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
+	.cart-icon.detail-cart-icon {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 4px;
+		color: var(--text-faint);
+		cursor: pointer;
+	}
+	.cart-icon.detail-cart-icon:hover {
+		background: var(--accent-soft-bg);
+		color: var(--accent);
+	}
+	.cart-icon.detail-cart-icon.in-cart {
+		color: var(--accent);
+	}
+	.cart-icon.detail-cart-icon .check-pip {
+		position: absolute;
+		bottom: 0px;
+		right: 0px;
+		background: var(--success);
+		color: var(--bg-elevated);
+		border-radius: 999px;
+		width: 0.9rem;
+		height: 0.9rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.65rem;
+		font-weight: 700;
+		line-height: 1;
+		border: 1.5px solid var(--bg-elevated);
 	}
 	.permalink {
 		font-size: 0.85rem;

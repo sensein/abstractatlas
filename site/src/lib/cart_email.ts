@@ -32,12 +32,30 @@ function permalinkFor(siteUrl: string, posterId: string): string {
 	return `${trimSlash(siteUrl)}/abstract/${encodeURIComponent(posterId)}/`;
 }
 
-/** Render one cart line: "M-AM-101  Title — Lead Author  <permalink>". */
-function renderItemLine(record: AbstractRecord, leadAuthor: string, siteUrl: string): string {
+/**
+ * Render one cart item as a four-line block:
+ *
+ *   1. [M-AM-101] Title goes here, wrapped if it's long
+ *      — Lead Author
+ *      → Open: https://abstractatlas.brainkb.org/abstract/M-AM-101/
+ *
+ * The `→ Open: <url>` line uses an arrow prefix + label so the URL reads
+ * unambiguously as "click here to view the abstract" inside any email
+ * client. Most clients auto-linkify a bare URL on its own line, which is
+ * why the URL ends the block.
+ */
+function renderItemLine(
+	record: AbstractRecord,
+	leadAuthor: string,
+	siteUrl: string,
+	index: number
+): string {
 	const id = record.poster_id || `id ${record.abstract_id}`;
 	const url = record.poster_id ? permalinkFor(siteUrl, record.poster_id) : '';
-	const author = leadAuthor ? ` — ${leadAuthor}` : '';
-	return `• ${id}  ${record.title}${author}\n  ${url}`;
+	const lines: string[] = [`${index}. [${id}] ${record.title}`];
+	if (leadAuthor) lines.push(`   — ${leadAuthor}`);
+	if (url) lines.push(`   → Open: ${url}`);
+	return lines.join('\n');
 }
 
 /**
@@ -55,15 +73,20 @@ export function buildMailtoLink(
 ): string {
 	const subject = options.subject ?? 'My OHBM 2026 abstract list';
 	const subjectPart = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=';
-	const truncationSuffix = TRUNCATION_NOTICE + trimSlash(options.siteUrl) + ' )';
-	const header = `Saved abstracts from the OHBM 2026 Atlas (${items.length} item${items.length === 1 ? '' : 's'}):\n\n`;
+	const siteHome = trimSlash(options.siteUrl);
+	const truncationSuffix =
+		TRUNCATION_NOTICE + siteHome + ' )';
+	const header =
+		`Saved abstracts from the OHBM 2026 Atlas (${items.length} item${items.length === 1 ? '' : 's'}).\n` +
+		`Each entry below has an "Open:" link that lands directly on its full-detail page.\n\n`;
+	const footer = `\n\n— Browse the rest at ${siteHome}/`;
 	const lines: string[] = [];
 	let included = 0;
 	let truncated = false;
 	for (const rec of items) {
 		const lead = leadAuthorByAbstractId.get(rec.abstract_id) ?? '';
-		const line = renderItemLine(rec, lead, options.siteUrl);
-		const tentativeBody = header + [...lines, line].join('\n\n') + truncationSuffix;
+		const line = renderItemLine(rec, lead, options.siteUrl, included + 1);
+		const tentativeBody = header + [...lines, line].join('\n\n') + truncationSuffix + footer;
 		const tentativeUrlLength = subjectPart.length + encodeURIComponent(tentativeBody).length;
 		if (tentativeUrlLength > MAX_MAILTO_LENGTH && included > 0) {
 			truncated = true;
@@ -74,6 +97,7 @@ export function buildMailtoLink(
 	}
 	let body = header + lines.join('\n\n');
 	if (truncated) body += truncationSuffix;
+	body += footer;
 	return subjectPart + encodeURIComponent(body);
 }
 
@@ -83,13 +107,14 @@ export function buildPlainTextList(
 	leadAuthorByAbstractId: Map<number, string>,
 	siteUrl: string
 ): string {
-	const header = `Saved abstracts from the OHBM 2026 Atlas (${items.length} item${items.length === 1 ? '' : 's'}):\n\n`;
-	return (
-		header +
-		items
-			.map((rec) =>
-				renderItemLine(rec, leadAuthorByAbstractId.get(rec.abstract_id) ?? '', siteUrl)
-			)
-			.join('\n\n')
-	);
+	const siteHome = trimSlash(siteUrl);
+	const header =
+		`Saved abstracts from the OHBM 2026 Atlas (${items.length} item${items.length === 1 ? '' : 's'}).\n` +
+		`Each entry below has an "Open:" link that lands directly on its full-detail page.\n\n`;
+	const body = items
+		.map((rec, i) =>
+			renderItemLine(rec, leadAuthorByAbstractId.get(rec.abstract_id) ?? '', siteUrl, i + 1)
+		)
+		.join('\n\n');
+	return header + body + `\n\n— Browse the rest at ${siteHome}/`;
 }

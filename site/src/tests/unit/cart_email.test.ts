@@ -65,7 +65,18 @@ describe('buildMailtoLink', () => {
 		const url = buildMailtoLink([], new Map(), { siteUrl: 'https://example.org' });
 		expect(url.startsWith('mailto:?')).toBe(true);
 		const body = decodeURIComponent(url.split('&body=')[1]);
-		expect(body).toContain('(0 items):');
+		expect(body).toContain('(0 items)');
+	});
+
+	it('puts each item on its own numbered block with a labelled Open link', () => {
+		const items = [rec(1, 'M-AM-101', 'Memory in aging'), rec(2, 'M-AM-102', 'Vision')];
+		const url = buildMailtoLink(items, new Map(), { siteUrl: 'https://example.org/atlas' });
+		const body = decodeURIComponent(url.split('&body=')[1]);
+		expect(body).toContain('1. [M-AM-101] Memory in aging');
+		expect(body).toContain('2. [M-AM-102] Vision');
+		expect(body).toContain('→ Open: https://example.org/atlas/abstract/M-AM-101/');
+		expect(body).toContain('→ Open: https://example.org/atlas/abstract/M-AM-102/');
+		expect(body).toContain('Browse the rest at https://example.org/atlas/');
 	});
 
 	it('respects custom subject', () => {
