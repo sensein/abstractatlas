@@ -15,7 +15,6 @@ from ohbm2026.embed import neuroscape as embed_neuroscape
 from ohbm2026.enrich import stage as enrich_stage
 from ohbm2026.fetch import stage as fetch_stage
 from ohbm2026.embed import stage as embed_stage
-from ohbm2026.ui import cli as ui_cli
 
 
 def _copy_actions(target: argparse.ArgumentParser, source: argparse.ArgumentParser) -> None:
@@ -149,18 +148,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _copy_actions(title_audit_parser, titles.build_parser())
 
-    export_ui_parser = subparsers.add_parser(
-        "export-ui",
-        help="Build the static JSON data bundle for the standalone abstract search UI",
-    )
-    _copy_actions(export_ui_parser, ui_cli.build_export_parser())
-
-    build_ui_parser = subparsers.add_parser(
-        "build-ui",
-        help="Build the standalone static abstract search site bundle",
-    )
-    _copy_actions(build_ui_parser, ui_cli.build_ui_parser())
-
     manifest_parser = subparsers.add_parser("write-manifest", help="Write the NeuroScape handoff manifest")
     _copy_actions(manifest_parser, embed_neuroscape.build_manifest_parser())
 
@@ -274,10 +261,6 @@ def main(argv: list[str] | None = None) -> int:
         return analyze_clusters.stage2_analysis_main(subcommand_argv)
     if command == "title-audit":
         return titles.main(subcommand_argv)
-    if command == "export-ui":
-        return ui_cli.export_ui_main(subcommand_argv)
-    if command == "build-ui":
-        return ui_cli.build_ui_main(subcommand_argv)
     if command == "write-manifest":
         return embed_neuroscape.manifest_main(subcommand_argv)
 

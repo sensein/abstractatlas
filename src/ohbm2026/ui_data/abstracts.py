@@ -16,7 +16,7 @@ from typing import Any
 
 from ohbm2026.analyze.storage import parse_string_list_value
 from ohbm2026.titles import cleaned_abstract_title
-from ohbm2026.ui.payload import (
+from ohbm2026.ui_data.questions import (
     PRIMARY_TOPIC_QUESTION,
     QUESTION_MAP,
     SECONDARY_TOPIC_QUESTION,
@@ -71,11 +71,9 @@ _SECTION_QUESTION = {
 
 
 def _topics(questions: Mapping[str, Any]) -> dict[str, str]:
-    """Return ``{primary, primary_subcategory, secondary, secondary_subcategory}``.
-
-    Mirrors the existing ``build_metadata`` semantics in
-    ``ohbm2026.ui.payload`` but in a flat record shape suited to the per-shard
-    schema in data-model.md §2.
+    """Return ``{primary, primary_subcategory, secondary, secondary_subcategory}``
+    in a flat record shape suited to the per-shard schema in
+    data-model.md §2.
     """
 
     primary_values = topic_pair_from_questions(questions, PRIMARY_TOPIC_QUESTION)

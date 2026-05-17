@@ -29,4 +29,4 @@ experience overwhelming.
    the claim manuscript.
 2. Run `ohbmcli extract-claims` to populate or resume the claim cache.
 3. Run `ohbmcli enrich` to merge claim extraction into the enriched abstract data.
-4. Run `ohbmcli export-ui` or `ohbmcli build-ui` so the detail payload and static UI pick up the new fields.
+4. Run `scripts/build_ui_data.py` (Stage 6) so the SvelteKit site's data package picks up the new fields. (The legacy `ohbmcli export-ui` / `build-ui` commands have been removed; this plan predates Stage 2.1 + Stage 6 and is kept for historical reference only.)

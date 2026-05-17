@@ -9,7 +9,7 @@ Local pipeline that ingests OHBM 2026 accepted abstracts from Oxford Abstracts (
 There are two coupled but distinct tracks:
 
 - **Track A — canonical corpus pipeline**: driven by `ohbmcli` (`src/ohbm2026/cli.py`). Produces the authoritative artifacts under `data/primary/`, `data/cache/`, `data/outputs/experiments/`, and `data/outputs/exported-sites/`.
-- **Track B — exploratory layout/sequencing**: driven by standalone scripts in `scripts/` and recorded runs under `experiments/` and `data/outputs/proposals/`. These produce comparative evidence, not silent replacements for canonical outputs.
+- **Track B — exploratory layout/sequencing**: driven by standalone scripts in `scripts/` and recorded runs under `data/outputs/proposals/`. These produce comparative evidence, not silent replacements for canonical outputs.
 
 ## Non-negotiables (from `.specify/memory/constitution.md`)
 
@@ -137,10 +137,10 @@ The directory hierarchy is part of the contract — don't write to other roots:
 - `data/cache/` — resumable caches. Stage 1's `fetch_abstracts/checkpoint__<state-key>.json` uses the legacy state-key naming. Stage 2's per-component caches under `figure_analysis/`, `claim_analysis/`, `reference_metadata/` are keyed by `sha256(input || model_id)` and named `<cache-key>.json`.
 - `data/outputs/experiments/` — clustering, embeddings, projections, audit outputs.
 - `data/outputs/proposals/` — poster-layout proposal bundles and analyses.
-- `data/outputs/exported-sites/ui-site__<state-key>/` — primary local UI bundle.
-- `export/ui-site/` — optional publish mirror of the latest UI bundle.
+- `data/outputs/exported-sites/ui-site__<state-key>/` — legacy local UI bundle root (the `export-ui` / `build-ui` CLI commands were retired with the Stage 6 rewrite; left in the contract for any remaining legacy bundles).
+- `export/ui-site/` — legacy publish mirror of the retired UI bundle.
+- `site/static/data/` — **Stage 6** static-JSON shards produced by `scripts/build_ui_data.py`.
 - `archive/` — local pre-migration backups; preserves legacy paths.
-- `experiments/<date>-<topic>/runs/<fresh-run-name>/` — recorded exploratory experiments; immutable.
 
 `data/`, `export/`, `tmp/`, `archive/`, and `memory/archive/` are gitignored.
 
@@ -163,7 +163,7 @@ Current canonical defaults (the UI consumes these):
 3. `.specify/memory/constitution.md` — hard rules (root `CONSTITUTION.md` is a pointer).
 4. `memory/summary.md` — reconstructed history of major design moves.
 5. The plan doc under `docs/` closest to the area you're touching (e.g. `static-ui-plan.md`, `poster-layout-optimizer-plan.md`).
-6. The experiment README under `experiments/` if rerunning a recorded experiment.
+6. The Spec Kit plan under `specs/<NNN>-<topic>/plan.md` for the most recent or most relevant stage if you're touching its area.
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
