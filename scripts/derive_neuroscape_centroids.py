@@ -154,12 +154,23 @@ def _iter_h5_vectors(shard: Path) -> "Iterable[tuple[str, np.ndarray]]":
                     f"{shard} has an embeddings dataset/group but no pmid/doi/id dataset."
                 )
             if hasattr(embeddings, "keys"):
+                # Group-keyed H5 layout: `embeddings` is a group; each key
+                # maps to one vector dataset. The corresponding article id
+                # comes from `id_dataset` at the same *positional* index in
+                # the sorted-key order. Mapping by `int(key)` would be wrong
+                # when keys are digits but not a contiguous 0-based range
+                # (e.g. {"3","7","42"}) — use the enumeration index, which is
+                # always positional.
                 keys = sorted(
                     embeddings.keys(),
                     key=lambda k: int(k) if str(k).isdigit() else str(k),
                 )
-                for key in keys:
-                    index = int(key) if str(key).isdigit() else keys.index(key)
+                if len(id_dataset) != len(keys):
+                    raise SystemExit(
+                        f"{shard}: id_dataset has {len(id_dataset)} rows but "
+                        f"embeddings group has {len(keys)} keys; cannot align."
+                    )
+                for index, key in enumerate(keys):
                     yield (
                         _decode_scalar(id_dataset[index]),
                         np.asarray(embeddings[key][()], dtype=np.float32),

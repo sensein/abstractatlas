@@ -358,6 +358,24 @@ def _run_entries_parallel(
         # but if missing we fall back to serial rather than crashing.
         return [_run_one_entry(config, entry) for entry, _ in runnable]
 
+    # Constrain per-worker OpenMP / BLAS thread counts to avoid
+    # oversubscription: FAISS-CPU, NumPy/OpenBLAS, MKL, and OpenMP all
+    # spawn their own thread pools per process. With `n_jobs=-1` (or any
+    # n_jobs > 1) we already use one process per core, so each worker's
+    # internal thread pool should be 1. Setting these env vars BEFORE
+    # the `Parallel` call ensures the loky-spawned subprocesses inherit
+    # them. Existing user-set values win (the explicit env-var prefix
+    # `OMP_NUM_THREADS=N PYTHONPATH=src ohbmcli …` still applies).
+    if config.n_jobs != 1:
+        for var in (
+            "OMP_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "VECLIB_MAXIMUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+        ):
+            os.environ.setdefault(var, "1")
+
     return Parallel(n_jobs=config.n_jobs, backend="loky")(
         delayed(_run_one_entry)(config, entry) for entry, _ in runnable
     )

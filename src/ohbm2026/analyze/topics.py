@@ -117,7 +117,11 @@ def _load_spacy(model_name: str = "en_core_web_md") -> Any | None:
     except ImportError:  # pragma: no cover
         return None
     try:
-        return spacy.load(model_name, disable=["parser", "tagger"]) if False else spacy.load(model_name)
+        # Load the full pipeline — `noun_chunks` requires the parser,
+        # and the tagger informs the lemmatizer that's used downstream
+        # in `_canonicalize_phrase`. Disabling them silently degrades
+        # candidate-phrase quality, so keep them on.
+        return spacy.load(model_name)
     except OSError:
         try:
             return spacy.load("en_core_web_sm")

@@ -495,8 +495,7 @@ def project_into_umap(
         return np.asarray(model.transform(new_vectors), dtype=np.float32)
 
     if algorithm == "parametric":
-        mlp_filename = f"parametric_mlp_{dim}d.pickle"
-        # Note: bundle writer names files `parametric_mlp_2d.pickle` / `parametric_mlp_3d.pickle`
+        # Bundle writer names files `parametric_mlp_2d.pickle` / `parametric_mlp_3d.pickle`.
         mlp_filename = f"parametric_mlp_{dim}d.pickle"
         mlp_path = Path(bundle_dir) / mlp_filename if bundle_dir is not None else None
         if mlp_path is None or not mlp_path.exists():

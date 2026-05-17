@@ -484,9 +484,20 @@ def write_analysis_bundle(
             json.dumps(provenance, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+        # Atomic-replace pattern: rename existing → `.prev`, swap tmp → bundle_dir,
+        # then drop `.prev`. A concurrent reader never sees `bundle_dir` missing
+        # (the original is in place until the same-filesystem `tmp_root.replace`
+        # call returns, at which point the new bundle is live). The `.prev`
+        # directory is skipped by `iter_analysis_bundles` (it filters dotfiles
+        # and `.prev` suffixes).
+        prev_dir = bundle_dir.with_name(bundle_dir.name + ".prev")
+        if prev_dir.exists():
+            shutil.rmtree(prev_dir)
         if bundle_dir.exists():
-            shutil.rmtree(bundle_dir)
+            bundle_dir.rename(prev_dir)
         tmp_root.replace(bundle_dir)
+        if prev_dir.exists():
+            shutil.rmtree(prev_dir)
     return bundle_dir
 
 
