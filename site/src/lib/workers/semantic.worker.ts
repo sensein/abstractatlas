@@ -64,12 +64,13 @@ self.addEventListener('message', async (e: MessageEvent<InMsg>) => {
 				let s = 0;
 				const off = i * dim;
 				for (let j = 0; j < dim; j++) s += query[j] * corpus[off + j];
-				// Dequantize: the corpus dot-product is scaled by the quantization
-				// factor; divide once per row instead of per-element to stay fast.
-				// Query is already L2-normalized; dequantized corpus rows have
-				// max-abs ≈ original_max_abs ≈ 0.25 (norm ≈ 1.0 across 384 dims),
-				// so the resulting score is the cosine similarity in [-1, 1].
-				scores[i] = s * invScale;
+				// Dequantize once per row (faster than per-element). Then clamp
+				// to [-1, 1] — int8 quantization can perturb the dequantized
+				// corpus norm slightly above 1, which can push cosine sim above
+				// 1 (and thus negative cosine distance). Clamp keeps the
+				// downstream `d = 1 - sim` in [0, 2].
+				const raw = s * invScale;
+				scores[i] = raw > 1 ? 1 : raw < -1 ? -1 : raw;
 			}
 			const topK = Math.min(msg.topK || 50, n);
 			// Heap-pick via partial sort: collect indices, sort by descending score, slice.

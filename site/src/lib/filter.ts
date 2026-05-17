@@ -141,13 +141,12 @@ export function lexicalSearch(
 		const matchedAbstractIds = new Set<number>();
 		for (const corpusToken of index.tokens) {
 			if (Math.abs(corpusToken.length - qt.length) > threshold) continue;
-			// Exact substring match (either direction) counts as 0-distance.
-			if (corpusToken === qt || corpusToken.includes(qt) || qt.includes(corpusToken)) {
-				const posting = index.postings.get(corpusToken);
-				if (posting) for (const id of posting) matchedAbstractIds.add(id);
-				continue;
-			}
-			if (damerauLevenshtein(qt, corpusToken, threshold) <= threshold) {
+			// Match by EXACT equality or Damerau-Levenshtein ≤ threshold only.
+			// The earlier impl also took bidirectional substring matches as
+			// 0-distance — that was too permissive (a 3-char corpus token like
+			// "mri" matched any longer query containing those chars), so it's
+			// gone now. Behaviour now strictly follows FR-008.
+			if (corpusToken === qt || damerauLevenshtein(qt, corpusToken, threshold) <= threshold) {
 				const posting = index.postings.get(corpusToken);
 				if (posting) for (const id of posting) matchedAbstractIds.add(id);
 			}
