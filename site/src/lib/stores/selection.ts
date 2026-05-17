@@ -35,11 +35,17 @@ export const authorChips = writable<Set<string>>(new Set());
 const SHOW_MAP_STORAGE_KEY = 'ohbm2026.ui.showMap.v1';
 
 function loadShowMap(): boolean {
-	if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return false;
+	// Default ON — new users land with the UMAP open so the corpus is
+	// visible at a glance. Stored value wins once the user has toggled,
+	// so a chosen-OFF state survives reloads.
+	if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return true;
 	try {
-		return window.localStorage.getItem(SHOW_MAP_STORAGE_KEY) === '1';
+		const raw = window.localStorage.getItem(SHOW_MAP_STORAGE_KEY);
+		if (raw === '0') return false;
+		if (raw === '1') return true;
+		return true; // no prior choice → default ON
 	} catch {
-		return false;
+		return true;
 	}
 }
 
