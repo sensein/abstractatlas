@@ -764,8 +764,16 @@
 	.chart {
 		width: 100%;
 		max-width: 100%;
-		height: clamp(260px, 45vh, 480px);
+		height: clamp(220px, 50vh, 480px);
 		overflow: hidden;
+	}
+	@media (max-height: 480px) and (orientation: landscape) {
+		/* Phone-landscape: 480 px tall or less. Don't let one chart eat the
+		   entire viewport — keep ~60% of it for the chart, leave room for
+		   the panel header + the surrounding result list. */
+		.chart {
+			height: 60vh;
+		}
 	}
 	.chart-3d {
 		height: clamp(280px, 45vh, 480px);
