@@ -1,16 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { loadManifest, type Manifest } from '$lib/shards';
+	import { buildInfoFromEnv, loadManifest, type BuildInfo, type Manifest } from '$lib/shards';
 
 	let manifest: Manifest | null = null;
-	let error: string | null = null;
+	let manifestLoaded = false;
+	const envBuildInfo: BuildInfo | null = buildInfoFromEnv();
 
 	onMount(async () => {
-		try {
-			manifest = await loadManifest();
-		} catch (err) {
-			error = (err as Error).message;
-		}
+		manifest = await loadManifest();
+		manifestLoaded = true;
 	});
 </script>
 
@@ -44,12 +42,33 @@
 			<dt>Facet catalog</dt>
 			<dd>{manifest.facets.length} facets</dd>
 		</dl>
-	{:else if error}
+	{:else if envBuildInfo && manifestLoaded}
+		<p class="committish-callout">
+			Built from
+			<code data-testid="placeholder-short-sha">{envBuildInfo.code_revision_short}</code>
+			{#if envBuildInfo.built_at}
+				at <time datetime={envBuildInfo.built_at}>{envBuildInfo.built_at}</time>
+			{/if}.
+		</p>
+		<p>
+			This preview is a <strong>workflow-only</strong> deploy — the Stage 1–4 inputs haven't
+			been materialized in CI yet, so the data package is empty. The short SHA above comes
+			from the deploy workflow's git revision (<code>VITE_BUILD_SHA</code>) and matches the
+			commit at the head of this PR — that's the signal reviewers need to confirm the
+			Deployments-box URL points at the latest pushed commit.
+		</p>
+		<p>
+			Full data-package rendering (3,244 abstracts, 15 cells, 33 topic shards) lights up
+			once <code>scripts/fetch_ui_inputs.sh</code> is wired to an artifact store.
+		</p>
+	{:else if manifestLoaded}
 		<p class="error">
-			Failed to load <code>manifest.json</code>: {error}
+			No <code>manifest.json</code> found and no build-time SHA was injected. Set
+			<code>VITE_BUILD_SHA</code> + <code>VITE_BUILD_SHA_SHORT</code> in your build env to
+			surface the committish on the page.
 		</p>
 	{:else}
-		<p>Loading <code>manifest.json</code>…</p>
+		<p>Loading…</p>
 		<noscript>
 			<p class="error">JavaScript is required to render the build provenance.</p>
 		</noscript>

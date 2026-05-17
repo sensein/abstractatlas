@@ -78,7 +78,12 @@ jobs:
         working-directory: site
         env:
           BASE_PATH: ''
-        run: pnpm build
+          VITE_BUILD_SHA: ${{ github.sha }}
+          VITE_BUILD_SHA_SHORT: ${{ github.sha }}
+          VITE_BUILD_AT: ${{ github.event.head_commit.timestamp }}
+        run: |
+          export VITE_BUILD_SHA_SHORT="${VITE_BUILD_SHA:0:7}"
+          pnpm build
 
       - name: Publish to gh-pages root
         uses: peaceiris/actions-gh-pages@v3

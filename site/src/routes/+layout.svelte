@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { loadManifest, type Manifest } from '$lib/shards';
-	import BuildInfo from '$lib/components/BuildInfo.svelte';
+	import { buildInfoFromEnv, loadManifest, type BuildInfo, type Manifest } from '$lib/shards';
+	import BuildInfoFooter from '$lib/components/BuildInfo.svelte';
 
 	let manifest: Manifest | null = null;
+	const envBuildInfo: BuildInfo | null = buildInfoFromEnv();
+	$: effectiveBuildInfo = manifest?.build_info ?? envBuildInfo;
 
 	onMount(async () => {
 		manifest = await loadManifest();
@@ -11,8 +13,8 @@
 </script>
 
 <svelte:head>
-	{#if manifest}
-		<title>OHBM 2026 — under construction · {manifest.build_info.code_revision_short}</title>
+	{#if effectiveBuildInfo}
+		<title>OHBM 2026 — under construction · {effectiveBuildInfo.code_revision_short}</title>
 	{:else}
 		<title>OHBM 2026 — under construction</title>
 	{/if}
@@ -30,7 +32,7 @@
 		<slot />
 	</main>
 
-	<BuildInfo buildInfo={manifest?.build_info ?? null} />
+	<BuildInfoFooter buildInfo={effectiveBuildInfo} />
 </div>
 
 <style>

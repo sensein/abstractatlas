@@ -8,6 +8,27 @@ export interface BuildInfo {
 	built_at: string;
 }
 
+/**
+ * Build-time fallback when the data-package builder hasn't run (e.g. the
+ * placeholder deploy where Stage 1–4 inputs aren't materialized in CI). The
+ * Vite env vars `VITE_BUILD_SHA` / `VITE_BUILD_SHA_SHORT` / `VITE_BUILD_AT`
+ * are populated by the deploy workflow before `pnpm build`. Local dev (no
+ * env vars set) returns null so the UI doesn't display stale data.
+ */
+export function buildInfoFromEnv(): BuildInfo | null {
+	const sha = import.meta.env.VITE_BUILD_SHA;
+	const short = import.meta.env.VITE_BUILD_SHA_SHORT;
+	const at = import.meta.env.VITE_BUILD_AT;
+	if (!sha || !short) return null;
+	return {
+		corpus_state_key: 'placeholder',
+		code_revision: sha,
+		code_revision_short: short,
+		stage4_rollup_state_key: 'placeholder',
+		built_at: at || ''
+	};
+}
+
 export interface Manifest {
 	schema_version: string;
 	build_info: BuildInfo;
