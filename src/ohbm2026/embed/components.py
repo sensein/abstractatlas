@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from ohbm2026 import enrichment as enrichment_module
+from ohbm2026.enrich.text import html_to_markdown
 
 __all__ = [
     "DEFAULT_COMPONENTS",
@@ -63,7 +63,7 @@ def _section_text(record: dict, component: str) -> str:
             # The enrichment helper already handles HTML→markdown for
             # Oxford Abstracts payloads; reuse it for consistency
             # across stages.
-            markdown = enrichment_module.html_to_markdown(value)
+            markdown = html_to_markdown(value)
             return _normalize_whitespace(markdown)
     return ""
 

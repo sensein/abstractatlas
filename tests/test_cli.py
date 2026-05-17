@@ -121,14 +121,14 @@ class CLITest(unittest.TestCase):
         titles_main.assert_called_once_with(["--output", "tmp/title_modifications.json"])
 
     def test_export_ui_subcommand_delegates_to_ui_export_main(self) -> None:
-        with mock.patch.object(cli.ui, "export_ui_main", return_value=29) as export_ui_main:
+        with mock.patch.object(cli.ui_cli, "export_ui_main", return_value=29) as export_ui_main:
             result = cli.main(["export-ui", "--output-dir", "tmp/site-data"])
 
         self.assertEqual(result, 29)
         export_ui_main.assert_called_once_with(["--output-dir", "tmp/site-data"])
 
     def test_build_ui_subcommand_delegates_to_ui_build_main(self) -> None:
-        with mock.patch.object(cli.ui, "build_ui_main", return_value=30) as build_ui_main:
+        with mock.patch.object(cli.ui_cli, "build_ui_main", return_value=30) as build_ui_main:
             result = cli.main(["build-ui", "--site-output-dir", "tmp/site"])
 
         self.assertEqual(result, 30)
@@ -198,19 +198,18 @@ class TestLegacyEnrichmentSubcommandsRemoved(unittest.TestCase):
     """
 
     def test_enrich_subcommand_is_not_a_known_choice(self) -> None:
-        with mock.patch.object(cli.enrichment, "enrich_main", return_value=0):
-            with self.assertRaises(SystemExit):
-                cli.main(["enrich"])
+        # After Stage 5 / US1, `ohbm2026.enrichment` is gone — argparse
+        # rejects the legacy subcommand name before any dispatch fires.
+        with self.assertRaises(SystemExit):
+            cli.main(["enrich"])
 
     def test_analyze_figures_subcommand_is_not_a_known_choice(self) -> None:
-        with mock.patch.object(cli.enrichment, "analyze_figures_main", return_value=0):
-            with self.assertRaises(SystemExit):
-                cli.main(["analyze-figures"])
+        with self.assertRaises(SystemExit):
+            cli.main(["analyze-figures"])
 
     def test_extract_claims_subcommand_is_not_a_known_choice(self) -> None:
-        with mock.patch.object(cli.enrichment, "extract_claims_main", return_value=0):
-            with self.assertRaises(SystemExit):
-                cli.main(["extract-claims"])
+        with self.assertRaises(SystemExit):
+            cli.main(["extract-claims"])
 
     def test_reference_metadata_subcommand_is_not_a_known_choice(self) -> None:
         from ohbm2026.enrich import openalex as openalex_mod

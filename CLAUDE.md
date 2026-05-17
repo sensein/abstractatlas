@@ -99,7 +99,7 @@ Subcommands group into stages (see README for full options):
 - analysis: `semantic-analysis`, `cluster-benchmark`, `umap-plot`, `compare-projections`, `optimize-projections`
 - UI: `export-ui`, `build-ui`
 
-Poster layout/sequencing is **not** in `ohbmcli` — use `scripts/optimize_poster_layout.py`, `scripts/analyze_poster_layout.py`, `scripts/benchmark_poster_sequencing.py`, `scripts/run_advanced_global_path_experiment.py`, and the `sweep_*` scripts. Always pass explicit input paths and a fresh `--output-root`/`--output-dir`; do not rely on stale baked-in defaults.
+Poster layout/sequencing is **not** in `ohbmcli` AND is **parked** as of Stage 5 (see `ohbm2026.layout` parked package and `scripts/layout/` for the 15 companion scripts: `scripts/layout/optimize_poster_layout.py`, `scripts/layout/analyze_poster_layout.py`, `scripts/layout/benchmark_poster_sequencing.py`, etc.). Always pass explicit input paths and a fresh `--output-root`/`--output-dir`; do not rely on stale baked-in defaults.
 
 ## Code architecture
 
@@ -122,7 +122,7 @@ All library code lives in `src/ohbm2026/`:
 - `titles.py` — title normalization rules (used by `title-audit`).
 - `artifacts.py` — shared artifact-naming/state-key helpers used across stages.
 - `category_evaluation.py`, `category_rollup.py` — compare learned cluster families against submitter taxonomies.
-- `poster_layout.py`, `poster_sequencing.py`, `nocd_experiments.py` — exploratory organizer-facing analyses, called by `scripts/`.
+- `layout/` (**parked** as of Stage 5 — specs/007-package-reorg/) — poster_layout, poster_sequencing, nocd_experiments. Preserved verbatim for future revival; not actively maintained. Tests under `tests/test_poster_*.py` + `tests/test_nocd_experiments.py` still run with import-paths updated to `ohbm2026.layout.*`. The 15 companion scripts live under `scripts/layout/`. Revive when a new organizer cycle needs poster-layout work.
 - `ui.py` — static UI export (`export-ui` writes a fresh bundle; `build-ui` also mirrors to `export/ui-site/`).
 - `cli.py` — single dispatch entrypoint that wires the above into subcommands.
 
@@ -168,29 +168,32 @@ Current canonical defaults (the UI consumes these):
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at `specs/006-analysis-annotation/plan.md`. The companion design artifacts
+at `specs/007-package-reorg/plan.md`. The companion design artifacts
 under the same directory — `research.md`, `data-model.md`, `contracts/`,
-and `quickstart.md` — pin Stage 4 analysis & annotation design: one
-canonical `ohbmcli analyze-matrix` entrypoint producing four per-bundle
-artifacts (`projections` 2D+3D UMAP, `communities` via FAISS+Leiden+CPM
-with resolution sweep, `neuroscape_clusters` via precomputed spherical-
-mean centroids on the unit hypersphere, `topic_clusters`) across the
-default 5-model × 3-input matrix (`abstract` recipe + `claims` and `methods` components — 48 bundles, 12 cells auto-skipped),
-plus a canonical per-corpus rollup at `data/outputs/analysis/annotations__
-<state-key>.{parquet,sqlite}`. Topic keywords come from a hybrid pipeline:
-spaCy (`en_core_web_md`; optional scispacy) noun-chunk + NER extraction
-→ class-based TF-IDF → optional opt-out LLM grouping pass over the
-candidate-phrase shortlist (NOT raw abstracts) with `Keywords ⊆
-candidate_phrases` guard. `project_into_umap(new_vectors, bundle,
-algorithm=…)` supports `native` / `knn_weighted` / `parametric`. Flat
-`src/ohbm2026/analyze.py` is deleted and split into the `analyze/`
-package (`stage.py`, `umap.py`, `communities.py`, `centroids.py`,
-`topics.py`, `topic_clusters.py`, `clusters.py`, `projections.py`,
-`rollup.py`, `storage.py`, `provenance.py`, `errors.py`); Stage-2
-NeuroScape model code physically moves to `embed/neuroscape.py`
-(replacing the façade); no backward-compat shim.
+and `quickstart.md` — pin Stage 5 package-reorganization design: three
+independent commit series that collapse the legacy `src/ohbm2026/
+enrichment.py` (1,361 LOC, 62 def/class symbols, ~22+ unused) into
+focused `enrich/` submodules (`text.py`, `cache_paths.py`,
+`markdown_render.py`, `openai_compat.py`); park `poster_layout.py`,
+`poster_sequencing.py`, and `nocd_experiments.py` under
+`src/ohbm2026/layout/` (no scheduled maintenance; revive when a new
+organizer cycle needs it) along with their 15 `scripts/` companions
+under `scripts/layout/`; and split the monolithic `src/ohbm2026/ui.py`
+(1,361 LOC) into a `ui/` package with leaf/mid/trunk submodules
+(`text.py`, `figures.py`, `references.py`, `manifest.py`,
+`payload_legacy.py`, `payload_stage4.py`, `cli.py`). No backward-compat
+shim at any `__init__.py`; every consumer imports from the explicit
+submodule that owns the symbol (Stage 4 / Q2 / T108b precedent). Tests
+are explicitly waived for the refactor body per the user's "OK to skip
+tests" guidance; the existing test suite (583 / 1 pre-existing failure)
+stays green, with `tests/test_enrichment.py` deleted because it covers
+only the legacy Stage 2 path that Stage 2.1 already replaced.
 
 Previous-stage plans:
+- Stage 4 analysis & annotation: `specs/006-analysis-annotation/plan.md`
+  (canonical `ohbmcli analyze-matrix` producing 48 bundles + canonical
+  rollup `annotations__<state-key>.{parquet,sqlite}`; joblib-parallel
+  orchestrator; hybrid spaCy + c-TF-IDF + LLM-grouping topics).
 - Stage 3 embeddings matrix: `specs/005-embeddings-matrix/plan.md`
   (per-component embeddings × 5 models with token-level chunking;
   state-key keyed bundle directories; canonical
