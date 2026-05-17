@@ -1,0 +1,76 @@
+name: deploy-ui
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/deploy-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: deploy-ui-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 20 + pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Enable pnpm
+        run: npm install --global pnpm@10
+
+      - name: Install site deps
+        working-directory: site
+        run: pnpm install --frozen-lockfile
+
+      - name: Run JS unit tests (Vitest)
+        working-directory: site
+        run: pnpm test:unit --run
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install link-check deps
+        run: pip install requests pyyaml
+
+      - name: References link check (FR-017)
+        # HEAD every URL in the references registry; non-zero exit blocks
+        # the deploy when a citation 4xx's or times out (T086 / T088).
+        run: PYTHONPATH=src python -m ohbm2026.ui_data.link_check specs/008-ui-rewrite/contracts/references.yaml
+
+      - name: Build site
+        working-directory: site
+        env:
+          BASE_PATH: ''
+          VITE_BUILD_SHA: ${{ github.sha }}
+          VITE_BUILD_AT: ${{ github.event.head_commit.timestamp }}
+          VITE_DATA_PACKAGE_URL: ${{ vars.OHBM2026_UI_DATA_PACKAGE_URL }}
+        run: |
+          export VITE_BUILD_SHA_SHORT="${VITE_BUILD_SHA:0:7}"
+          pnpm build
+
+      - name: Publish to gh-pages root
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: site/build
+          publish_branch: gh-pages
+          destination_dir: .
+          keep_files: true
+          enable_jekyll: false
+          commit_message: 'deploy(ui): ${{ github.sha }}'
