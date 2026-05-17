@@ -27,3 +27,30 @@ export const cartOnly = writable<boolean>(false);
  *  unfiltered (by author) state. Non-destructive — coexists with the
  *  search query / facets / lasso. */
 export const authorChips = writable<Set<string>>(new Set());
+
+/** Persisted "Show map" panel toggle. Restored from localStorage on
+ *  startup so a browser reload keeps the user's chosen view (the
+ *  Semantic toggle already had this; the map toggle was a plain
+ *  component variable that reset to false on every reload). */
+const SHOW_MAP_STORAGE_KEY = 'ohbm2026.ui.showMap.v1';
+
+function loadShowMap(): boolean {
+	if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return false;
+	try {
+		return window.localStorage.getItem(SHOW_MAP_STORAGE_KEY) === '1';
+	} catch {
+		return false;
+	}
+}
+
+const _showMap = writable<boolean>(loadShowMap());
+_showMap.subscribe((v) => {
+	if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return;
+	try {
+		window.localStorage.setItem(SHOW_MAP_STORAGE_KEY, v ? '1' : '0');
+	} catch {
+		/* private mode / quota — best effort */
+	}
+});
+
+export const showMap = _showMap;

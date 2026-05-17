@@ -1,0 +1,633 @@
+id: https://github.com/sensein/ohbm2026/specs/008-ui-rewrite/contracts/ui_data
+name: ohbm2026_ui_data
+title: OHBM 2026 Atlas — UI data package schema
+description: >-
+  LinkML schema describing every JSON shard the OHBM 2026 Atlas SPA loads at
+  runtime from `data/`. Authoritative contract: a re-built data package whose
+  shards validate against this schema can be loaded by the site without code
+  changes. The wire format is JSON; this schema does not cover the binary
+  `data/search/minilm_vectors.bin` (only its companion sidecar).
+
+  Anchor invariants (data-model.md §8) are enforced by the Python builder
+  rather than by the schema itself — LinkML can't express e.g. "the cell
+  shard's `rows[i].abstract_id` equals `abstracts.abstracts[i].abstract_id`"
+  cleanly. The cross-shard build_info equality (`invariant 6`) is checked at
+  build time too. Validation here covers PER-SHARD shape only.
+license: MIT
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ohbm: https://github.com/sensein/ohbm2026/ui_data#
+default_prefix: ohbm
+imports:
+  - linkml:types
+
+# ----------------------------------------------------------------------------
+# Common envelope: every emitted JSON shard is an object that starts with
+# `schema_version` + `build_info`. The Python builder enforces this in
+# `_validate_invariants` (§8 invariant 6: every shard carries a byte-identical
+# build_info). The schema below adopts the same envelope as a shared mixin via
+# inheritance: each concrete shard is a `Shard` subtype.
+# ----------------------------------------------------------------------------
+
+classes:
+  Any:
+    description: >-
+      Pass-through for arbitrary JSON values (string, number, boolean, null,
+      array, object). LinkML wires this to the well-known `linkml:Any` class
+      so the JSON-schema generator emits no constraint at all.
+    class_uri: linkml:Any
+
+  BuildInfo:
+    description: >-
+      Identity of the build that produced a shard. Six required fields; the
+      Python builder pins them at top-of-build so every shard's `build_info`
+      is byte-identical (data-model.md §8 invariant 6). `built_at` is an
+      ISO-8601 timestamp in UTC.
+    attributes:
+      code_revision:
+        description: Full git SHA of the repo at build time.
+        range: string
+        required: true
+      code_revision_short:
+        description: 7-char short SHA derived from `code_revision`.
+        range: string
+        required: true
+        pattern: "^[0-9a-fA-F]{7,12}$"
+      built_at:
+        description: ISO-8601 UTC timestamp at which the build started.
+        range: datetime
+        required: true
+      corpus_state_key:
+        description: >-
+          Stage 1 state-key of the abstracts corpus (e.g. `f0c51e80dc0e`).
+          Identifies which checkpoint of the GraphQL fetch the build consumed.
+        range: string
+        required: true
+      stage4_rollup_state_key:
+        description: >-
+          Stage 4 analysis rollup state-key (e.g. `48b...`). Identifies the
+          per-cell embedding-bundle revision the build used to populate
+          cells/topics/neighbors.
+        range: string
+        required: true
+      builder_version:
+        description: Stage-6 builder version string (currently `ui_data.v1`); not always emitted.
+        range: string
+        required: false
+
+  Shard:
+    abstract: true
+    description: Common envelope shared by every JSON shard the site loads.
+    attributes:
+      schema_version:
+        description: Schema version tag (e.g. `abstracts.v1`).
+        range: string
+        required: true
+        pattern: "^[a-z_][a-z0-9_]*\\.v[0-9]+$"
+      build_info:
+        description: Identity of the build that produced this shard.
+        range: BuildInfo
+        required: true
+
+  # -------- manifest.json ---------------------------------------------------
+  ManifestCell:
+    description: One (model, input) cell entry in the manifest.
+    attributes:
+      cell_key:
+        description: '`<model>_<input>` — the canonical cell key.'
+        range: string
+        required: true
+      model:
+        description: Embedding-model identifier (e.g. `neuroscape`, `voyage`, `minilm`).
+        range: string
+        required: true
+      input:
+        description: Input-component identifier (e.g. `abstract`, `claims`, `methods`).
+        range: string
+        required: true
+      shard_url:
+        description: Relative URL to this cell's `cells/<cell_key>.json` shard.
+        range: string
+        required: true
+      topic_shards:
+        description: >-
+          Inline JSON object: `{<kind>: <url>}` mapping. LinkML doesn't model
+          arbitrary string-keyed dicts cleanly without inventing a wrapper
+          class, so this is typed as a permissive `AnyValue`.
+        range: Any
+        required: true
+
+  ManifestFacet:
+    description: One facet definition in the manifest.
+    attributes:
+      key:
+        description: Internal facet key (e.g. `cluster`, `methods`).
+        range: string
+        required: true
+      label:
+        description: Human-facing label.
+        range: string
+        required: true
+      options:
+        description: Enumerated option strings (may be empty for free-form facets).
+        range: string
+        multivalued: true
+        inlined_as_list: true
+
+  ManifestSearch:
+    description: Search-bundle pointers + dimensions.
+    attributes:
+      lexical_index:
+        description: Relative URL of the lexical-index shard (or placeholder string).
+        range: string
+        required: true
+      minilm_vectors:
+        description: Relative URL of the int8 vector buffer.
+        range: string
+        required: true
+      minilm_vectors_build_info_url:
+        description: Relative URL of the sidecar JSON.
+        range: string
+        required: true
+      minilm_dim:
+        description: Vector dimensionality.
+        range: integer
+        required: true
+        minimum_value: 1
+      minilm_dtype:
+        description: Vector buffer dtype (currently `int8`).
+        range: string
+        required: true
+
+  ManifestDefaultCell:
+    description: '`{model, input}` used as the SPA''s startup cell.'
+    attributes:
+      model:
+        range: string
+        required: true
+      input:
+        range: string
+        required: true
+
+  Manifest:
+    is_a: Shard
+    description: '`data/manifest.json` — the SPA reads this first.'
+    attributes:
+      corpus_count:
+        description: Number of accepted abstracts in the corpus.
+        range: integer
+        required: true
+        minimum_value: 0
+      default_cell:
+        description: '`{model, input}` the SPA opens with by default.'
+        range: ManifestDefaultCell
+        required: false
+      models:
+        description: Embedding models in this build.
+        range: string
+        multivalued: true
+        inlined_as_list: true
+      inputs:
+        description: Input components in this build.
+        range: string
+        multivalued: true
+        inlined_as_list: true
+      cells:
+        description: Every (model, input) cell available.
+        range: ManifestCell
+        multivalued: true
+        inlined_as_list: true
+      facets:
+        description: Facet definitions consumed by the filter sidebar.
+        range: ManifestFacet
+        multivalued: true
+        inlined_as_list: true
+      search:
+        description: Search-bundle pointers.
+        range: ManifestSearch
+        required: true
+
+  # -------- abstracts.json --------------------------------------------------
+  AbstractSections:
+    description: The four submitter-typed body sections + references.
+    attributes:
+      introduction:
+        range: string
+        required: true
+      methods:
+        range: string
+        required: true
+      results:
+        range: string
+        required: true
+      conclusion:
+        range: string
+        required: true
+      references:
+        range: string
+        required: true
+
+  AbstractTopics:
+    description: Primary + secondary topic dropdowns from the submission form.
+    attributes:
+      primary:
+        range: string
+        required: true
+      primary_subcategory:
+        range: string
+        required: true
+      secondary:
+        range: string
+        required: true
+      secondary_subcategory:
+        range: string
+        required: true
+
+  AbstractRecord:
+    description: One accepted abstract.
+    attributes:
+      abstract_id:
+        description: Internal numeric ID (from the GraphQL feed).
+        range: integer
+        required: true
+      poster_id:
+        description: Program-assigned poster identifier (FR-002).
+        range: string
+        required: true
+      title:
+        range: string
+        required: true
+      accepted_for:
+        description: Submission category (e.g. `Poster`, `Oral`).
+        range: string
+        required: true
+      sections:
+        range: AbstractSections
+        required: true
+      topics:
+        range: AbstractTopics
+        required: true
+      methods_checklist:
+        description: Verbatim items from the "methods" checklist question.
+        range: string
+        multivalued: true
+        inlined_as_list: true
+      facets:
+        description: >-
+          Per-record facet values (the 11 keyword/method/etc. lists). Stored
+          as a `facet_key → list-or-string` JSON object; LinkML can't tighten
+          this further so it stays `Any`.
+        range: Any
+        required: true
+      author_ids:
+        description: Synthetic author IDs referencing `authors.json`.
+        range: integer
+        multivalued: true
+        inlined_as_list: true
+      reference_dois:
+        range: string
+        multivalued: true
+        inlined_as_list: true
+      reference_urls:
+        range: string
+        multivalued: true
+        inlined_as_list: true
+      reference_titles:
+        description: Optional; parallel array to dois/urls.
+        range: string
+        multivalued: true
+        inlined_as_list: true
+        required: false
+
+  AbstractsShard:
+    is_a: Shard
+    description: '`data/abstracts.json` — all accepted abstracts.'
+    attributes:
+      abstracts:
+        range: AbstractRecord
+        multivalued: true
+        inlined_as_list: true
+        required: true
+
+  # -------- authors.json ----------------------------------------------------
+  AuthorRecord:
+    attributes:
+      author_id:
+        description: Synthetic id (R6 dedup output).
+        range: integer
+        required: true
+      name:
+        description: Display name; NFC-normalised before dedup.
+        range: string
+        required: true
+      affiliations:
+        description: Ordered list of affiliations as the submitter entered them.
+        range: string
+        multivalued: true
+        inlined_as_list: true
+      abstract_ids:
+        description: Back-references into `abstracts.json`.
+        range: integer
+        multivalued: true
+        inlined_as_list: true
+
+  AuthorsShard:
+    is_a: Shard
+    description: '`data/authors.json` — the unique-author registry.'
+    attributes:
+      authors:
+        range: AuthorRecord
+        multivalued: true
+        inlined_as_list: true
+        required: true
+
+  # -------- cells/<cell_key>.json ------------------------------------------
+  CellRow:
+    description: One abstract's positional row in a cell shard.
+    attributes:
+      abstract_id:
+        range: integer
+        required: true
+      umap2d:
+        description: 2D UMAP coordinates `[x, y]`. Empty when `umap_missing` is true.
+        range: float
+        multivalued: true
+        inlined_as_list: true
+      umap3d:
+        description: 3D UMAP coordinates `[x, y, z]`. Empty when `umap_missing` is true.
+        range: float
+        multivalued: true
+        inlined_as_list: true
+      umap_missing:
+        description: True if this abstract didn't get UMAP coordinates this run.
+        range: boolean
+        required: false
+      community_id:
+        description: Leiden community id (cluster). -1 = unclustered.
+        range: integer
+      topic_cluster_id:
+        description: HDBSCAN topic-cluster id. -1 = noise.
+        range: integer
+      neuroscape_cluster_id:
+        description: NeuroScape Stage-2 cluster id (neuroscape models only).
+        range: integer
+        required: false
+      neuroscape_cluster_distance:
+        description: Distance to assigned NeuroScape cluster centroid.
+        range: float
+        required: false
+
+  CellShard:
+    is_a: Shard
+    description: '`data/cells/<cell_key>.json` — per-cell UMAP + cluster table.'
+    attributes:
+      cell_key:
+        range: string
+        required: true
+      rows:
+        range: CellRow
+        multivalued: true
+        inlined_as_list: true
+        required: true
+
+  # -------- topics/<cell_key>_<kind>.json ----------------------------------
+  TopicRecord:
+    attributes:
+      cluster_id:
+        range: integer
+        required: true
+      keywords:
+        range: string
+        multivalued: true
+        inlined_as_list: true
+      title:
+        description: LLM-grouped cluster title (may be empty).
+        range: string
+      description:
+        description: LLM-grouped cluster description (may be empty).
+        range: string
+      focus:
+        description: LLM-grouped cluster focus blurb (may be empty).
+        range: string
+
+  TopicShard:
+    is_a: Shard
+    description: '`data/topics/<cell_key>_<kind>.json` — cluster metadata.'
+    attributes:
+      cell_key:
+        range: string
+        required: true
+      kind:
+        description: One of `communities`, `topic_clusters`, `neuroscape_clusters`.
+        range: TopicKind
+        required: true
+      topics:
+        range: TopicRecord
+        multivalued: true
+        inlined_as_list: true
+        required: true
+
+  # -------- neighbors/<cell_key>.json --------------------------------------
+  NeighborsShard:
+    is_a: Shard
+    description: '`data/neighbors/<cell_key>.json` — precomputed nearest/farthest 10.'
+    attributes:
+      cell_key:
+        range: string
+        required: true
+      k:
+        description: Neighbours per abstract (10).
+        range: integer
+        required: true
+        minimum_value: 1
+      abstract_ids:
+        description: Positional reference list — `nearest_ids[i]` corresponds to `abstract_ids[i]`.
+        range: integer
+        multivalued: true
+        inlined_as_list: true
+        required: true
+      nearest_ids:
+        description: |-
+          2D array `[N_abstracts, k]` — `nearest_ids[i]` is the list of k
+          nearest-neighbour abstract_ids of abstract i. Modelled via LinkML's
+          NumPy-style `array` slot extension.
+        range: integer
+        array:
+          dimensions:
+            - alias: row
+            - alias: col
+        required: true
+      nearest_distances:
+        description: 2D float array parallel to `nearest_ids`.
+        range: float
+        array:
+          dimensions:
+            - alias: row
+            - alias: col
+        required: true
+      farthest_ids:
+        description: 2D int array `[N, k]` — farthest-neighbour abstract_ids.
+        range: integer
+        array:
+          dimensions:
+            - alias: row
+            - alias: col
+        required: true
+      farthest_distances:
+        description: 2D float array parallel to `farthest_ids`.
+        range: float
+        array:
+          dimensions:
+            - alias: row
+            - alias: col
+        required: true
+
+  # -------- enrichment.json ------------------------------------------------
+  ClaimRecord:
+    description: One AI-extracted claim.
+    attributes:
+      claim:
+        range: string
+        required: true
+      claim_type:
+        range: string
+      evidence:
+        range: string
+      evidence_eco_codes:
+        range: string
+        multivalued: true
+        inlined_as_list: true
+      source:
+        range: string
+      source_quote_verified:
+        range: boolean
+
+  FigureRecord:
+    description: One AI-interpreted figure.
+    attributes:
+      interpretation:
+        range: string
+        required: true
+      keywords:
+        range: string
+        multivalued: true
+        inlined_as_list: true
+      ocr_text:
+        range: string
+      question_name:
+        range: string
+      model_quality_estimate:
+        range: string
+
+  EnrichmentRecord:
+    description: Per-abstract claims + figures.
+    attributes:
+      claims:
+        range: ClaimRecord
+        multivalued: true
+        inlined_as_list: true
+        required: true
+      figures:
+        range: FigureRecord
+        multivalued: true
+        inlined_as_list: true
+        required: true
+
+  AIProvenance:
+    description: Model identifiers for the AI-authored surfaces.
+    attributes:
+      claims_model_id:
+        range: string
+        required: false
+      figures_model_id:
+        range: string
+        required: false
+
+  EnrichmentShard:
+    is_a: Shard
+    description: |-
+      `data/enrichment.json` — keyed by `str(abstract_id)`. `records` is a
+      free-form JSON object (LinkML can't model string-keyed dicts without a
+      per-row identifier attribute). The value-side shape is documented by
+      the `EnrichmentRecord` / `ClaimRecord` / `FigureRecord` classes above
+      so the schema is still self-documenting even if not directly enforced.
+    attributes:
+      ai_provenance:
+        range: AIProvenance
+        required: true
+      records:
+        description: |-
+          `{str(abstract_id): EnrichmentRecord}` — LinkML cannot tighten this
+          further. The value shape per key follows `EnrichmentRecord`.
+        range: Any
+        required: true
+
+  # -------- search/minilm_vectors.build_info.json --------------------------
+  MinilmVectorsSidecar:
+    is_a: Shard
+    description: Sidecar for `data/search/minilm_vectors.bin`.
+    attributes:
+      shape:
+        description: '`[N_abstracts, dim]` — typically `[3243, 384]`.'
+        range: integer
+        multivalued: true
+        inlined_as_list: true
+        required: true
+      dtype:
+        description: Buffer dtype, currently `int8`.
+        range: string
+        required: true
+      scale:
+        description: Quantization scale; cosine recovery uses `1 / scale`.
+        range: float
+        required: false
+      max_abs_original:
+        description: Max absolute value before int8 quantization.
+        range: float
+        required: false
+      components:
+        description: Per-section MiniLM components that were composed.
+        range: string
+        multivalued: true
+        inlined_as_list: true
+        required: false
+      component_state_keys:
+        range: string
+        multivalued: true
+        inlined_as_list: true
+        required: false
+      missing_abstract_ids:
+        description: Abstracts that lacked an embedding (zero-vector substitute).
+        range: integer
+        multivalued: true
+        inlined_as_list: true
+        required: false
+      cosine_recovery_mae:
+        description: Mean absolute error of cosine recovery (≤ 0.005 invariant).
+        range: float
+        required: false
+      byte_offset_url:
+        description: Relative URL of the raw int8 buffer.
+        range: string
+        required: false
+      note:
+        description: Free-form note (e.g. "vectors not built (MiniLM bundle missing)").
+        range: string
+        required: false
+
+# ----------------------------------------------------------------------------
+# Enums
+# ----------------------------------------------------------------------------
+enums:
+  TopicKind:
+    permissible_values:
+      communities: {}
+      topic_clusters: {}
+      neuroscape_clusters: {}
+
+# ----------------------------------------------------------------------------
+# No custom types beyond `linkml:types` — see the `Any` class above for the
+# permissive JSON pass-through we use for `facets` and the neighbour arrays-
+# of-arrays.
+# ----------------------------------------------------------------------------
+settings: {}

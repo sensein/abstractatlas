@@ -108,6 +108,27 @@
 			{#if openStages[stage.key]}
 				<div class="stage-body">
 					{#if stage.key === 'fetch'}
+						<aside class="tldr">
+							<span class="tldr-label">TL;DR</span>
+							<ul>
+								<li>
+									GraphQL → JSON. <code>graphql_api.py</code> + <code>fetch_stage.py</code>
+									paginate the Oxford Abstracts API; tiered HARD / SOFT / INFORMATIONAL
+									schema diff (<code>schema_diff.py</code>) blocks the build if the
+									upstream contract drifts.
+								</li>
+								<li>
+									Resumable: per-state-key checkpoints under
+									<code>data/cache/fetch_abstracts/</code>; figure assets are
+									reuse-aware via <code>asset_stem</code> hashing.
+								</li>
+								<li>
+									Outputs: <code>data/primary/abstracts.json</code> (accepted) +
+									<code>abstracts_withdrawn.json</code> (excluded from the site).
+									<em>poster_id</em> is the canonical user-facing key (FR-002).
+								</li>
+							</ul>
+						</aside>
 						<p>
 							We pull the accepted-abstract corpus from the
 							<a href={references.oxford.url} target="_blank" rel="noopener noreferrer">
@@ -120,6 +141,39 @@
 							submissions never reach this site — they're filtered out at this stage.
 						</p>
 					{:else if stage.key === 'enrich'}
+						<aside class="tldr">
+							<span class="tldr-label">TL;DR</span>
+							<ul>
+								<li>
+									<strong>Claims</strong>: agentic OpenAI Responses API call with three
+									function tools (verify_source_quote, lookup_eco_code, dedupe_check),
+									Pydantic-validated structured output annotated with
+									<a href={references.eco.url} target="_blank" rel="noopener noreferrer">
+										ECO v1
+									</a> evidence codes.
+								</li>
+								<li>
+									<strong>Figures</strong>: per-abstract grouped vision call on local
+									JPEG-q85@1024 px compression, plus a four-field Pillow quality
+									probe (laplacian_variance, mean_brightness, compression_ratio,
+									native_max_dim).
+								</li>
+								<li>
+									Storage: SQLite + zlib-JSON
+									(<code>data/primary/abstracts_enriched.sqlite</code>); per-component
+									caches keyed by <code>sha256(input || model_id || vocabulary_version)</code>;
+									flex-tier retry pattern (1 flex + 1 standard) so timeouts don't burn
+									the whole batch.
+								</li>
+								<li>
+									References: LLM-assisted splitting of the citations block, lexically
+									verified against the source text, then DOI → PMID → OpenAlex title
+									search → Semantic Scholar fallback. The LLM only helps SPLIT — the
+									canonical metadata is the lookup result, which is why references
+									don't carry the <span class="ai-pill-demo">✨ AI</span> pill.
+								</li>
+							</ul>
+						</aside>
 						<p>
 							Each abstract is passed to an LLM (currently <code>gpt-5.4-mini</code>) twice:
 							once to extract structured <em>claims</em> with the
@@ -142,6 +196,35 @@
 							checklists, authors) carries no such pill — that text is theirs.
 						</p>
 					{:else if stage.key === 'embed'}
+						<aside class="tldr">
+							<span class="tldr-label">TL;DR</span>
+							<ul>
+								<li>
+									Per-component bundles: every abstract embedded separately for
+									<code>title</code>, <code>introduction</code>, <code>methods</code>,
+									<code>results</code>, <code>conclusion</code>, and <code>claims</code> —
+									recipes (e.g. <code>title + intro + methods + results + conclusion</code>)
+									are composed downstream via <code>neuroscape.compose_recipe(...)</code>.
+								</li>
+								<li>
+									Token-level chunking + L2 normalization; per-abstract cache keyed
+									by <code>sha256(text || model_id || model_version)</code>. State-key
+									suffix on the bundle dir lets multiple historical versions coexist.
+								</li>
+								<li>
+									Models: <a href={references.minilm.url} target="_blank" rel="noopener noreferrer">MiniLM-L6</a>,
+									PubMedBERT, OpenAI <code>text-embedding-3-small</code>, Voyage AI,
+									and project-specific NeuroScape (Stage-2 transform applied to a
+									public base; see the
+									<a href={references.neuroscape_paper.url} target="_blank" rel="noopener noreferrer">Aperture Neuro paper</a>).
+								</li>
+								<li>
+									Wire format for the SPA: MiniLM full-corpus matrix is int8-quantised
+									to <code>[N, 384]</code> with a global scale, cosine-recovery MAE ≤
+									0.005, then transferred zero-copy into a Web Worker.
+								</li>
+							</ul>
+						</aside>
 						<p>
 							We compute sentence-level embeddings for every abstract using five
 							different encoder families: a public general-purpose model
@@ -161,6 +244,42 @@
 							read time, so the UI can show the same corpus through different "lenses".
 						</p>
 					{:else if stage.key === 'analyse'}
+						<aside class="tldr">
+							<span class="tldr-label">TL;DR</span>
+							<ul>
+								<li>
+									15 (model × input) cells. Per cell: nearest-neighbour graph
+									(FAISS-backed cosine kNN, k=15) → Leiden community detection
+									(<a href={references.leiden.url} target="_blank" rel="noopener noreferrer">
+										Traag 2019
+									</a>) → 2D + 3D UMAP layouts
+									(<a href={references.umap.url} target="_blank" rel="noopener noreferrer">
+										McInnes 2018
+									</a>, <code>n_neighbors=15, min_dist=0.1</code>) → HDBSCAN topic
+									clusters (<a href={references.hdbscan.url} target="_blank" rel="noopener noreferrer">
+										McInnes 2017
+									</a>, <code>min_cluster_size=15, cluster_selection_epsilon=0.05</code>).
+								</li>
+								<li>
+									Topic labelling: hybrid spaCy keyword extraction + c-TF-IDF, with
+									an LLM grouping pass to produce human-friendly cluster titles +
+									descriptions + focus blurbs — these carry the
+									<span class="ai-pill-demo">✨ AI</span> pill on the cluster facet.
+								</li>
+								<li>
+									Output: a single Stage-4 rollup
+									(<code>analysis/annotations__&lt;state-key&gt;.sqlite + .parquet</code>)
+									whose rows feed the per-cell shards consumed by the site.
+									Joblib-parallel orchestrator across cells.
+								</li>
+								<li>
+									Pre-computed neighbour lists: for each abstract per cell, the
+									nearest-10 + farthest-10 by cosine distance are baked in via
+									<code>scripts/compute_neighbors.py</code>; the detail panel
+									aggregates across cells to surface "most consistently similar".
+								</li>
+							</ul>
+						</aside>
 						<p>
 							For each (model, input) combination we build a UMAP layout
 							(<a href={references.umap.url} target="_blank" rel="noopener noreferrer">
@@ -184,6 +303,51 @@
 							"lens" rather than just the currently-selected one.
 						</p>
 					{:else if stage.key === 'ui'}
+						<aside class="tldr">
+							<span class="tldr-label">TL;DR</span>
+							<ul>
+								<li>
+									Static SvelteKit + Vite, <code>@sveltejs/adapter-static</code> → GitHub
+									Pages. Per-PR previews under <code>/pr-N/</code> with their own
+									<code>BASE_PATH</code>; production at the apex via CNAME. Deploys
+									use <code>peaceiris/actions-gh-pages@v3</code>.
+								</li>
+								<li>
+									Data delivery: a single gzipped tarball fetched on first paint from
+									a stable Dropbox CDN URL, decoded in-browser with native
+									<code>DecompressionStream('gzip')</code> + a hand-rolled ~50-line tar
+									parser into a <code>Map&lt;path, JsonValue|Uint8Array&gt;</code>. No
+									server, no per-query backend round-trip.
+								</li>
+								<li>
+									Lexical search: in-memory inverted index over title + topics +
+									methods + author names + facet values + section bodies; Damerau-
+									Levenshtein with length-adaptive thresholds (&lt;4 chars exact,
+									4–6 → ≤1, ≥7 → ≤2). Exact-match abstracts ranked first.
+								</li>
+								<li>
+									Semantic search: <a href={references.minilm.url} target="_blank" rel="noopener noreferrer">MiniLM-L6</a>
+									ONNX in a Web Worker via <code>@xenova/transformers</code>; cosine
+									similarity against the int8 quantised corpus matrix, dequantised
+									per-row and clamped to [-1, 1]. Results merged with lexical via
+									rank fusion (exactness first, semantic score secondary).
+								</li>
+								<li>
+									Permalink direct-load: gh-pages root <code>404.html</code> is a
+									hand-written SPA-redirect that stashes the original path in
+									<code>?spa=…</code> (and <code>sessionStorage</code> as fallback) and
+									replaces location with the SPA shell root for the detected base
+									path. The layout's <code>onMount</code> pops the stash and
+									<code>goto</code>s to the deep link before paint.
+								</li>
+								<li>
+									Schema: every JSON shard validates against the LinkML schema at
+									<code>specs/008-ui-rewrite/contracts/ui_data.linkml.yaml</code> —
+									another generator emitting conforming data can be loaded by the
+									site without code changes.
+								</li>
+							</ul>
+						</aside>
 						<p>
 							This site is a static SvelteKit app deployed to GitHub Pages. The data
 							package is a single gzipped tarball fetched from a stable CDN URL at
@@ -276,6 +440,39 @@
 	}
 	.stage-body a {
 		color: var(--accent);
+	}
+	.tldr {
+		background: var(--bg-sunken);
+		border-left: 3px solid var(--accent);
+		padding: 0.6rem 0.85rem 0.4rem;
+		border-radius: 4px;
+		margin-bottom: 0.25rem;
+	}
+	.tldr-label {
+		display: inline-block;
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		color: var(--accent);
+		text-transform: uppercase;
+		margin-bottom: 0.3rem;
+	}
+	.tldr ul {
+		margin: 0;
+		padding-left: 1.1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		font-size: 0.85rem;
+		line-height: 1.5;
+	}
+	.tldr li {
+		color: var(--text);
+	}
+	.tldr code {
+		background: var(--bg-elevated);
+		padding: 0 0.25rem;
+		border-radius: 3px;
 	}
 	.ai-pill-demo {
 		font-size: 0.7rem;

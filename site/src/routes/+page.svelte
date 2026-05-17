@@ -14,7 +14,7 @@
 		type Manifest,
 		type TopicShard
 	} from '$lib/shards';
-	import { activeFilters, authorChips, cartOnly, focusedAbstract, lassoSelection, searchQuery, selectedCell } from '$lib/stores/selection';
+	import { activeFilters, authorChips, cartOnly, focusedAbstract, lassoSelection, searchQuery, selectedCell, showMap } from '$lib/stores/selection';
 	import { lexicalSearch } from '$lib/filter';
 	import { filterByFacets, recomputeFacets, type FacetCellContext } from '$lib/facets';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -35,7 +35,9 @@
 	let abstractsById: Map<number, AbstractRecord> = new Map();
 	let loaded = false;
 	let dataMissing = false;
-	let showMap = false;
+	// `showMap` is now backed by a localStorage-persistent store
+	// (`$lib/stores/selection.showMap`) so a browser reload keeps the
+	// user's chosen view. Read/write via the `$showMap` Svelte sugar.
 	let cartOpen = false;
 	let semanticScores: Map<number, number> | null = null;
 	let semanticQuerySerial = 0;
@@ -352,12 +354,12 @@
 				<button
 					type="button"
 					class="control-toggle"
-					class:active={showMap}
-					on:click={() => (showMap = !showMap)}
-					aria-pressed={showMap}
+					class:active={$showMap}
+					on:click={() => showMap.update((v) => !v)}
+					aria-pressed={$showMap}
 					data-testid="toggle-map"
 				>
-					{showMap ? '✕ Hide map' : '🗺  Show map'}
+					{$showMap ? '✕ Hide map' : '🗺  Show map'}
 				</button>
 				<button
 					type="button"
@@ -394,7 +396,7 @@
 
 	<CartDrawer bind:open={cartOpen} {abstracts} {authorsById} />
 
-	{#if showMap && loaded && !dataMissing}
+	{#if $showMap && loaded && !dataMissing}
 		<UmapPanel {abstracts} selection={filteredIds} />
 	{/if}
 
