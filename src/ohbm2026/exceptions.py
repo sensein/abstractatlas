@@ -98,6 +98,16 @@ class FigureFailureError(Stage1Error):
     """
 
 
+class UIBuildError(RuntimeError):
+    """The static-UI export pipeline produced an unusable bundle.
+
+    Raised when a precondition for the UI export is violated (missing
+    inputs, malformed rollup, etc.). Kept as a `RuntimeError` subclass
+    rather than an `OhbmStageError` because the UI export is downstream
+    of the per-stage pipelines and consumes their canonical artifacts.
+    """
+
+
 class Stage2Error(OhbmStageError):
     """Base for any failure originating inside Stage 2 (enrich-abstracts)."""
 

@@ -29,7 +29,10 @@ from typing import Any, Callable, Literal
 from pydantic import BaseModel, Field
 
 from ohbm2026.enrich import flex_tier as flex_tier
-from ohbm2026 import enrichment as enrichment_module
+from ohbm2026.enrich.markdown_render import (
+    build_claim_manuscript_markdown,
+    build_sections_markdown,
+)
 from ohbm2026.exceptions import ContextLengthExceededError, EnrichmentError
 
 __all__ = [
@@ -321,7 +324,7 @@ def _build_manuscript_markdown(
     new Stage 2.1 figure-interpretation list (so claims can cite
     figure-derived observations).
     """
-    sections, additional = enrichment_module.build_sections_markdown(abstract)
+    sections, additional = build_sections_markdown(abstract)
     figure_analyses: list[dict] = []
     for fi in figure_interpretations or []:
         figure_analyses.append({
@@ -334,7 +337,7 @@ def _build_manuscript_markdown(
             "keywords": fi.get("keywords", []),
         })
     title = abstract.get("title") or ""
-    return enrichment_module.build_claim_manuscript_markdown(
+    return build_claim_manuscript_markdown(
         title=title,
         sections_markdown=sections,
         additional_content_questions=additional,

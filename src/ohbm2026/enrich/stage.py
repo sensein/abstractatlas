@@ -44,7 +44,10 @@ from typing import Any, Callable, Iterable, Iterator, Optional
 
 from ohbm2026 import artifacts as artifacts_module
 from ohbm2026.enrich import storage as enrich_storage
-from ohbm2026 import enrichment as enrichment_module
+from ohbm2026.enrich.markdown_render import (
+    build_claim_manuscript_markdown,
+    build_sections_markdown,
+)
 from ohbm2026.enrich import openalex as openalex_module
 from ohbm2026.enrich import figures as stage2_figures
 from ohbm2026.enrich import claims as stage2_claims
@@ -338,9 +341,9 @@ def _call_references_for_abstract(
 
 
 def _build_claim_manuscript(abstract: dict) -> str:
-    sections, additional = enrichment_module.build_sections_markdown(abstract)
+    sections, additional = build_sections_markdown(abstract)
     title = abstract.get("title") or ""
-    return enrichment_module.build_claim_manuscript_markdown(
+    return build_claim_manuscript_markdown(
         title=title,
         sections_markdown=sections,
         additional_content_questions=additional,

@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 
 from ohbm2026 import artifacts
-from ohbm2026.enrichment import default_image_analysis_cache_path
+from ohbm2026.enrich.cache_paths import default_image_analysis_cache_path
 from ohbm2026.analyze.storage import parse_string_list_value
 from ohbm2026.titles import cleaned_abstract_title
 
@@ -147,8 +147,7 @@ BRAIN_NETWORK_PATTERNS = {
 }
 
 
-class UIBuildError(RuntimeError):
-    pass
+from ohbm2026.exceptions import UIBuildError  # re-export so existing imports still work this session  # noqa: F401
 
 
 def _cli_option_present(argv: list[str] | None, option: str) -> bool:

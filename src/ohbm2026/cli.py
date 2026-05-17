@@ -6,7 +6,6 @@ import sys
 from ohbm2026 import (
     artifacts,
     assets,
-    enrichment,
     titles,
     ui,
 )
