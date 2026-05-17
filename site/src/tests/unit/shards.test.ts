@@ -4,25 +4,29 @@ import {
 	loadAuthors,
 	loadCell,
 	loadManifest,
-	resetCachesForTests,
+	loadTopics,
 	type AbstractsShard,
 	type AuthorsShard,
 	type CellShard,
-	type Manifest
+	type Manifest,
+	type TopicShard
 } from '$lib/shards';
+import * as dataPackage from '$lib/data_package';
 
-const MANIFEST_FIXTURE: Manifest = {
+const BUILD_INFO = {
+	corpus_state_key: 'test12345678',
+	code_revision: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+	code_revision_short: 'a1b2c3d',
+	stage4_rollup_state_key: 'test12345678',
+	built_at: '2026-05-17T00:00:00+00:00'
+};
+
+const MANIFEST: Manifest = {
 	schema_version: 'ui.v1',
-	build_info: {
-		corpus_state_key: 'test12345678',
-		code_revision: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
-		code_revision_short: 'a1b2c3d',
-		stage4_rollup_state_key: 'test12345678',
-		built_at: '2026-05-17T00:00:00+00:00'
-	},
-	corpus_count: 2,
+	build_info: BUILD_INFO,
+	corpus_count: 1,
 	default_cell: { model: 'neuroscape', input: 'abstract' },
-	models: ['minilm', 'neuroscape'],
+	models: ['neuroscape'],
 	inputs: ['abstract'],
 	cells: [],
 	facets: [],
@@ -35,22 +39,16 @@ const MANIFEST_FIXTURE: Manifest = {
 	}
 };
 
-const ABSTRACTS_FIXTURE: AbstractsShard = {
+const ABSTRACTS: AbstractsShard = {
 	schema_version: 'abstracts.v1',
-	build_info: MANIFEST_FIXTURE.build_info,
+	build_info: BUILD_INFO,
 	abstracts: [
 		{
 			abstract_id: 1001,
 			poster_id: 'M-AM-101',
 			title: 'Memory fMRI in aging',
 			accepted_for: 'Poster',
-			sections: {
-				introduction: '',
-				methods: '',
-				results: '',
-				conclusion: '',
-				references: ''
-			},
+			sections: { introduction: '', methods: '', results: '', conclusion: '', references: '' },
 			topics: {
 				primary: 'Lifespan Development',
 				primary_subcategory: 'Aging',
@@ -66,93 +64,15 @@ const ABSTRACTS_FIXTURE: AbstractsShard = {
 	]
 };
 
-const AUTHORS_FIXTURE: AuthorsShard = {
+const AUTHORS: AuthorsShard = {
 	schema_version: 'authors.v1',
-	build_info: MANIFEST_FIXTURE.build_info,
-	authors: [
-		{
-			author_id: 0,
-			name: 'Jane Smith',
-			affiliations: ['Stanford'],
-			abstract_ids: [1001]
-		}
-	]
+	build_info: BUILD_INFO,
+	authors: [{ author_id: 0, name: 'Jane Smith', affiliations: ['Stanford'], abstract_ids: [1001] }]
 };
 
-function mockFetch(map: Record<string, unknown>) {
-	return vi.fn(async (input: RequestInfo | URL) => {
-		const url = typeof input === 'string' ? input : input.toString();
-		const path = url.replace(/^https?:\/\/[^/]+/, '');
-		const key = Object.keys(map).find((p) => path.endsWith(p));
-		if (!key) {
-			return new Response('not found', { status: 404 }) as Response;
-		}
-		return new Response(JSON.stringify(map[key]), {
-			status: 200,
-			headers: { 'content-type': 'application/json' }
-		}) as Response;
-	});
-}
-
-describe('shard loaders', () => {
-	beforeEach(() => {
-		resetCachesForTests();
-	});
-	afterEach(() => {
-		resetCachesForTests();
-	});
-
-	it('loadManifest parses the manifest envelope', async () => {
-		const fetcher = mockFetch({
-			'/data/manifest.json': MANIFEST_FIXTURE
-		}) as unknown as typeof fetch;
-		const m = await loadManifest(fetcher);
-		expect(m).not.toBeNull();
-		expect(m?.schema_version).toBe('ui.v1');
-		expect(m?.build_info.code_revision_short).toBe('a1b2c3d');
-		expect(m?.corpus_count).toBe(2);
-	});
-
-	it('loadAbstracts parses the abstracts envelope', async () => {
-		const fetcher = mockFetch({
-			'/data/abstracts.json': ABSTRACTS_FIXTURE
-		}) as unknown as typeof fetch;
-		const a = await loadAbstracts(fetcher);
-		expect(a).not.toBeNull();
-		expect(a?.abstracts).toHaveLength(1);
-		expect(a?.abstracts[0].poster_id).toBe('M-AM-101');
-		expect(a?.abstracts[0].topics.primary).toBe('Lifespan Development');
-	});
-
-	it('loadAuthors parses the authors envelope', async () => {
-		const fetcher = mockFetch({
-			'/data/authors.json': AUTHORS_FIXTURE
-		}) as unknown as typeof fetch;
-		const au = await loadAuthors(fetcher);
-		expect(au).not.toBeNull();
-		expect(au?.authors[0].name).toBe('Jane Smith');
-	});
-
-	it('returns null when the shard 404s (graceful degrade for the placeholder)', async () => {
-		const fetcher = mockFetch({}) as unknown as typeof fetch;
-		expect(await loadAbstracts(fetcher)).toBeNull();
-		resetCachesForTests();
-		expect(await loadAuthors(fetcher)).toBeNull();
-	});
-
-	it('caches between calls (single fetch per shard)', async () => {
-		const fetcher = mockFetch({
-			'/data/manifest.json': MANIFEST_FIXTURE
-		}) as unknown as typeof fetch & ReturnType<typeof vi.fn>;
-		await loadManifest(fetcher);
-		await loadManifest(fetcher);
-		expect((fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
-	});
-});
-
-const CELL_FIXTURE: CellShard = {
+const CELL: CellShard = {
 	schema_version: 'cell.v1',
-	build_info: MANIFEST_FIXTURE.build_info,
+	build_info: BUILD_INFO,
 	cell_key: 'neuroscape_abstract',
 	rows: [
 		{
@@ -167,33 +87,73 @@ const CELL_FIXTURE: CellShard = {
 	]
 };
 
-describe('loadCell', () => {
-	beforeEach(() => resetCachesForTests());
-	afterEach(() => resetCachesForTests());
+const TOPICS: TopicShard = {
+	schema_version: 'topics.v1',
+	build_info: BUILD_INFO,
+	cell_key: 'neuroscape_abstract',
+	kind: 'communities',
+	topics: [
+		{ cluster_id: 7, keywords: ['memory'], title: 'Memory cluster', description: '', focus: '' }
+	]
+};
 
-	it('fetches the per-cell shard at the cell_key path', async () => {
-		const fetcher = mockFetch({
-			'/data/cells/neuroscape_abstract.json': CELL_FIXTURE
-		}) as unknown as typeof fetch;
-		const shard = await loadCell('neuroscape_abstract', fetcher);
-		expect(shard?.cell_key).toBe('neuroscape_abstract');
-		expect(shard?.rows[0].neuroscape_cluster_id).toBe(42);
+function mockPackage(entries: Record<string, unknown>) {
+	const map = new Map(Object.entries(entries));
+	vi.spyOn(dataPackage, 'loadDataPackage').mockResolvedValue(map);
+}
+
+describe('shard loaders (in-memory data-package map)', () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+	afterEach(() => {
+		vi.restoreAllMocks();
 	});
 
-	it('returns null when the cell shard 404s', async () => {
-		const fetcher = mockFetch({}) as unknown as typeof fetch;
-		expect(await loadCell('missing_cell', fetcher)).toBeNull();
+	it('loadManifest reads `data/manifest.json` from the map', async () => {
+		mockPackage({ 'data/manifest.json': MANIFEST });
+		const m = await loadManifest();
+		expect(m).not.toBeNull();
+		expect(m?.schema_version).toBe('ui.v1');
+		expect(m?.build_info.code_revision_short).toBe('a1b2c3d');
+		expect(m?.corpus_count).toBe(1);
 	});
 
-	it('caches by cell_key (multiple cells share the same module-level Map)', async () => {
-		const fetcher = mockFetch({
-			'/data/cells/neuroscape_abstract.json': CELL_FIXTURE,
-			'/data/cells/voyage_methods.json': { ...CELL_FIXTURE, cell_key: 'voyage_methods' }
-		}) as unknown as typeof fetch & ReturnType<typeof vi.fn>;
-		await loadCell('neuroscape_abstract', fetcher);
-		await loadCell('neuroscape_abstract', fetcher); // cache hit
-		await loadCell('voyage_methods', fetcher); // distinct fetch
-		const calls = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls;
-		expect(calls.length).toBe(2);
+	it('loadAbstracts reads `data/abstracts.json` from the map', async () => {
+		mockPackage({ 'data/abstracts.json': ABSTRACTS });
+		const a = await loadAbstracts();
+		expect(a?.abstracts).toHaveLength(1);
+		expect(a?.abstracts[0].poster_id).toBe('M-AM-101');
+	});
+
+	it('loadAuthors reads `data/authors.json` from the map', async () => {
+		mockPackage({ 'data/authors.json': AUTHORS });
+		const au = await loadAuthors();
+		expect(au?.authors[0].name).toBe('Jane Smith');
+	});
+
+	it('loadCell reads `data/cells/<cell_key>.json` from the map', async () => {
+		mockPackage({ 'data/cells/neuroscape_abstract.json': CELL });
+		const c = await loadCell('neuroscape_abstract');
+		expect(c?.cell_key).toBe('neuroscape_abstract');
+		expect(c?.rows[0].neuroscape_cluster_id).toBe(42);
+	});
+
+	it('loadTopics reads `data/topics/<cell_key>_<kind>.json` from the map', async () => {
+		mockPackage({ 'data/topics/neuroscape_abstract_communities.json': TOPICS });
+		const t = await loadTopics('neuroscape_abstract', 'communities');
+		expect(t?.topics[0].title).toBe('Memory cluster');
+	});
+
+	it('returns null when the package map is unavailable (no URL set / CORS failure)', async () => {
+		vi.spyOn(dataPackage, 'loadDataPackage').mockResolvedValue(null);
+		expect(await loadManifest()).toBeNull();
+		expect(await loadAbstracts()).toBeNull();
+		expect(await loadCell('whatever')).toBeNull();
+	});
+
+	it('returns null when the path is missing from the map', async () => {
+		mockPackage({ 'data/manifest.json': MANIFEST });
+		expect(await loadCell('not_a_cell')).toBeNull();
 	});
 });

@@ -4,11 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - 'src/ohbm2026/ui_data/**'
-      - 'scripts/build_ui_data.py'
-      - 'scripts/fetch_ui_inputs.sh'
       - 'site/**'
-      - 'specs/008-ui-rewrite/contracts/references.yaml'
       - '.github/workflows/pr-preview.yml'
   workflow_dispatch:
 
@@ -26,10 +22,6 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     if: github.event.pull_request.head.repo.full_name == github.repository
-    # NOTE: this `environment:` declaration is what surfaces the preview URL
-    # in the PR's Deployments box (top-of-PR). GitHub auto-creates the
-    # `pr-preview-<N>` environment on first deploy and re-uses it across
-    # pushes — no bot-comment spam (FR-021).
     environment:
       name: pr-preview-${{ github.event.pull_request.number }}
       url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
@@ -39,53 +31,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python 3.14
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
-
-      - name: Install uv + project (ui extras)
-        run: |
-          pip install --upgrade pip uv
-          uv venv --python 3.14 .venv
-          uv pip install --python .venv/bin/python -e ".[ui]"
-
       - name: Set up Node 20 + pnpm
         uses: actions/setup-node@v4
         with:
           node-version: '20'
       - name: Enable pnpm
-        run: |
-          npm install --global pnpm@10
+        run: npm install --global pnpm@10
 
       - name: Install site deps
         working-directory: site
         run: pnpm install --frozen-lockfile
-
-      - name: Fetch Stage 6 data package (best-effort)
-        id: fetch_inputs
-        env:
-          OHBM2026_UI_DATA_PACKAGE_URL: ${{ vars.OHBM2026_UI_DATA_PACKAGE_URL }}
-          OHBM2026_UI_DATA_PACKAGE_SHA256: ${{ vars.OHBM2026_UI_DATA_PACKAGE_SHA256 }}
-        run: |
-          set +e
-          ./scripts/fetch_ui_inputs.sh
-          echo "rc=$?" >> "$GITHUB_OUTPUT"
-
-      - name: Build data package (skipped if pre-built package was fetched)
-        if: steps.fetch_inputs.outputs.rc == '0' && hashFiles('site/static/data/.fetched-from-package') == ''
-        run: |
-          PYTHONPATH=src .venv/bin/python scripts/build_ui_data.py \
-            --corpus data/primary/abstracts.json \
-            --withdrawn data/primary/abstracts_withdrawn.json \
-            --authors data/primary/authors.json \
-            --enriched data/primary/abstracts_enriched.sqlite \
-            --analysis-root data/outputs/analysis \
-            --discover-rollup \
-            --output site/static/data
-
-      - name: Run Python unit tests (ui_data only)
-        run: PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p "test_ui_data*"
 
       - name: Run JS unit tests (Vitest)
         working-directory: site
@@ -97,22 +52,10 @@ jobs:
           BASE_PATH: /pr-${{ github.event.pull_request.number }}
           VITE_BUILD_SHA: ${{ github.event.pull_request.head.sha }}
           VITE_BUILD_AT: ${{ github.event.pull_request.head.repo.pushed_at }}
-          UI_DATA_AVAILABLE: ${{ steps.fetch_inputs.outputs.rc == '0' && '1' || '0' }}
+          VITE_DATA_PACKAGE_URL: ${{ vars.OHBM2026_UI_DATA_PACKAGE_URL }}
         run: |
           export VITE_BUILD_SHA_SHORT="${VITE_BUILD_SHA:0:7}"
           pnpm build
-
-      - name: Install Playwright browsers
-        if: steps.fetch_inputs.outputs.rc == '0'
-        working-directory: site
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Run Playwright e2e (requires data)
-        if: steps.fetch_inputs.outputs.rc == '0'
-        working-directory: site
-        env:
-          UI_DATA_AVAILABLE: '1'
-        run: pnpm exec playwright test --project=chromium --reporter=line
 
       - name: Publish to gh-pages /pr-${{ github.event.pull_request.number }}
         uses: peaceiris/actions-gh-pages@v3
@@ -121,6 +64,6 @@ jobs:
           publish_dir: site/build
           publish_branch: gh-pages
           destination_dir: pr-${{ github.event.pull_request.number }}
-          keep_files: true
+          keep_files: false
           enable_jekyll: false
           commit_message: 'preview(ui): pr-${{ github.event.pull_request.number }} ${{ github.sha }}'

@@ -1,4 +1,5 @@
 import { base } from '$app/paths';
+import { loadDataPackage } from './data_package';
 
 export interface BuildInfo {
 	corpus_state_key: string;
@@ -131,81 +132,47 @@ export interface TopicShard {
 	topics: TopicRecord[];
 }
 
-let manifestCache: Promise<Manifest | null> | null = null;
-let abstractsCache: Promise<AbstractsShard | null> | null = null;
-let authorsCache: Promise<AuthorsShard | null> | null = null;
-const cellCache: Map<string, Promise<CellShard | null>> = new Map();
-const topicsCache: Map<string, Promise<TopicShard | null>> = new Map();
-
-async function fetchJson<T>(url: string, fetcher: typeof fetch): Promise<T | null> {
-	try {
-		const response = await fetcher(url);
-		if (!response.ok) return null;
-		return (await response.json()) as T;
-	} catch {
-		return null;
-	}
-}
-
-export function loadManifest(fetcher: typeof fetch = fetch): Promise<Manifest | null> {
-	if (manifestCache === null) {
-		manifestCache = fetchJson<Manifest>(`${base}/data/manifest.json`, fetcher);
-	}
-	return manifestCache;
-}
-
-export function loadAbstracts(fetcher: typeof fetch = fetch): Promise<AbstractsShard | null> {
-	if (abstractsCache === null) {
-		abstractsCache = fetchJson<AbstractsShard>(`${base}/data/abstracts.json`, fetcher);
-	}
-	return abstractsCache;
-}
-
-export function loadAuthors(fetcher: typeof fetch = fetch): Promise<AuthorsShard | null> {
-	if (authorsCache === null) {
-		authorsCache = fetchJson<AuthorsShard>(`${base}/data/authors.json`, fetcher);
-	}
-	return authorsCache;
-}
-
 /**
- * Load a per-(model, input) cell shard. Cached per cell_key so switching
- * back to a previously-viewed cell is instant.
+ * Per-(shard kind) lookups now read from a single in-memory `Map<path, json>`
+ * built by `loadDataPackage()` on first paint. The path keys are tar-relative,
+ * e.g. `data/manifest.json`, `data/cells/voyage_abstract.json`. When the
+ * data package isn't reachable (no `VITE_DATA_PACKAGE_URL`, CORS failure,
+ * network drop) every loader returns null — callers fall back to the
+ * "data unavailable" placeholder.
+ *
+ * The `base` import + per-shard fetch URL machinery from prior versions is
+ * gone: nothing is hosted on the same origin as the app anymore.
  */
-export function loadCell(
-	cellKey: string,
-	fetcher: typeof fetch = fetch
-): Promise<CellShard | null> {
-	if (!cellCache.has(cellKey)) {
-		cellCache.set(cellKey, fetchJson<CellShard>(`${base}/data/cells/${cellKey}.json`, fetcher));
-	}
-	return cellCache.get(cellKey)!;
+
+void base; // base no longer used directly; keep import warm for any future relative asset
+
+async function getFromPackage<T>(path: string): Promise<T | null> {
+	const pkg = await loadDataPackage();
+	if (!pkg) return null;
+	const v = pkg.get(path);
+	return (v as T | undefined) ?? null;
 }
 
-/**
- * Load a per-(model, input, kind) topics shard. `kind` is one of
- * `communities` | `topic_clusters` | `neuroscape_clusters`. Cached by
- * the full (cell_key, kind) tuple.
- */
-export function loadTopics(
-	cellKey: string,
-	kind: string,
-	fetcher: typeof fetch = fetch
-): Promise<TopicShard | null> {
-	const key = `${cellKey}__${kind}`;
-	if (!topicsCache.has(key)) {
-		topicsCache.set(
-			key,
-			fetchJson<TopicShard>(`${base}/data/topics/${cellKey}_${kind}.json`, fetcher)
-		);
-	}
-	return topicsCache.get(key)!;
+export function loadManifest(): Promise<Manifest | null> {
+	return getFromPackage<Manifest>('data/manifest.json');
+}
+
+export function loadAbstracts(): Promise<AbstractsShard | null> {
+	return getFromPackage<AbstractsShard>('data/abstracts.json');
+}
+
+export function loadAuthors(): Promise<AuthorsShard | null> {
+	return getFromPackage<AuthorsShard>('data/authors.json');
+}
+
+export function loadCell(cellKey: string): Promise<CellShard | null> {
+	return getFromPackage<CellShard>(`data/cells/${cellKey}.json`);
+}
+
+export function loadTopics(cellKey: string, kind: string): Promise<TopicShard | null> {
+	return getFromPackage<TopicShard>(`data/topics/${cellKey}_${kind}.json`);
 }
 
 export function resetCachesForTests(): void {
-	manifestCache = null;
-	abstractsCache = null;
-	authorsCache = null;
-	cellCache.clear();
-	topicsCache.clear();
+	// Caches now live on the data_package module; reset there.
 }
