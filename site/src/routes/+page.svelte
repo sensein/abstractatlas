@@ -10,13 +10,15 @@
 		type BuildInfo,
 		type Manifest
 	} from '$lib/shards';
-	import { focusedAbstract, lassoSelection, searchQuery } from '$lib/stores/selection';
+	import { activeFilters, focusedAbstract, lassoSelection, searchQuery } from '$lib/stores/selection';
 	import { lexicalSearch } from '$lib/filter';
+	import { filterByFacets, recomputeFacets } from '$lib/facets';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import ResultList from '$lib/components/ResultList.svelte';
 	import DetailPanel from '$lib/components/DetailPanel.svelte';
 	import ModelSelector from '$lib/components/ModelSelector.svelte';
 	import UmapPanel from '$lib/components/UmapPanel.svelte';
+	import FacetSidebar from '$lib/components/FacetSidebar.svelte';
 
 	let manifest: Manifest | null = null;
 	let abstracts: AbstractRecord[] = [];
@@ -28,6 +30,7 @@
 	let showMap = false;
 	let semanticIds: Set<number> | null = null;
 	let semanticQuerySerial = 0;
+	let showFacets = false; // mobile drawer state; desktop always-shown
 	const envBuildInfo: BuildInfo | null = buildInfoFromEnv();
 
 	onMount(async () => {
@@ -90,7 +93,13 @@
 
 	$: lexicalIds = lexicalSearch(abstracts, authorsById, $searchQuery);
 	$: searchIds = mergeSearch(lexicalIds, semanticIds, $searchQuery);
-	$: filteredIds = intersect(searchIds, $lassoSelection);
+	$: facetIds = filterByFacets(abstracts, $activeFilters);
+	// Facet counts honor FR-013: each facet's option counts come from the
+	// intersection of search + lasso + OTHER active facets (not the facet itself
+	// — that's handled inside recomputeFacets via the `exceptKey` param).
+	$: preFilterForFacetCounts = intersect(searchIds, $lassoSelection);
+	$: facetCounts = recomputeFacets(abstracts, $activeFilters, preFilterForFacetCounts);
+	$: filteredIds = intersect(intersect(searchIds, $lassoSelection), facetIds);
 
 	function mergeSearch(
 		lex: Set<number> | null,
@@ -130,6 +139,16 @@
 				<ModelSelector {manifest} />
 				<button
 					type="button"
+					class="filters-toggle mobile-only"
+					class:active={showFacets}
+					on:click={() => (showFacets = !showFacets)}
+					aria-pressed={showFacets}
+					data-testid="toggle-facets"
+				>
+					🔍 Filters
+				</button>
+				<button
+					type="button"
 					class="map-toggle"
 					class:active={showMap}
 					on:click={() => (showMap = !showMap)}
@@ -166,6 +185,9 @@
 		</section>
 	{:else}
 		<div class="layout">
+			<div class="facet-pane" class:open={showFacets} data-testid="facet-pane">
+				<FacetSidebar counts={facetCounts} />
+			</div>
 			<div class="list-pane">
 				<ResultList {abstracts} {authorsById} {filteredIds} />
 			</div>
@@ -238,11 +260,33 @@
 		gap: 1rem;
 		width: 100%;
 	}
+	.facet-pane {
+		min-width: 0;
+		display: none; /* shown via class on smaller viewports; @media for desktop */
+	}
+	.facet-pane.open {
+		display: block;
+	}
 	.list-pane {
 		min-width: 0;
 	}
 	.detail-pane {
 		min-width: 0;
+	}
+	.filters-toggle {
+		all: unset;
+		cursor: pointer;
+		padding: 0.45rem 0.8rem;
+		border-radius: 4px;
+		font-size: 0.85rem;
+		border: 1px solid var(--border-strong);
+		background: var(--bg);
+		color: var(--text);
+	}
+	.filters-toggle.active {
+		background: var(--accent);
+		color: var(--accent-text);
+		border-color: var(--accent);
 	}
 	.detail-empty {
 		background: var(--bg-subtle);
@@ -285,14 +329,25 @@
 
 	@media (min-width: 1024px) {
 		.layout {
-			grid-template-columns: minmax(0, 1fr) clamp(24rem, 28vw, 42rem);
+			grid-template-columns: clamp(14rem, 18vw, 20rem) minmax(0, 1fr) clamp(22rem, 26vw, 38rem);
 			align-items: start;
+		}
+		.facet-pane {
+			display: block !important; /* always visible on desktop */
+			position: sticky;
+			top: 1rem;
+			max-height: calc(100vh - 2rem);
+			overflow-y: auto;
+			padding-right: 0.5rem;
 		}
 		.detail-pane {
 			position: sticky;
 			top: 1rem;
 			max-height: calc(100vh - 2rem);
 			overflow-y: auto;
+		}
+		.filters-toggle.mobile-only {
+			display: none;
 		}
 	}
 
