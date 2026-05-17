@@ -131,6 +131,33 @@ cd site && pnpm test:unit --run        # Vitest unit tests
 cd site && UI_DATA_AVAILABLE=1 pnpm exec playwright test --project=chromium   # e2e (needs the data package built first)
 ```
 
+### Refreshing the deployed data package
+
+CI doesn't materialize the Stage 1–4 inputs. Instead, the maintainer builds the data package locally and hosts the tarball at a URL the deploy workflow reads from the `OHBM2026_UI_DATA_PACKAGE_URL` repo variable (sha256-pinned via `OHBM2026_UI_DATA_PACKAGE_SHA256`). To refresh:
+
+```bash
+# 1. Build the data package (writes to site/static/data/).
+PYTHONPATH=src .venv/bin/python scripts/build_ui_data.py \
+  --corpus data/primary/abstracts.json \
+  --withdrawn data/primary/abstracts_withdrawn.json \
+  --authors data/primary/authors.json \
+  --enriched data/primary/abstracts_enriched.sqlite \
+  --analysis-root data/outputs/analysis \
+  --discover-rollup \
+  --output site/static/data
+
+# 2. Tarball it and stage in the shared Dropbox folder.
+STATE_KEY=$(.venv/bin/python -c "import json; print(json.load(open('site/static/data/manifest.json'))['build_info']['stage4_rollup_state_key'])")
+tar -czf ~/dbm/shares/ohbm2026/ui-data-${STATE_KEY}.tar.gz -C site/static data
+cp ~/dbm/shares/ohbm2026/ui-data-${STATE_KEY}.tar.gz ~/dbm/shares/ohbm2026/ui-data-latest.tar.gz
+
+# 3. Update the sha256 repo variable so CI verifies the new bytes.
+NEW_SHA=$(shasum -a 256 ~/dbm/shares/ohbm2026/ui-data-latest.tar.gz | awk '{print $1}')
+gh variable set OHBM2026_UI_DATA_PACKAGE_SHA256 --body "$NEW_SHA"
+```
+
+The URL stays the same (the `latest` symlink keeps a stable Dropbox link). The next PR-preview deploy will fetch + sha256-verify the new package.
+
 Per-PR previews surface in the **PR's Deployments box** (top-of-PR, via the `environment:` declaration in `.github/workflows/pr-preview.yml`) — NOT as a bot comment. The short committish (first 7 chars of git SHA) bakes into the page `<title>` + the persistent footer affordance via the `VITE_BUILD_SHA` env var injected by the deploy workflows, so reviewers can verify each PR-preview reflects the latest pushed commit at-a-glance (FR-022 + SC-011).
 
 ## External Requirements

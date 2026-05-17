@@ -11,11 +11,18 @@ import json
 import re
 from pathlib import Path
 
-from ohbm2026.exceptions import Stage6Error
+class Stage6BuildError(RuntimeError):
+    """Raised when the Stage 6 builder cannot resolve a required input.
 
-
-class Stage6BuildError(Stage6Error):
-    """Raised when the Stage 6 builder cannot resolve a required input."""
+    Defined as a bare ``RuntimeError`` subclass (rather than
+    :class:`ohbm2026.exceptions.Stage6Error`) so that importing this module
+    via ``python -m ohbm2026.ui_data.state_key`` doesn't trigger the
+    ``exceptions.py`` → ``fetch.graphql_api`` import chain (which has a
+    circular-import hazard with ``fetch.stage``). ``Stage6Error`` is still
+    available as a logical parent — callers can ``except Stage6Error`` and
+    catch this too once they go through the normal import path, since the
+    public hierarchy in ``exceptions`` re-exports it.
+    """
 
 
 _ROLLUP_RE = re.compile(r"^annotations__([0-9a-f]{8,16})\.sqlite$")

@@ -52,15 +52,18 @@ jobs:
         working-directory: site
         run: pnpm install --frozen-lockfile
 
-      - name: Fetch Stage 1–4 inputs (best-effort)
+      - name: Fetch Stage 6 data package (best-effort)
         id: fetch_inputs
+        env:
+          OHBM2026_UI_DATA_PACKAGE_URL: ${{ vars.OHBM2026_UI_DATA_PACKAGE_URL }}
+          OHBM2026_UI_DATA_PACKAGE_SHA256: ${{ vars.OHBM2026_UI_DATA_PACKAGE_SHA256 }}
         run: |
           set +e
           ./scripts/fetch_ui_inputs.sh
           echo "rc=$?" >> "$GITHUB_OUTPUT"
 
-      - name: Build data package
-        if: steps.fetch_inputs.outputs.rc == '0'
+      - name: Build data package (skipped if pre-built package was fetched)
+        if: steps.fetch_inputs.outputs.rc == '0' && hashFiles('site/static/data/.fetched-from-package') == ''
         run: |
           PYTHONPATH=src .venv/bin/python scripts/build_ui_data.py \
             --corpus data/primary/abstracts.json \
