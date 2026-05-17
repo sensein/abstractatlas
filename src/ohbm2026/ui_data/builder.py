@@ -85,15 +85,23 @@ def build_ui_data_package(
             analysis_root=Path(analysis_root) if analysis_root else None,
         )
 
-    # Build the abstracts shard first — the manifest's facet catalog discovery
-    # depends on the per-record facets block; the cells builder needs the
-    # positional ID order.
+    # Build authors first to derive the raw→synthetic id remap; the abstracts
+    # builder uses it so `author_ids` references match the authors shard
+    # directly (closes invariant 4).
+    authors_envelope, author_id_remap = build_authors(
+        corpus_path=Path(corpus_path),
+        authors_path=Path(authors_path),
+        build_info=build_info,
+        return_remap=True,
+    )
+
     abstracts_envelope = build_abstracts(
         corpus_path=Path(corpus_path),
         enriched_path=Path(enriched_path) if enriched_path else None,
         references_path=Path(references_path) if references_path else None,
         withdrawn_path=Path(withdrawn_path) if withdrawn_path else None,
         build_info=build_info,
+        author_id_remap=author_id_remap,
     )
     abstract_records = abstracts_envelope["abstracts"]
     abstract_ids = [r["abstract_id"] for r in abstract_records]
@@ -102,12 +110,6 @@ def build_ui_data_package(
     manifest = build_manifest(
         abstracts=abstract_records,
         rollup_db=rollup_db,
-        build_info=build_info,
-    )
-
-    authors_envelope = build_authors(
-        corpus_path=Path(corpus_path),
-        authors_path=Path(authors_path),
         build_info=build_info,
     )
 
@@ -219,24 +221,18 @@ def _validate_invariants(
             f"(ids: {leaked[:5]}{'...' if len(leaked) > 5 else ''})"
         )
 
-    # 4. Author referential integrity.
+    # 4. Author referential integrity (now enforced — see US1 remap in
+    #    abstracts.build_abstracts_records).
     author_ids = {a["author_id"] for a in authors["authors"]}
     missing: set[int] = set()
     for record in abstract_records:
         for aid in record.get("author_ids", []):
             if aid not in author_ids:
                 missing.add(aid)
-    # NB: Stage 6 author de-dup re-keys raw author ids → contiguous synthetic
-    # ids. The corpus's `authors[].id` field references the *raw* author id
-    # from the GraphQL API, which is what we keep on the abstract. So the
-    # invariant 4 check is "every raw id mentioned in an abstract has a
-    # surviving authors record." That mapping is currently lossy because the
-    # builder assigns synthetic ids in `_dedup`; relax invariant 4 to a
-    # WARNING for now until US1 adds the raw→synthetic remap (T037).
     if missing:
-        print(
-            f"WARNING: invariant 4 partial: {len(missing)} raw author_ids in abstracts have no "
-            f"matching authors record (deferred to US1 remap)"
+        raise Stage6BuildError(
+            f"Invariant 4 violated: {len(missing)} author_id reference(s) on abstracts have no "
+            f"matching authors record (ids: {sorted(missing)[:5]}{'...' if len(missing) > 5 else ''})"
         )
 
     # 5. Cluster id integrity (community / topic / neuroscape) per cell.

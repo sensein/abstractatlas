@@ -8,7 +8,10 @@ export default defineConfig({
 	workers: process.env.CI ? 1 : undefined,
 	reporter: 'list',
 	webServer: {
-		command: 'pnpm build && pnpm preview --port 4173 --host 127.0.0.1',
+		// Re-use the existing build/ directory — callers are expected to run
+		// `pnpm build` with the right env (VITE_BUILD_SHA etc.) themselves.
+		// This avoids re-running the build in a subshell that has lost env vars.
+		command: 'pnpm preview --port 4173 --host 127.0.0.1',
 		port: 4173,
 		reuseExistingServer: !process.env.CI
 	},

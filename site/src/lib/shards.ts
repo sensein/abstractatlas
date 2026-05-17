@@ -53,23 +53,87 @@ export interface Manifest {
 	};
 }
 
+export interface AbstractRecord {
+	abstract_id: number;
+	poster_id: string;
+	title: string;
+	accepted_for: string;
+	sections: {
+		introduction: string;
+		methods: string;
+		results: string;
+		conclusion: string;
+		references: string;
+	};
+	topics: {
+		primary: string;
+		primary_subcategory: string;
+		secondary: string;
+		secondary_subcategory: string;
+	};
+	methods_checklist: string[];
+	facets: Record<string, string | string[]>;
+	author_ids: number[];
+	reference_dois: string[];
+	reference_urls: string[];
+}
+
+export interface AuthorRecord {
+	author_id: number;
+	name: string;
+	affiliations: string[];
+	abstract_ids: number[];
+}
+
+export interface AbstractsShard {
+	schema_version: string;
+	build_info: BuildInfo;
+	abstracts: AbstractRecord[];
+}
+
+export interface AuthorsShard {
+	schema_version: string;
+	build_info: BuildInfo;
+	authors: AuthorRecord[];
+}
+
 let manifestCache: Promise<Manifest | null> | null = null;
+let abstractsCache: Promise<AbstractsShard | null> | null = null;
+let authorsCache: Promise<AuthorsShard | null> | null = null;
+
+async function fetchJson<T>(url: string, fetcher: typeof fetch): Promise<T | null> {
+	try {
+		const response = await fetcher(url);
+		if (!response.ok) return null;
+		return (await response.json()) as T;
+	} catch {
+		return null;
+	}
+}
 
 export function loadManifest(fetcher: typeof fetch = fetch): Promise<Manifest | null> {
 	if (manifestCache === null) {
-		manifestCache = (async () => {
-			try {
-				const response = await fetcher(`${base}/data/manifest.json`);
-				if (!response.ok) return null;
-				return (await response.json()) as Manifest;
-			} catch {
-				return null;
-			}
-		})();
+		manifestCache = fetchJson<Manifest>(`${base}/data/manifest.json`, fetcher);
 	}
 	return manifestCache;
 }
 
-export function resetManifestCacheForTests(): void {
+export function loadAbstracts(fetcher: typeof fetch = fetch): Promise<AbstractsShard | null> {
+	if (abstractsCache === null) {
+		abstractsCache = fetchJson<AbstractsShard>(`${base}/data/abstracts.json`, fetcher);
+	}
+	return abstractsCache;
+}
+
+export function loadAuthors(fetcher: typeof fetch = fetch): Promise<AuthorsShard | null> {
+	if (authorsCache === null) {
+		authorsCache = fetchJson<AuthorsShard>(`${base}/data/authors.json`, fetcher);
+	}
+	return authorsCache;
+}
+
+export function resetCachesForTests(): void {
 	manifestCache = null;
+	abstractsCache = null;
+	authorsCache = null;
 }

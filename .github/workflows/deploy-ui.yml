@@ -74,16 +74,32 @@ jobs:
       - name: Run Python unit tests (ui_data only)
         run: PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p "test_ui_data*"
 
+      - name: Run JS unit tests (Vitest)
+        working-directory: site
+        run: pnpm test:unit --run
+
       - name: Build site
         working-directory: site
         env:
           BASE_PATH: ''
           VITE_BUILD_SHA: ${{ github.sha }}
-          VITE_BUILD_SHA_SHORT: ${{ github.sha }}
           VITE_BUILD_AT: ${{ github.event.head_commit.timestamp }}
+          UI_DATA_AVAILABLE: ${{ steps.fetch_inputs.outputs.rc == '0' && '1' || '0' }}
         run: |
           export VITE_BUILD_SHA_SHORT="${VITE_BUILD_SHA:0:7}"
           pnpm build
+
+      - name: Install Playwright browsers
+        if: steps.fetch_inputs.outputs.rc == '0'
+        working-directory: site
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Playwright e2e (requires data)
+        if: steps.fetch_inputs.outputs.rc == '0'
+        working-directory: site
+        env:
+          UI_DATA_AVAILABLE: '1'
+        run: pnpm exec playwright test --project=chromium --reporter=line
 
       - name: Publish to gh-pages root
         uses: peaceiris/actions-gh-pages@v3

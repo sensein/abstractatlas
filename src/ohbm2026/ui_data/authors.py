@@ -101,12 +101,18 @@ def build_authors_records(
     *,
     corpus_path: Path,
     authors_path: Path,
-) -> list[dict[str, Any]]:
+    return_remap: bool = False,
+) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], dict[int, int]]:
     """Return de-duplicated, accepted-only author records.
 
     De-dup key is ``(lower(name), lower(primary_affiliation))`` per R6.
     Differing affiliations produce distinct ids. Author records whose only
     listed submissions are withdrawn are dropped.
+
+    When ``return_remap=True`` also returns ``{raw_author_id: synthetic_id}``
+    so the abstracts builder can translate raw GraphQL author ids → synthetic
+    indices into the authors shard (fixes the invariant-4 join referenced in
+    ``builder.py``).
     """
 
     raw_authors = _load_authors_payload(authors_path)
@@ -129,16 +135,21 @@ def build_authors_records(
                 "name": name,
                 "affiliations": _all_affiliations(raw),
                 "_abstract_ids": set(),
-                "_raw_ids": [],
+                "_raw_ids": set(),
             }
             groups[key] = record
         record["_abstract_ids"].add(int(submission_id))
-        record["_raw_ids"].append(int(raw.get("id") or 0))
+        raw_id = raw.get("id")
+        if raw_id is not None:
+            record["_raw_ids"].add(int(raw_id))
 
     # Second pass: assign stable, sorted author_ids (sorted by (name, primary_aff))
     deduped = sorted(groups.items(), key=lambda kv: kv[0])
     records: list[dict[str, Any]] = []
+    remap: dict[int, int] = {}
     for index, (_key, record) in enumerate(deduped):
+        for raw_id in record["_raw_ids"]:
+            remap[raw_id] = index
         records.append(
             {
                 "author_id": index,
@@ -147,6 +158,8 @@ def build_authors_records(
                 "abstract_ids": sorted(record["_abstract_ids"]),
             }
         )
+    if return_remap:
+        return records, remap
     return records
 
 
@@ -155,12 +168,26 @@ def build_authors(
     corpus_path: Path,
     authors_path: Path,
     build_info: Mapping[str, str],
-) -> dict[str, Any]:
-    """Return the authors shard envelope per data-model.md §3."""
+    return_remap: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any], dict[int, int]]:
+    """Return the authors shard envelope per data-model.md §3.
 
-    records = build_authors_records(corpus_path=corpus_path, authors_path=authors_path)
+    When ``return_remap=True`` also returns the raw→synthetic id map.
+    """
+
+    result = build_authors_records(
+        corpus_path=corpus_path, authors_path=authors_path, return_remap=return_remap
+    )
+    if return_remap:
+        records, remap = result  # type: ignore[misc]
+        envelope = {
+            "schema_version": SCHEMA_VERSION,
+            "build_info": dict(build_info),
+            "authors": records,
+        }
+        return envelope, remap
     return {
         "schema_version": SCHEMA_VERSION,
         "build_info": dict(build_info),
-        "authors": records,
+        "authors": result,  # type: ignore[dict-item]
     }

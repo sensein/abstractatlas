@@ -107,7 +107,7 @@ The latest end state of the project is:
 
 ## Stage 6: UI (under construction)
 
-The Stage 6 site lives under `site/` (a self-contained SvelteKit project) and the data-package builder lives under `src/ohbm2026/ui_data/`. The first PR ships only the deploy workflows + a placeholder page that renders the build provenance (`manifest.build_info`) so reviewers can verify each PR-preview deploy reflects the latest pushed commit.
+The Stage 6 site lives under `site/` (a self-contained SvelteKit project) and the data-package builder lives under `src/ohbm2026/ui_data/`. US8 (deploy workflows + placeholder) shipped first; US1 (search + browse + abstract detail panel with poster_id + ordered authors, mobile-responsive at 360 × 640) is the second.
 
 Build the data package + the site locally:
 
@@ -121,10 +121,17 @@ PYTHONPATH=src .venv/bin/python scripts/build_ui_data.py \
   --discover-rollup \
   --output site/static/data
 
-cd site && pnpm install && pnpm dev   # http://localhost:5173
+cd site && pnpm install && pnpm dev    # http://localhost:5173
 ```
 
-Per-PR previews surface in the **PR's Deployments box** (top-of-PR, via the `environment:` declaration in `.github/workflows/pr-preview.yml`) — NOT as a bot comment. After US8 lands on `main`, the production GitHub Pages URL goes live; each subsequent PR for US1–US7 gets an automatic preview deploy.
+Run the JS test suite:
+
+```bash
+cd site && pnpm test:unit --run        # Vitest unit tests
+cd site && UI_DATA_AVAILABLE=1 pnpm exec playwright test --project=chromium   # e2e (needs the data package built first)
+```
+
+Per-PR previews surface in the **PR's Deployments box** (top-of-PR, via the `environment:` declaration in `.github/workflows/pr-preview.yml`) — NOT as a bot comment. The short committish (first 7 chars of git SHA) bakes into the page `<title>` + the persistent footer affordance via the `VITE_BUILD_SHA` env var injected by the deploy workflows, so reviewers can verify each PR-preview reflects the latest pushed commit at-a-glance (FR-022 + SC-011).
 
 ## External Requirements
 

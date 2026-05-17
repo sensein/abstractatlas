@@ -181,8 +181,16 @@ def build_abstracts_records(
     enriched_path: Path | None,
     references_path: Path | None,
     withdrawn_path: Path | None,
+    author_id_remap: Mapping[int, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return the per-abstract list (accepted-only, poster_id-keyed)."""
+    """Return the per-abstract list (accepted-only, poster_id-keyed).
+
+    When ``author_id_remap`` is provided, the raw GraphQL author ids on each
+    record are translated to the synthetic ids assigned by the authors
+    builder. Raw ids that don't appear in the remap (e.g. authors whose
+    only submission was withdrawn) are dropped silently to keep the cross-
+    shard invariant clean. Missing remap = legacy raw-id passthrough.
+    """
 
     corpus = _load_corpus(corpus_path)
     enriched_by_id = _load_enriched_by_id(enriched_path)
@@ -190,6 +198,7 @@ def build_abstracts_records(
     withdrawn = _withdrawn_ids(withdrawn_path)
 
     records: list[dict[str, Any]] = []
+    skipped_no_poster_id = 0
     for raw in corpus:
         if raw.get("accepted_for") == "Withdrawn":
             continue
@@ -198,18 +207,36 @@ def build_abstracts_records(
             continue
         if int(abstract_id) in withdrawn:
             continue
+        # FR-002 requires the poster_id as the user-facing identifier; records
+        # without one cannot be linked to or displayed. Drop them (with a log).
+        if not raw.get("poster_id"):
+            skipped_no_poster_id += 1
+            continue
 
         questions = question_lookup(raw)
         enriched = enriched_by_id.get(int(abstract_id), {})
         dois, urls = _references(refs_by_id.get(int(abstract_id)))
         authors = raw.get("authors") or []
-        author_ids = [
+        raw_author_ids = [
             int(a["id"]) for a in authors if isinstance(a, dict) and a.get("id") is not None
         ]
+        if author_id_remap is not None:
+            # Translate to synthetic ids; preserve author order; deduplicate
+            # while preserving first-seen index so the lead author stays first.
+            seen: set[int] = set()
+            author_ids: list[int] = []
+            for raw_id in raw_author_ids:
+                synth = author_id_remap.get(raw_id)
+                if synth is None or synth in seen:
+                    continue
+                seen.add(synth)
+                author_ids.append(synth)
+        else:
+            author_ids = raw_author_ids
 
         record = {
             "abstract_id": int(abstract_id),
-            "poster_id": raw.get("poster_id") or "",
+            "poster_id": str(raw.get("poster_id")),
             "title": cleaned_abstract_title(raw.get("title")) or "",
             "accepted_for": raw.get("accepted_for") or "Unknown",
             "sections": {
@@ -229,6 +256,11 @@ def build_abstracts_records(
             "reference_urls": urls,
         }
         records.append(record)
+    if skipped_no_poster_id:
+        print(
+            f"abstracts: skipped {skipped_no_poster_id} accepted record(s) without poster_id "
+            f"(FR-002 requires the program-assigned poster_id as the user-facing identifier)"
+        )
     return records
 
 
@@ -239,6 +271,7 @@ def build_abstracts(
     references_path: Path | None,
     withdrawn_path: Path | None,
     build_info: Mapping[str, str],
+    author_id_remap: Mapping[int, int] | None = None,
 ) -> dict[str, Any]:
     """Return the abstracts shard envelope per data-model.md §2.
 
@@ -251,6 +284,7 @@ def build_abstracts(
         enriched_path=enriched_path,
         references_path=references_path,
         withdrawn_path=withdrawn_path,
+        author_id_remap=author_id_remap,
     )
     return {
         "schema_version": SCHEMA_VERSION,
