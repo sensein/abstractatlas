@@ -18,6 +18,14 @@
 	export let authorsById: Map<number, AuthorRecord>;
 	export let abstractsById: Map<number, AbstractRecord> = new Map();
 	export let dismissable = true;
+	/**
+	 * In the home page's inline detail pane there isn't room (or attention
+	 * budget) for the full abstract — we show only authors (compact, no
+	 * affiliations), cross-cell cluster membership, related abstracts, and
+	 * AI-extracted claims. The permalink page passes `compact={false}` to
+	 * get the full read-everything view.
+	 */
+	export let compact = false;
 
 	let showAllAuthors = false;
 	// Section expansion: each body section starts collapsed; user opens what
@@ -224,64 +232,87 @@
 				</span>
 				<span class="accepted-for">{abstract.accepted_for}</span>
 			</div>
-			{#if dismissable}
-				<button
-					type="button"
-					class="close"
-					on:click={close}
-					aria-label="Close detail panel"
-					data-testid="detail-close"
-				>
-					×
-				</button>
-			{/if}
+			<div class="header-actions">
+				{#if abstract.poster_id && compact}
+					<a
+						class="permalink permalink-top"
+						href={`./abstract/${abstract.poster_id}/`}
+						data-testid="detail-permalink"
+						title="Open the full-detail page for this abstract"
+					>
+						full details ↗
+					</a>
+				{/if}
+				{#if dismissable}
+					<button
+						type="button"
+						class="close"
+						on:click={close}
+						aria-label="Close detail panel"
+						data-testid="detail-close"
+					>
+						×
+					</button>
+				{/if}
+			</div>
 		</header>
 
 		<h1 class="detail-title" data-testid="detail-title">{abstract.title}</h1>
 
 		<section class="authors" data-testid="detail-authors">
 			<h2>Authors</h2>
-			<ol class="author-list">
-				{#each visibleAuthors as author (author.author_id)}
-					<li>
-						<span class="author-name">{author.name}</span>
-						{#if author.affiliations[0]}
-							<span class="author-aff">— {author.affiliations[0]}</span>
-						{/if}
-					</li>
-				{/each}
-			</ol>
-			{#if authorList.length > 6}
-				<button
-					type="button"
-					class="link"
-					on:click={() => (showAllAuthors = !showAllAuthors)}
-					data-testid="detail-toggle-authors"
-				>
-					{showAllAuthors ? 'Show fewer' : `Show all ${authorList.length} authors`}
-				</button>
+			{#if compact}
+				<!-- Compact: all author names inline, comma-separated, no
+					 institutions. The full author/affiliation grid lives on
+					 the permalink page. -->
+				<p class="author-compact">
+					{authorList.map((a) => a.name).join(', ')}
+				</p>
+			{:else}
+				<ol class="author-list">
+					{#each visibleAuthors as author (author.author_id)}
+						<li>
+							<span class="author-name">{author.name}</span>
+							{#if author.affiliations[0]}
+								<span class="author-aff">— {author.affiliations[0]}</span>
+							{/if}
+						</li>
+					{/each}
+				</ol>
+				{#if authorList.length > 6}
+					<button
+						type="button"
+						class="link"
+						on:click={() => (showAllAuthors = !showAllAuthors)}
+						data-testid="detail-toggle-authors"
+					>
+						{showAllAuthors ? 'Show fewer' : `Show all ${authorList.length} authors`}
+					</button>
+				{/if}
 			{/if}
 		</section>
 
-		{#each [ ['introduction','Introduction'], ['methods','Methods'], ['results','Results'], ['conclusion','Conclusion'] ] as [skey, slabel] (skey)}
-			{@const sbody = abstract.sections[skey]}
-			{#if sbody}
-				<section class="section collapsible" data-testid={`section-${skey}`}>
-					<button
-						type="button"
-						class="section-header"
-						on:click={() => toggleSection(skey)}
-						aria-expanded={!!openSections[skey]}
-					>
-						<span class="caret">{openSections[skey] ? '▾' : '▸'}</span>
-						<span class="section-label">{slabel}</span>
-					</button>
-					{#if openSections[skey]}
-						<p class="section-body">{sbody}</p>
-					{/if}
-				</section>
-			{/if}
-		{/each}
+		{#if !compact}
+			{#each [ ['introduction','Introduction'], ['methods','Methods'], ['results','Results'], ['conclusion','Conclusion'] ] as [skey, slabel] (skey)}
+				{@const sbody = abstract.sections[skey]}
+				{#if sbody}
+					<section class="section collapsible" data-testid={`section-${skey}`}>
+						<button
+							type="button"
+							class="section-header"
+							on:click={() => toggleSection(skey)}
+							aria-expanded={!!openSections[skey]}
+						>
+							<span class="caret">{openSections[skey] ? '▾' : '▸'}</span>
+							<span class="section-label">{slabel}</span>
+						</button>
+						{#if openSections[skey]}
+							<p class="section-body">{sbody}</p>
+						{/if}
+					</section>
+				{/if}
+			{/each}
+		{/if}
 
 		{#if enrichment && enrichment.claims.length}
 			<section class="section collapsible" data-testid="section-claims">
@@ -350,7 +381,7 @@
 			</section>
 		{/if}
 
-		{#if enrichment && enrichment.figures.length}
+		{#if !compact && enrichment && enrichment.figures.length}
 			<section class="section collapsible" data-testid="section-figures">
 				<button
 					type="button"
@@ -419,8 +450,11 @@
 			Other extra-question fields (study_type, population, field_strength,
 			processing_packages, …) are stored in `facets` for filtering but MUST
 			NOT surface in the detail panel.
+			Hidden in `compact` mode — the home pane focuses on cross-cell
+			cluster context + related abstracts; full topic / methods detail
+			lives behind the permalink.
 		-->
-		{#if abstract.topics.primary || abstract.topics.secondary}
+		{#if !compact && (abstract.topics.primary || abstract.topics.secondary)}
 			<section class="extra topics" data-testid="extra-topics">
 				<h2>Topics</h2>
 				<dl>
@@ -444,7 +478,7 @@
 			</section>
 		{/if}
 
-		{#if abstract.methods_checklist.length}
+		{#if !compact && abstract.methods_checklist.length}
 			<section class="extra methods-checklist" data-testid="extra-methods">
 				<h2>Methods</h2>
 				<ul class="chips">
@@ -552,7 +586,7 @@
 			</section>
 		{/if}
 
-		{#if abstract.reference_urls.some(Boolean) || abstract.reference_dois.some(Boolean) || (abstract.reference_titles ?? []).some(Boolean)}
+		{#if !compact && (abstract.reference_urls.some(Boolean) || abstract.reference_dois.some(Boolean) || (abstract.reference_titles ?? []).some(Boolean))}
 			<section class="references" data-testid="detail-references">
 				<h2>References</h2>
 				<ol>
@@ -598,11 +632,10 @@
 					+ add to list
 				</button>
 			{/if}
-			{#if abstract.poster_id}
-				<a class="permalink" href={`./abstract/${abstract.poster_id}/`} data-testid="detail-permalink">
-					permalink
-				</a>
-			{/if}
+			<!-- permalink link moved to the header (compact mode only) so it's
+				 visible without scrolling the panel; on the permalink page itself
+				 (compact={false}) there's nothing to link to. -->
+
 		</footer>
 	</aside>
 {/if}
@@ -623,6 +656,31 @@
 		justify-content: space-between;
 		align-items: center;
 		gap: 0.5rem;
+	}
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+	.permalink-top {
+		font-size: 0.78rem;
+		color: var(--accent);
+		text-decoration: none;
+		padding: 0.2rem 0.45rem;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: var(--bg-sunken);
+		white-space: nowrap;
+	}
+	.permalink-top:hover {
+		background: var(--accent-soft-bg);
+		text-decoration: none;
+	}
+	.author-compact {
+		margin: 0;
+		font-size: 0.85rem;
+		line-height: 1.45;
+		color: var(--text);
 	}
 	.ids {
 		display: flex;

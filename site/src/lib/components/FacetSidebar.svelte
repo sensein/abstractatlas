@@ -10,12 +10,26 @@
 	} from '$lib/facets';
 
 	export let counts: FacetCounts;
+	/**
+	 * Facets that start closed. Default: everything EXCEPT `cluster` — the
+	 * sidebar shows ~13 facet sections and that's a lot of vertical noise
+	 * if every one is open. The cluster facet stays open because it's the
+	 * most navigationally useful (per the active UMAP cell) and because it
+	 * comes first in the order, so collapsing it would just feel empty.
+	 */
 	export let collapsedByDefault: FacetKey[] = [
-		'keywords',
+		'topic',
+		'subcategory',
+		'methods',
+		'study_type',
+		'population',
+		'field_strength',
 		'processing_packages',
+		'species',
+		'recording_technology',
 		'brain_regions',
 		'brain_networks',
-		'recording_technology',
+		'keywords',
 		'accepted_for'
 	];
 

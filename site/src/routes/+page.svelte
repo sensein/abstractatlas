@@ -301,7 +301,7 @@
 			</div>
 			<div class="detail-pane" class:active={focused !== null}>
 				{#if focused}
-					<DetailPanel abstract={focused} {authorsById} {abstractsById} />
+					<DetailPanel abstract={focused} {authorsById} {abstractsById} compact={true} />
 				{:else}
 					<aside class="detail-empty">
 						<p>Tap an abstract to see its details here.</p>
