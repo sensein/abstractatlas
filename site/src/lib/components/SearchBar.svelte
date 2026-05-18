@@ -12,10 +12,21 @@
 		helpOpen = false;
 	}
 
+	// Window-level Escape handler — works regardless of focus location, which
+	// the backdrop `on:keydown` cannot do (a non-focusable `<div>` never
+	// receives the event).
+	function onWindowKeydown(e: KeyboardEvent) {
+		if (helpOpen && e.key === 'Escape') closeHelp();
+	}
+
 	function onClear() {
 		value = '';
 	}
 </script>
+
+{#if helpOpen}
+	<svelte:window on:keydown={onWindowKeydown} />
+{/if}
 
 <div class="searchbar" role="search">
 	<label for="search-input" class="visually-hidden">Search abstracts</label>
@@ -53,13 +64,14 @@
 		<!--
 			Click-outside dismiss: a transparent backdrop catches clicks
 			behind the popover so the user can dismiss without taking an
-			explicit action on the toggle button.
+			explicit action on the toggle button. Escape-to-dismiss is
+			wired via `<svelte:window>` above — a non-focusable `<div>`
+			can't receive keydown.
 		-->
 		<div
 			class="help-backdrop"
 			role="presentation"
 			on:click={closeHelp}
-			on:keydown={(e) => { if (e.key === 'Escape') closeHelp(); }}
 		></div>
 		<div class="help-popover" role="dialog" aria-label="Search syntax help" data-testid="search-help-popover">
 			<div class="help-title">Search operators</div>

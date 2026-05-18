@@ -65,6 +65,12 @@ interface InvertedIndex {
 	postings: Map<string, Set<number>>;
 	/** Per-abstract ordered token stream — needed for phrase adjacency. */
 	tokenStreams: Map<number, string[]>;
+	/**
+	 * Set of every abstract_id in the corpus. Cached on the index so a query
+	 * consisting only of negations (`-fmri`) can copy a starting set without
+	 * walking the abstracts list on every keystroke.
+	 */
+	allIds: Set<number>;
 }
 
 const invertedIndexCache = new WeakMap<AbstractRecord[], InvertedIndex>();
@@ -118,7 +124,12 @@ function buildInvertedIndex(
 			postingList.add(a.abstract_id);
 		}
 	}
-	const index: InvertedIndex = { tokens: [...postings.keys()], postings, tokenStreams };
+	const index: InvertedIndex = {
+		tokens: [...postings.keys()],
+		postings,
+		tokenStreams,
+		allIds: new Set(tokenStreams.keys())
+	};
 	invertedIndexCache.set(abstracts, index);
 	return index;
 }
@@ -442,8 +453,6 @@ export function lexicalSearch(
 		};
 	}
 	const index = buildInvertedIndex(abstracts, authorsById);
-	const allIds: number[] = abstracts.map((a) => a.abstract_id);
-	const allIdsSet = new Set<number>(allIds);
 
 	const unionIds = new Set<number>();
 	const unionExact = new Map<number, number>();
@@ -473,8 +482,9 @@ export function lexicalSearch(
 		}
 		if (positives === null) {
 			// Group consisted entirely of negations. Semantics: subtract from the
-			// universe of all abstracts.
-			positives = new Set(allIdsSet);
+			// universe of all abstracts. The fresh `Set` lets us `.delete` below
+			// without mutating the cached `index.allIds`.
+			positives = new Set(index.allIds);
 		}
 		for (const id of groupBlocked) {
 			positives.delete(id);
