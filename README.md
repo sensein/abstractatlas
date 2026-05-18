@@ -102,11 +102,11 @@ The latest end state of the project is:
    - two semantic cluster lenses:
      - `25-cluster benchmark`
      - `claims 28-cluster benchmark`
-9. **Stage 6 — UI** — static SvelteKit site served from GitHub Pages, with per-PR preview deploys surfaced in the PR's Deployments box (NOT bot comments). US1–US7 + US8 all shipped on `008-ui-rewrite`. Production at `abstractatlas.brainkb.org`; PR previews at `/pr-<N>/`. See `specs/008-ui-rewrite/` for spec/plan/tasks and `specs/008-ui-rewrite/quickstart.md` for the local-dev recipe.
+9. **Atlas UI** — static SvelteKit site served from GitHub Pages, with per-PR preview deploys surfaced in the PR's Deployments box (NOT bot comments). Shipped across `008-ui-rewrite` (US1–US8) and `009-conference-subpath` (URL rework). Production at `abstractatlas.brainkb.org/ohbm2026/`; PR previews at `/pr-<N>/ohbm2026/`. The bare root `abstractatlas.brainkb.org/` bounces to `/ohbm2026/` via a static `<meta http-equiv="refresh">` + JS redirect island (gh-pages cannot serve a true HTTP 301; spec 009 names this honestly). See `specs/008-ui-rewrite/` for the feature surface and `specs/009-conference-subpath/` for the URL-shape rework.
 
-## Stage 6: UI
+## Atlas UI
 
-The Stage 6 site lives under `site/` (a self-contained SvelteKit project; SvelteKit 2 + Vite 6 + Svelte 5). The data-package builder lives under `src/ohbm2026/ui_data/`. Capabilities: typo-tolerant lexical search, transformers.js-backed semantic search (MiniLM-L6 ONNX in a Web Worker against an int8-quantised corpus matrix), 2D + 3D UMAP with lasso + cluster colour-coding, interactive facets, cart + email-my-list, a guided tour (shepherd.js), and an About page whose external citations are HEAD-checked at build time (`link_check.py`).
+The site lives under `site/` (a self-contained SvelteKit project; SvelteKit 2 + Vite 6 + Svelte 5). The data-package builder lives under `src/ohbm2026/ui_data/`. Capabilities: typo-tolerant lexical search, transformers.js-backed semantic search (MiniLM-L6 ONNX in a Web Worker against an int8-quantised corpus matrix), 2D + 3D UMAP with lasso + cluster colour-coding, interactive facets, cart + email-my-list, a guided tour (shepherd.js), and an About page whose external citations are HEAD-checked at build time (`link_check.py`). Every OHBM 2026 surface (home, About, abstract permalink) lives under the `/ohbm2026/` URL subpath so the same domain can later host other conferences without URL-space collision.
 
 Build the data package + the site locally:
 
@@ -771,7 +771,9 @@ relying on older baked-in defaults.
 
 ### 10. Build The Static UI
 
-The current latest delivery step is **Stage 6 — SvelteKit site under `site/`**, fed by the Python data-package builder under `src/ohbm2026/ui_data/`. See the "Stage 6: UI" section near the top of this README for the canonical build recipe (`scripts/build_ui_data.py` then `pnpm dev` / `pnpm build`). The legacy `ohbmcli export-ui` / `build-ui` commands that wrote a hand-rolled HTML+JSON bundle into `data/outputs/exported-sites/ui-site__<state-key>/` have been removed.
+The current latest delivery step is the **Atlas UI — SvelteKit site under `site/`**, fed by the Python data-package builder under `src/ohbm2026/ui_data/`. See the "Atlas UI" section near the top of this README for the canonical build recipe (`scripts/build_ui_data.py` then `pnpm dev` / `pnpm build`). The legacy `ohbmcli export-ui` / `build-ui` commands that wrote a hand-rolled HTML+JSON bundle into `data/outputs/exported-sites/ui-site__<state-key>/` have been removed.
+
+The deployed site lives at `abstractatlas.brainkb.org/ohbm2026/` (per spec 009-conference-subpath). PR previews surface at `/pr-<N>/ohbm2026/` in each PR's Deployments box. The bare root `abstractatlas.brainkb.org/` (and `/pr-<N>/`) is a static redirect island that bounces visitors to the conference subpath — gh-pages cannot serve a true HTTP 301, so this is a `<meta http-equiv="refresh">` + JS `location.replace`. Deploy workflows (`.github/workflows/deploy-ui.yml`, `pr-preview.yml`) stage the build into `site/publish/ohbm2026/` and copy `site/conference-root-redirect/{index,404}.html` to the publish root.
 
 ## Suggested Minimal Rebuilds
 
