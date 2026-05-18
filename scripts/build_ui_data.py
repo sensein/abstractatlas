@@ -87,16 +87,6 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     from ohbm2026.ui_data.builder import Stage6BuildError, build_ui_data_package
 
-    if args.output_format != "gzip-json-shards":
-        print(
-            f"build_ui_data.py: --output-format={args.output_format!r} is reserved "
-            f"for Stage-10 Phase-3 (its emitter lives at "
-            f"src/ohbm2026/ui_data/formats/{args.output_format.replace('-', '_')}.py "
-            f"and is not yet implemented). Use --output-format=gzip-json-shards "
-            f"(the default) until the bench candidates land.",
-            file=sys.stderr,
-        )
-        return 3
     try:
         return build_ui_data_package(
             corpus_path=args.corpus,
@@ -110,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=args.output,
             minilm_root=args.minilm_root,
             conference_id=args.conference_id,
+            output_format=args.output_format,
         )
     except Stage6BuildError as exc:
         print(f"build_ui_data.py: {exc}", file=sys.stderr)

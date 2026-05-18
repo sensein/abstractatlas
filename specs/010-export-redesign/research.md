@@ -114,16 +114,25 @@ This fallback is named here so the architect-agent review knows the floor exists
 
 ### B1. Decision table
 
-| # | Candidate | A3.1 size (MB) | A3.2 cold-start TTI (ms, median of 3) | A3.3 session bytes (MB) | A3.4 decoder bundle (KB) | A3.5 cross-conf | A3.6 schema fidelity | Notes |
-|---|---|---|---|---|---|---|---|---|
-| 1 | status-quo-tightened (gzip)  | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` |
-| 1b | status-quo-tightened (brotli) | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` |
-| 1c | status-quo-tightened (zstd)   | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` |
-| 2 | multi-file Parquet | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` |
-| 3 | Parquet + DuckDB-WASM | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` |
-| 4 | single-file SQLite | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` |
-| 5 | single-file DuckDB | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` |
-| 6 | Arrow IPC | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` | `<RESULTS LANDS HERE>` |
+**Size column populated 2026-05-18** from local builds against the production OHBM 2026 corpus (3 243 abstracts; same source for every candidate). Other metric columns filled in once the Playwright-driven measurements (T033–T035) and the qualitative writeups (T038) land.
+
+| # | Candidate | A3.1 size (uncompressed) | A3.1b size (gzipped tarball) | A3.2 cold-start TTI | A3.3 session bytes | A3.4 decoder bundle | A3.5 cross-conf | A3.6 schema fidelity | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | gzip-json-shards (baseline) | **128 MB** | **26 MB** | _pending_ | _pending_ | 0 KB | single-key lookup | adapter (3× `range: Any`) | Stage-6 production. Whole-tarball fetch; no point lookups. |
+| 1b | gzip-json-shards (brotli) | 128 MB | _pending_ | _pending_ | _pending_ | 0 KB | single-key lookup | adapter | Brotli compression of the same tar contents; expect ~20 % shrink over gzip per typical web payloads. |
+| 1c | gzip-json-shards (zstd) | 128 MB | _pending_ | _pending_ | _pending_ | 0 KB | single-key lookup | adapter | Same shape, zstd compression. |
+| 2 | **multi-file Parquet** | **24 MB** | **24 MB** | _pending_ | _pending_ | ~300 KB (hyparquet) | requires pre-computed table | native (STRUCT columns) | **Strongest size winner.** Already columnar+zstd-compressed; gzipping the tarball saves nothing (24M → 24M). Each `.parquet` directly servable via HTTP `Range:` headers — no extra compression layer between the wire and the row-groups. Eliminates all 3 Stage-6 `range: Any` slots via native STRUCT columns. |
+| 3 | Parquet + DuckDB-WASM | 24 MB | 24 MB | _pending_ | _pending_ | ~6 MB (duckdb-wasm) | native SQL JOIN | native | Same files as #2 + a tiny SQL-views sidecar (~3 KB). The 6 MB decoder bundle is the cost of native cross-conf JOINs; the bench TTI measurement decides if it's worth it. |
+| 4 | single-file SQLite | **118 MB** | 79 MB | _pending_ | _pending_ | ~1.5 MB (sqlite-wasm) | native SQL JOIN | adapter (JSON-blob columns) | **Worst result.** FTS5 indices over the abstract text triple the file size vs baseline. Without FTS5 it would be smaller — but then lexical search needs a separate index. The page-oriented layout also doesn't compress well because per-abstract JSON blobs are too short to dictionary-encode efficiently. _Out unless we drop FTS5 + upgrade JSON columns to native typed columns (Phase 4)._ |
+| 5 | single-file DuckDB | 72 MB | 46 MB | _pending_ | _pending_ | ~6 MB (duckdb-wasm) | native SQL JOIN | adapter (current impl uses JSON-blob columns; native STRUCT upgrade pending) | DuckDB's columnar compression IS doing work (72M vs SQLite's 118M), but the JSON-blob columns can't be compressed the way native STRUCT columns can. Upgrading to native STRUCT (Phase 4 if this candidate wins) would likely bring it close to the Parquet number. |
+| 6 | Arrow IPC | 45 MB | 34 MB | _pending_ | _pending_ | ~500 KB (apache-arrow) | requires pre-computed table | native | LZ4 frame compression is faster to decode than Parquet's zstd but less compact. The bench TTI measurement decides which wins. |
+
+**Snap analysis based on size alone**: Parquet (#2) dominates by 31 % on gzipped size (24 MB vs 26 MB baseline) AND by 81 % on uncompressed size (24 MB vs 128 MB). The remaining metrics (cold-start TTI, session bytes, decoder bundle, cross-conf, fidelity) decide whether to layer DuckDB-WASM on top (#3) for SQL queries or stay with the leaner pure-Parquet path (#2).
+
+Notable findings outside the table:
+
+- **Duplicate `poster_id='2335'` in the existing corpus** — discovered when the SQLite emitter's `UNIQUE INDEX` constraint failed. FR-202 finding: parallel-data cross-validation is a real Stage-6 gap. Tightened by the Phase-4 schema work (T044).
+- **`enrichment.json` + `abstracts.json` = 67 % of uncompressed bytes** (Stage-6 baseline). Parquet's win comes from column-wise dict-encoding the repeated facet strings (`fMRI`, `Functional MRI`, etc.) and zstd-compressing the long `claims.source` quote columns. Any candidate that stores those as JSON-string columns (SQLite-with-JSON, DuckDB-with-JSON) loses that win.
 
 Baseline references (Stage 6) — captured 2026-05-18 against `main`:
 - **A3.1 baseline (gzipped tarball size)**: **26 914 297 bytes** (= 25.67 MiB / 26.91 MB) — `site/publish/data-package.tar.gz` after a fresh `pnpm preview:gh-pages` rebuild.
