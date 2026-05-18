@@ -81,7 +81,7 @@ A first-time visitor types or pastes `abstractatlas.brainkb.org` into the addres
 
 - **FR-104 (PR preview shape mirrors production)**: Per-PR preview deploys MUST host the conference site under `<cname>/pr-<N>/ohbm2026/`, with abstract permalinks at `<cname>/pr-<N>/ohbm2026/abstract/<poster_id>/` and About at `<cname>/pr-<N>/ohbm2026/about/`. The Deployments-box surface (FR-021) MUST link to the new shape so reviewers smoke-test the same URL layout the production deploy will use.
 
-- **FR-105 (Root URL behaviour)**: The root path `<cname>/` MUST issue an HTTP 301 redirect to `<cname>/ohbm2026/`. After redirect, the address bar MUST display the canonical `<cname>/ohbm2026/` URL. The same rule applies under PR previews — `<cname>/pr-<N>/` MUST 301 to `<cname>/pr-<N>/ohbm2026/`.
+- **FR-105 (Root URL behaviour)**: The root path `<cname>/` MUST cause the visitor's browser to land on `<cname>/ohbm2026/` within ≤ 1 perceptual hop. Because gh-pages cannot serve a true HTTP 301, this is implemented as a static redirect island (`<meta http-equiv="refresh">` + JS `location.replace`); the perceptual contract is "the address bar settles on the canonical `<cname>/ohbm2026/` URL on first paint, with no intermediate placeholder page". The same rule applies under PR previews — `<cname>/pr-<N>/` MUST bounce to `<cname>/pr-<N>/ohbm2026/` under the same mechanism.
 
 - **FR-106 (Legacy URLs not preserved)**: Pre-rework URLs at `<cname>/abstract/<poster_id>` and `<cname>/about` are EXPLICITLY NOT preserved. They MAY 404, and we accept the breakage — the pool of links shared in the wild during the brief pre-rework window is bounded, and the cost of a one-time "click and re-find" is acceptable. A future cleanup MAY add a redirect map if demand surfaces; this spec does not require one.
 
@@ -114,7 +114,7 @@ A first-time visitor types or pastes `abstractatlas.brainkb.org` into the addres
 
 - **SC-102 (Direct-load works under the subpath)**: A fresh incognito direct-load of `<cname>/ohbm2026/abstract/<poster_id>/` renders the detail panel within 3 s on a desktop network (SC-001 budget unchanged).
 
-- **SC-103 (Root URL reaches OHBM 2026)**: A visitor opening `<cname>/` reaches the OHBM 2026 home in exactly one redirect hop (301), and the address bar settles on `<cname>/ohbm2026/`.
+- **SC-103 (Root URL reaches OHBM 2026)**: A visitor opening `<cname>/` reaches the OHBM 2026 home within ≤ 1 perceptual hop (a static meta-refresh + JS `location.replace`; not a true HTTP 301 because gh-pages cannot serve one), and the address bar settles on `<cname>/ohbm2026/` before the first contentful paint of the home page.
 
 - **SC-104 (PR-preview parity)**: The PR preview for a Stage-9 PR exposes the conference site at `<cname>/pr-<N>/ohbm2026/`, with abstract permalinks at `<cname>/pr-<N>/ohbm2026/abstract/<poster_id>/`, and the Deployments-box link points to that URL.
 

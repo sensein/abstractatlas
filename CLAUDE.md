@@ -168,29 +168,34 @@ Current canonical defaults (the UI consumes these):
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at `specs/008-ui-rewrite/plan.md`. The companion design artifacts
-under the same directory — `research.md`, `data-model.md`, `contracts/`,
-and `quickstart.md` — pin Stage 6 UI-rewrite design: a static
-SvelteKit + Vite site served from GitHub Pages, built and deployed by
-a GitHub Action with per-PR preview management, consuming a static-
-JSON-shard data package (DuckDB-WASM ruled out at 3,244-abstract scale
-per the Session-2026-05-17 clarification). Adds previously-missing
-capabilities: program-assigned poster ids (not submission ids),
-restored author + affiliation details, 3D UMAP alongside 2D + lasso,
-typo-tolerant lexical + semantic search (MiniLM-L6 ONNX via
-transformers.js with int8-quantized corpus vectors), interactive
-facet recomputation, a saved-list shopping cart with mailto-based
-export, an optional walkthrough (shepherd.js), an About page with
-build-time verified references, and mobile-first responsive layout.
-Accepted abstracts only; withdrawn submissions never surface
-anywhere. Three workflows: `deploy-ui.yml` (main → root), `pr-
-preview.yml` (PR → `/pr-<N>/`), `pr-preview-cleanup.yml` (close →
-remove). 8 user stories; MVP = US1 (search + browse on every device).
-No new secrets beyond the default `GITHUB_TOKEN`. The Python data-
-builder package lives at `src/ohbm2026/ui_data/`; the site lives at
-`site/`.
+at `specs/009-conference-subpath/plan.md`. The companion design
+artifacts under the same directory — `research.md`, `data-model.md`,
+`contracts/urls.md`, and `quickstart.md` — pin the Stage-9 conference
+subpath rework: every OHBM-2026 surface (home, About, abstract
+permalink) moves under `/ohbm2026/` so the same Atlas can later host
+other conferences without URL-space collision. Root `<cname>/` issues
+a static meta-refresh + JS `location.replace` to `/ohbm2026/`
+(gh-pages can't serve real 301s); legacy URLs (`<cname>/abstract/*`,
+`<cname>/about`) are intentionally NOT preserved (Q2 = accept the
+breakage); PR previews mirror production at `<cname>/pr-<N>/ohbm2026/`.
+Primary mechanism: SvelteKit `kit.paths.base` with a `BASE_PATH`
+env override (already used by the Stage-6 PR-preview workflow — the
+override just widens to include the conference id). No data-shard
+changes; `build_info` envelope is byte-identical; no `conference`
+field is added to any JSON shard (FR-109 + SC-105). One new
+e2e spec (`subpath.spec.ts`); two existing files need base-aware
+edits (`cart_email.ts` permalink composer, `Tour.svelte`'s
+`detectKind` route classifier); a small static "root-redirect island"
+under `site/static/conference-root-redirect/` is copied to the
+gh-pages publish root.
 
 Previous-stage plans:
+- Stage 6 UI rewrite (US1–US8): `specs/008-ui-rewrite/plan.md` (static
+  SvelteKit site on gh-pages; `site/` + `src/ohbm2026/ui_data/`;
+  typo-tolerant lexical + semantic search; 3D UMAP + lasso; cart +
+  email; guided tour; About + link-checked references; 10+ PRs
+  #9–#18 across spec ship-out + post-spec UX (search operators +
+  badge clarification) + wrap-up).
 - Stage 5 package reorganization: `specs/007-package-reorg/plan.md`
   (collapsed `enrichment.py` into `enrich/{text, markdown_render}.py`;
   parked `layout/`; split `ui.py` into `ui/{payload, cli}.py`;
