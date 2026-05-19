@@ -91,7 +91,19 @@ def _facets_to_arrow(facets: Mapping[str, Any]) -> dict[str, list[str]]:
     return {k: list(facets.get(k, []) or []) for k in keys}
 
 
+_POSTER_STANDBY_TYPE = pa.struct(
+    [
+        ("first", pa.timestamp("ms", tz="UTC")),
+        ("second", pa.timestamp("ms", tz="UTC")),
+    ]
+)
+
+
 def _abstracts_to_table(envelope: Mapping[str, Any]) -> pa.Table:
+    """Build the abstracts table. STRUCT columns for sections / topics
+    / facets / poster_standby. Poster stand-by times use Parquet's
+    native TIMESTAMP[ms, UTC] — int64 on disk, dict-encodes well over
+    the ~8 unique conference slots."""
     rows = []
     for r in envelope["abstracts"]:
         standby = r.get("poster_standby") or {}
@@ -109,18 +121,27 @@ def _abstracts_to_table(envelope: Mapping[str, Any]) -> pa.Table:
                 "reference_dois": list(r.get("reference_dois", [])),
                 "reference_urls": list(r.get("reference_urls", [])),
                 "reference_titles": list(r.get("reference_titles", [])),
-                # Poster stand-by times sourced from the proposal-listing
-                # CSV (not in Oxford GraphQL). Empty strings when the CSV
-                # wasn't passed or didn't list this submission. The UI
-                # suppresses display of these until they're confirmed
-                # correct end-to-end.
+                # Poster stand-by start times sourced from the
+                # proposal-listing CSV (not in Oxford GraphQL).
+                # `datetime`-or-`None` values; pyarrow promotes them to
+                # TIMESTAMP[ms, UTC] via the explicit type below. UI
+                # suppresses display until values are confirmed correct.
                 "poster_standby": {
-                    "first": str(standby.get("first", "")),
-                    "second": str(standby.get("second", "")),
+                    "first": standby.get("first"),
+                    "second": standby.get("second"),
                 },
             }
         )
-    return pa.Table.from_pylist(rows)
+    table = pa.Table.from_pylist(rows)
+    # Force the poster_standby column to the typed STRUCT — pylist
+    # inference defaults to ns precision and a timezone-naive type
+    # depending on input, which then carries through to hyparquet as
+    # an int64 raw value. Casting once here gives a stable schema.
+    return table.set_column(
+        table.schema.get_field_index("poster_standby"),
+        "poster_standby",
+        table["poster_standby"].cast(_POSTER_STANDBY_TYPE),
+    )
 
 
 def _authors_to_table(envelope: Mapping[str, Any]) -> pa.Table:

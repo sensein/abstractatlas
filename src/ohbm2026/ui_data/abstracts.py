@@ -255,26 +255,63 @@ def _withdrawn_ids(withdrawn_path: Path | None) -> set[int]:
     return {int(a["id"]) for a in iterable if isinstance(a, dict) and a.get("id") is not None}
 
 
-def _load_standby_times(path: Path | None) -> dict[int, dict[str, str]]:
-    """Load poster stand-by times from the proposal-listing CSV.
+def _load_standby_times(
+    path: Path | None,
+) -> dict[int, dict[str, "_dt.datetime | None"]]:  # type: ignore[name-defined]
+    """Load poster stand-by start times from the proposal-listing CSV.
 
-    Returns a `{submission_id: {first: "<day | hh:mm-hh:mm>", second: "..."}}`
-    map. The CSV is the only place these times exist — they are not in
-    the Oxford GraphQL schema. Lookup is by Oxford submission id (column
-    "Abstract ID Number"), not poster_id, so the dedup upstream of this
-    call still produces a valid lookup key for the surviving record.
-    Returns an empty dict if no path is given or the CSV cannot be read.
+    Returns `{submission_id: {first: datetime|None, second: datetime|None}}`
+    with timezone-aware Python `datetime` objects (UTC). Each emitter
+    converts these to its native time representation — for the parquet
+    candidate that's a `TIMESTAMP(unit=ms, tz=UTC)` column, which is
+    int64 on disk + dict-encoded over the 8 unique conference slots
+    (~1 byte per value after compression).
+
+    The CSV is the only source for these times — Oxford GraphQL doesn't
+    expose them. Each row's two stand-by times are local Bordeaux
+    strings like "Wednesday, June 17 | 12:45-13:45"; OHBM 2026 lands
+    inside CEST (UTC+2, no DST transitions between June 15 and 18) and
+    every window is exactly 1 hour, so the start time is sufficient —
+    the end is implicit (start + 1h).
     """
     if path is None:
         return {}
     import csv
+    import datetime as _dt
+    import re as _re
 
-    out: dict[int, dict[str, str]] = {}
+    _CEST = _dt.timezone(_dt.timedelta(hours=2))
+    _UTC = _dt.timezone.utc
+    _MONTHS = {
+        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+        "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+    }
+    _PATTERN = _re.compile(
+        r"\s*\w+,\s*(?P<month>\w+)\s+(?P<day>\d+)\s*\|\s*(?P<hh>\d{1,2}):(?P<mm>\d{2})\s*-",
+        _re.IGNORECASE,
+    )
+
+    def _to_utc(local: str) -> "_dt.datetime | None":
+        if not local:
+            return None
+        m = _PATTERN.match(local)
+        if not m:
+            return None
+        month = _MONTHS.get(m["month"].lower())
+        if month is None:
+            return None
+        try:
+            local_dt = _dt.datetime(
+                2026, month, int(m["day"]), int(m["hh"]), int(m["mm"]), tzinfo=_CEST
+            )
+        except ValueError:
+            return None
+        return local_dt.astimezone(_UTC)
+
+    out: dict[int, dict[str, "_dt.datetime | None"]] = {}
     try:
         with Path(path).open() as f:
             lines = f.readlines()
-        # The CSV has a multi-line preamble; the real header starts at
-        # the row whose first cell reads "Abstract ID Number".
         header_idx = next(
             (i for i, ln in enumerate(lines) if ln.startswith("Abstract ID Number")),
             None,
@@ -290,8 +327,8 @@ def _load_standby_times(path: Path | None) -> dict[int, dict[str, str]]:
                 continue
             sid = int(sid_raw)
             out[sid] = {
-                "first": (row.get(first_col) or "").strip(),
-                "second": (row.get(second_col) or "").strip(),
+                "first": _to_utc((row.get(first_col) or "").strip()),
+                "second": _to_utc((row.get(second_col) or "").strip()),
             }
     except (OSError, csv.Error):
         return {}
@@ -378,10 +415,13 @@ def iter_abstracts(
         else:
             author_ids = raw_author_ids
 
-        # Stand-by times are sourced from the proposal-listing CSV (not in
-        # Oxford GraphQL). Two empty strings if the CSV wasn't supplied or
-        # this submission isn't in it; the UI suppresses the block until
-        # the values are confirmed correct end-to-end.
+        # Stand-by start times are sourced from the proposal-listing CSV
+        # (not in Oxford GraphQL). Stored as tz-aware UTC `datetime`
+        # objects — the parquet emitter writes them as TIMESTAMP[ms, UTC]
+        # (int64 on disk, dict-encodes well over the ~8 unique
+        # conference slots). None for either field if the CSV wasn't
+        # supplied or this submission isn't in it. Each window is
+        # always 1 hour, so the end is implicit (start + 1h).
         standby = standby_by_sid.get(int(abstract_id), {})
         yield {
             "abstract_id": int(abstract_id),
@@ -405,8 +445,8 @@ def iter_abstracts(
             "reference_urls": urls,
             "reference_titles": ref_titles,
             "poster_standby": {
-                "first": standby.get("first", ""),
-                "second": standby.get("second", ""),
+                "first": standby.get("first"),
+                "second": standby.get("second"),
             },
         }
     if skipped_no_poster_id:
