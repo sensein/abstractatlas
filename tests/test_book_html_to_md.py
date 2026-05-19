@@ -50,7 +50,7 @@ class TestHtmlToMd(unittest.TestCase):
         # The entity decodes to U+00B1 (±) which the math-operator
         # normaliser then wraps in `\(\pm\)` so it falls through to
         # Latin Modern Math at LaTeX-compile time.
-        self.assertIn(r"\(\pm\)", md)
+        self.assertIn(r"$\pm$", md)
 
     def test_unicode_superscript_normalised(self) -> None:
         # Authors sometimes paste literal Unicode super/subscript
@@ -66,22 +66,22 @@ class TestHtmlToMd(unittest.TestCase):
 
     def test_greek_letters_wrapped_in_math(self) -> None:
         md = html_to_pandoc_md("<p>The α-value is 0.05; ρ = 0.42; Δ change</p>")
-        self.assertIn(r"\(\alpha\)", md)
-        self.assertIn(r"\(\rho\)", md)
-        self.assertIn(r"\(\Delta\)", md)
+        self.assertIn(r"$\alpha$", md)
+        self.assertIn(r"$\rho$", md)
+        self.assertIn(r"$\Delta$", md)
 
     def test_math_operators_wrapped_in_math(self) -> None:
         md = html_to_pandoc_md("<p>A → B with p ≤ 0.05; ratio ≈ 1.5</p>")
-        self.assertIn(r"\(\to\)", md)
-        self.assertIn(r"\(\leq\)", md)
-        self.assertIn(r"\(\approx\)", md)
+        self.assertIn(r"$\to$", md)
+        self.assertIn(r"$\leq$", md)
+        self.assertIn(r"$\approx$", md)
 
     def test_math_italic_greek_folded(self) -> None:
         # 𝜌 (U+1D70C) is MATHEMATICAL ITALIC SMALL RHO — different
         # codepoint from basic ρ (U+03C1). Folder maps it to the
         # basic Greek; then the Greek normaliser wraps it in math.
         md = html_to_pandoc_md("<p>The 𝜌 value is 0.42</p>")
-        self.assertIn(r"\(\rho\)", md)
+        self.assertIn(r"$\rho$", md)
         # 𝑥 (U+1D465) is MATHEMATICAL ITALIC SMALL X — folds to ASCII x.
         md = html_to_pandoc_md("<p>variable 𝑥</p>")
         self.assertIn("x", md)

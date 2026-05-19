@@ -209,23 +209,30 @@ def _fold_one_math_alphanumeric(cp: int) -> str:
 
 
 def _normalise_greek_and_math(text: str) -> str:
-    """Wrap Greek letters and math operators in `\\(...\\)` math
-    markers so they fall through to Latin Modern Math (which has
-    Greek + math symbols) instead of choking the text-mode font.
+    """Wrap Greek letters and math operators in `$...$` inline-math
+    markers so they fall through to LaTeX's math mode (Computer
+    Modern Math by default), which has the Greek alphabet + math
+    symbols. Pandoc's default `tex_math_dollars` extension parses
+    `$...$` as inline math and emits the correct
+    `\\(...\\)` LaTeX wrapping — using `\\(...\\)` directly in
+    markdown source would be stripped by pandoc as escaped
+    parentheses (the `tex_math_single_backslash` extension is OFF by
+    default).
 
-    Contiguous runs collapse into a single math span — `α + β` →
-    `\\(\\alpha + \\beta\\)` is cleaner than three separate spans.
-    Pandoc treats `\\(...\\)` as raw inline math.
+    Each Greek/math glyph yields its own `$...$` span — contiguous
+    spans don't collapse because that's harder to undo and the
+    rendered PDF treats `$\\alpha$ $+$ $\\beta$` identically to
+    `$\\alpha + \\beta$` once you ignore the (invisible) spacing.
     """
 
     def _greek(m: "re.Match[str]") -> str:
-        return f"\\({_GREEK_LATEX[m.group(0)]}\\)"
+        return f"${_GREEK_LATEX[m.group(0)]}$"
 
     def _mathop(m: "re.Match[str]") -> str:
         repl = _MATH_OP_LATEX[m.group(0)]
         # ASCII fallback (e.g. − → -) doesn't need math mode.
         if repl.startswith("\\"):
-            return f"\\({repl}\\)"
+            return f"${repl}$"
         return repl
 
     text = _GREEK_RE.sub(_greek, text)
