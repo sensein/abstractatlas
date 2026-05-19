@@ -22,6 +22,12 @@
 \usepackage{makeidx}
 \makeindex
 
+% xelatex's default math font (Latin Modern Math) has the Greek
+% alphabet + standard scientific operators. The html_to_md
+% preprocessor wraps Greek letters + math operators in `\(...\)` so
+% they render via the default math font; no fontspec / system-font
+% setup needed.
+
 % Hyperref last (canonical LaTeX ordering).
 \usepackage{hyperref}
 \hypersetup{

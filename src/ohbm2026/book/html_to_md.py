@@ -81,6 +81,76 @@ def _normalise_unicode_super_sub(text: str) -> str:
     return text
 
 
+# Greek letters that appear in body text (Latin Modern lacks every
+# one of these). Wrap in `\(...\)` math markers so they fall through
+# to Latin Modern Math, which DOES have Greek. Pandoc passes raw
+# TeX (`\( \)`) through unchanged when `raw_tex` is enabled.
+_GREEK_LATEX = {
+    # Lowercase
+    "α": r"\alpha", "β": r"\beta", "γ": r"\gamma", "δ": r"\delta",
+    "ε": r"\epsilon", "ζ": r"\zeta", "η": r"\eta", "θ": r"\theta",
+    "ι": r"\iota", "κ": r"\kappa", "λ": r"\lambda", "μ": r"\mu",
+    "ν": r"\nu", "ξ": r"\xi", "ο": "o", "π": r"\pi",
+    "ρ": r"\rho", "σ": r"\sigma", "ς": r"\varsigma", "τ": r"\tau",
+    "υ": r"\upsilon", "φ": r"\varphi", "ϕ": r"\phi", "χ": r"\chi",
+    "ψ": r"\psi", "ω": r"\omega",
+    "ϑ": r"\vartheta", "ϱ": r"\varrho", "ϖ": r"\varpi", "ε": r"\varepsilon",
+    # Uppercase
+    "Α": "A", "Β": "B", "Γ": r"\Gamma", "Δ": r"\Delta",
+    "Ε": "E", "Ζ": "Z", "Η": "H", "Θ": r"\Theta",
+    "Ι": "I", "Κ": "K", "Λ": r"\Lambda", "Μ": "M",
+    "Ν": "N", "Ξ": r"\Xi", "Ο": "O", "Π": r"\Pi",
+    "Ρ": "P", "Σ": r"\Sigma", "Τ": "T",
+    "Υ": r"\Upsilon", "Φ": r"\Phi", "Χ": "X", "Ψ": r"\Psi",
+    "Ω": r"\Omega",
+}
+
+# Math operators / relations that Latin Modern's text font also
+# doesn't carry. Latin Modern Math has them in math mode.
+_MATH_OP_LATEX = {
+    "→": r"\to", "←": r"\gets", "↔": r"\leftrightarrow",
+    "⇒": r"\Rightarrow", "⇐": r"\Leftarrow", "⇔": r"\Leftrightarrow",
+    "≥": r"\geq", "≤": r"\leq", "≠": r"\neq", "≈": r"\approx",
+    "≡": r"\equiv", "∼": r"\sim", "∝": r"\propto",
+    "∞": r"\infty", "∂": r"\partial", "∇": r"\nabla",
+    "∑": r"\sum", "∏": r"\prod", "∫": r"\int",
+    "∈": r"\in", "∉": r"\notin", "⊂": r"\subset", "⊃": r"\supset",
+    "∩": r"\cap", "∪": r"\cup", "∅": r"\emptyset",
+    "±": r"\pm", "∓": r"\mp", "×": r"\times", "÷": r"\div",
+    "√": r"\surd", "∗": r"\ast",
+    "−": "-",  # MINUS SIGN U+2212 → ASCII hyphen
+    "‐": "-", "‑": "-", "‒": "-",  # various dash glyphs
+}
+
+_GREEK_RE = re.compile("([" + "".join(_GREEK_LATEX.keys()) + "])")
+_MATH_OP_RE = re.compile("([" + "".join(re.escape(c) for c in _MATH_OP_LATEX.keys()) + "])")
+
+
+def _normalise_greek_and_math(text: str) -> str:
+    """Wrap Greek letters and math operators in `\\(...\\)` math
+    markers so they fall through to Latin Modern Math (which has
+    Greek + math symbols) instead of choking the text-mode font.
+
+    Contiguous runs collapse into a single math span — `α + β` →
+    `\\(\\alpha + \\beta\\)` is cleaner than three separate spans.
+    Pandoc treats `\\(...\\)` as raw inline math.
+    """
+
+    def _greek(m: "re.Match[str]") -> str:
+        return f"\\({_GREEK_LATEX[m.group(0)]}\\)"
+
+    def _mathop(m: "re.Match[str]") -> str:
+        repl = _MATH_OP_LATEX[m.group(0)]
+        # ASCII fallback (e.g. − → -) doesn't need math mode.
+        if repl.startswith("\\"):
+            return f"\\({repl}\\)"
+        return repl
+
+    text = _GREEK_RE.sub(_greek, text)
+    text = _MATH_OP_RE.sub(_mathop, text)
+    return text
+
+
 def html_to_pandoc_md(html: str) -> str:
     """Convert an Oxford-corpus HTML fragment to pandoc markdown.
 
@@ -133,6 +203,10 @@ def html_to_pandoc_md(html: str) -> str:
     # on plain text — any `<sup>`/`<sub>` already became `^...^` /
     # `~...~` in the BeautifulSoup pre-pass above.
     md = _normalise_unicode_super_sub(md)
+    # Wrap Greek letters + math operators in `\(...\)` so the LaTeX
+    # renderer sees them via Latin Modern Math (the text-mode font
+    # lacks the codepoints).
+    md = _normalise_greek_and_math(md)
 
     # markdownify leaves trailing whitespace per line + collapses
     # multiple blank lines unevenly; tighten the output so re-runs

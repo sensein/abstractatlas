@@ -47,7 +47,10 @@ class TestHtmlToMd(unittest.TestCase):
 
     def test_html_entity_resolves(self) -> None:
         md = html_to_pandoc_md("<p>x&plusmn;y</p>")
-        self.assertIn("±", md)
+        # The entity decodes to U+00B1 (±) which the math-operator
+        # normaliser then wraps in `\(\pm\)` so it falls through to
+        # Latin Modern Math at LaTeX-compile time.
+        self.assertIn(r"\(\pm\)", md)
 
     def test_unicode_superscript_normalised(self) -> None:
         # Authors sometimes paste literal Unicode super/subscript
@@ -60,6 +63,24 @@ class TestHtmlToMd(unittest.TestCase):
         # Multi-char run collapses into a single pandoc token.
         md = html_to_pandoc_md("<p>x²⁰²⁶ years</p>")
         self.assertIn("^2026^", md)
+
+    def test_greek_letters_wrapped_in_math(self) -> None:
+        md = html_to_pandoc_md("<p>The α-value is 0.05; ρ = 0.42; Δ change</p>")
+        self.assertIn(r"\(\alpha\)", md)
+        self.assertIn(r"\(\rho\)", md)
+        self.assertIn(r"\(\Delta\)", md)
+
+    def test_math_operators_wrapped_in_math(self) -> None:
+        md = html_to_pandoc_md("<p>A → B with p ≤ 0.05; ratio ≈ 1.5</p>")
+        self.assertIn(r"\(\to\)", md)
+        self.assertIn(r"\(\leq\)", md)
+        self.assertIn(r"\(\approx\)", md)
+
+    def test_minus_sign_normalised_to_ascii(self) -> None:
+        md = html_to_pandoc_md("<p>Result: −0.42</p>")
+        # MINUS SIGN (U+2212) → ASCII hyphen (no math wrap needed)
+        self.assertIn("-0.42", md)
+        self.assertNotIn("−", md)
 
     def test_deterministic(self) -> None:
         html = (
