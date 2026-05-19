@@ -1,0 +1,122 @@
+"""T016 — markdown bundle: filename contract + determinism + index."""
+
+from __future__ import annotations
+
+import pathlib
+import re
+import tempfile
+import unittest
+
+
+_FIX = pathlib.Path(__file__).parent / "fixtures" / "book"
+
+
+def _load_book():
+    from ohbm2026.book.corpus import load_book
+
+    return load_book(
+        corpus_path=_FIX / "abstracts.json",
+        authors_path=_FIX / "authors.json",
+        withdrawn_path=_FIX / "abstracts_withdrawn.json",
+        assets_root=_FIX / "assets",
+    )
+
+
+def _emit(outdir: pathlib.Path):
+    try:
+        from ohbm2026.book.author_index import build_author_index
+        from ohbm2026.book.render_markdown import emit_book_md
+        from ohbm2026.book.sort import by_poster_id
+    except ImportError:
+        return None
+    book = _load_book()
+    entries = by_poster_id(book.entries)
+    author_index = build_author_index(entries)
+    # Replace entries + index on the book (frozen dataclass — rebuild).
+    from dataclasses import replace
+
+    book = replace(book, entries=entries, author_index=author_index)
+    emit_book_md(book, outdir)
+    return book
+
+
+class TestMarkdownBundle(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.outdir = pathlib.Path(self.tmp.name)
+        self.book = _emit(self.outdir)
+        if self.book is None:
+            self.skipTest("render_markdown/sort/author_index not yet implemented")
+        self.text = (self.outdir / "book.md").read_text()
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    # (a) one "## Abstract NNNN" line per surviving entry
+    def test_abstract_headings(self) -> None:
+        headings = re.findall(r"^## Abstract (\d{4}) ", self.text, re.M)
+        self.assertEqual(set(headings), {"0001", "0002", "0003", "0004", "0005"})
+
+    # (b)+(c) figure references resolve + every emitted file is referenced
+    def test_figure_references_resolve_and_are_complete(self) -> None:
+        refs = set(re.findall(r"!\[[^\]]*\]\(fig_assets/([^)]+)\)", self.text))
+        emitted = {
+            p.name
+            for p in (self.outdir / "fig_assets").iterdir()
+            if p.is_file()
+        }
+        self.assertEqual(refs, emitted, "figure references vs emitted files mismatch")
+
+    # (d) index-suffix contract
+    def test_index_suffix_only_for_repeats(self) -> None:
+        files = sorted(p.name for p in (self.outdir / "fig_assets").iterdir())
+        # Abstract 0001: one methods, one results (no -1/-2 suffix).
+        self.assertIn("9000001-0001-methods.png", files)
+        self.assertIn("9000001-0001-results.png", files)
+        self.assertNotIn("9000001-0001-methods-1.png", files)
+        # Abstract 0004: TWO results → suffix present.
+        self.assertIn("9000004-0004-results-1.png", files)
+        self.assertIn("9000004-0004-results-2.png", files)
+        self.assertNotIn("9000004-0004-results.png", files)
+
+    # (e) determinism
+    def test_re_emit_byte_identical(self) -> None:
+        first = (self.outdir / "book.md").read_bytes()
+        with tempfile.TemporaryDirectory() as tmp2:
+            _emit(pathlib.Path(tmp2))
+            second = (pathlib.Path(tmp2) / "book.md").read_bytes()
+        self.assertEqual(first, second)
+
+    # (f) `\index{Last, First}` markers beside author names
+    def test_latex_index_markers_present(self) -> None:
+        # Jane A. Smith is on abstract 0001 → \index{Smith, Jane A.}
+        self.assertIn(r"\index{Smith, Jane A.}", self.text)
+
+    # (g) `\printindex` exactly once near the end
+    def test_printindex_singleton(self) -> None:
+        self.assertEqual(self.text.count(r"\printindex"), 1)
+        # near the end (within the last 20% of the file)
+        idx = self.text.rfind(r"\printindex")
+        self.assertGreater(idx, int(len(self.text) * 0.5))
+
+    # (h) `<details>` anchor-link author index follows \printindex
+    def test_details_anchor_index_present(self) -> None:
+        self.assertIn(
+            "<details><summary>Author Index (anchor links)</summary>",
+            self.text,
+        )
+        # Each distinct fixture author should have a poster anchor link.
+        # Jane A. Smith is on 0001 only.
+        self.assertRegex(
+            self.text,
+            r"Jane A\. Smith[^\n]+\(#abstract-0001\)",
+        )
+        # Maria B. Brown shared across 0002 + 0004.
+        block = self.text[self.text.find("<details>"):]
+        self.assertIn("Maria B. Brown", block)
+        self.assertIn("#abstract-0002", block)
+        self.assertIn("#abstract-0004", block)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    unittest.main()

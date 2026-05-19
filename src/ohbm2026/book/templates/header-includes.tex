@@ -1,0 +1,15 @@
+% LaTeX preamble for the plain (book class) PDF rendering.
+% Loaded by pandoc via `-H header-includes.tex`.
+
+\usepackage{makeidx}
+\makeindex
+\usepackage{graphicx}
+% Pandoc's --resource-path injects the book-output directory so
+% relative `fig_assets/...` paths resolve.
+\usepackage{microtype}
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+}

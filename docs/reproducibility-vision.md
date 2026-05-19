@@ -195,7 +195,23 @@ The usual order is:
 4. embedding commands such as `embed-minilm`, `embed-voyage`, or
    `apply-published-stage2`
 5. `ohbmcli cluster-benchmark` and related semantic-analysis steps
-6. **Stage 6 UI data package** (canonical site):
+6. **Stage 11 Book of Abstracts** (optional, reader-facing
+   deliverable). The book composes every accepted abstract into a
+   publication-quality PDF + markdown bundle + DOCX, sourced
+   **exclusively from Stage 1 artefacts** (no Stage-2 LLM content
+   reaches the book — SC-006 audit logged in `provenance.json`).
+   System deps: `pandoc` + a LaTeX engine (Tectonic recommended).
+   Markdown is the canonical intermediate; PDF/DOCX derive from it
+   via pandoc. Invocation:
+   ```
+   PYTHONPATH=src .venv/bin/python -m ohbm2026.cli book \
+       --format pdf --sort poster_id
+   ```
+   Output at `data/outputs/book/book__<state-key>/`. Full spec +
+   plan + quickstart at `specs/011-abstracts-book/`. (Stage 11 does
+   not depend on Stages 2–6; it can run as soon as Stage 1
+   completes.)
+7. **Stage 6 UI data package** (canonical site):
    ```
    PYTHONPATH=src .venv/bin/python scripts/build_ui_data.py \
      --corpus data/primary/abstracts.json \

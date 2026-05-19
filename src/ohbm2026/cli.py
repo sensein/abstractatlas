@@ -151,6 +151,14 @@ def build_parser() -> argparse.ArgumentParser:
     manifest_parser = subparsers.add_parser("write-manifest", help="Write the NeuroScape handoff manifest")
     _copy_actions(manifest_parser, embed_neuroscape.build_manifest_parser())
 
+    book_parser = subparsers.add_parser(
+        "book",
+        help="Compose the Book of Abstracts (md + pdf + docx) from Stage-1 artefacts",
+    )
+    from ohbm2026.book.cli import _build_parser as _book_build_parser
+
+    _copy_actions(book_parser, _book_build_parser())
+
     return parser
 
 
@@ -263,6 +271,10 @@ def main(argv: list[str] | None = None) -> int:
         return titles.main(subcommand_argv)
     if command == "write-manifest":
         return embed_neuroscape.manifest_main(subcommand_argv)
+    if command == "book":
+        from ohbm2026.book.cli import main as book_main
+
+        return book_main(subcommand_argv)
 
     raise AssertionError(f"Unhandled command: {command}")
 

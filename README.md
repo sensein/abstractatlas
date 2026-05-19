@@ -222,6 +222,7 @@ Use this as the quick answer to "what do I need before I run this step?"
 | `ohbmcli embed-voyage` | `VOYAGE_API` | none | Voyage embedding route |
 | `ohbmcli apply-published-stage2` / `embed-stage2` | none | local model dependencies already in `.venv` | Uses local artifacts |
 | `ohbmcli semantic-analysis` / `cluster-benchmark` / `umap-plot` / `compare-projections` / `optimize-projections` | none | optional `plotly`, `umap-learn` | Purely local once embeddings exist |
+| `ohbmcli book` | none | `.[abstracts_book]` (markdownify, beautifulsoup4, python-docx, pikepdf) + system `pandoc` + LaTeX engine (Tectonic recommended) for PDF/DOCX | Stage 11 — composes Book of Abstracts; markdown bundle always; `--format pdf` / `--format docx` derive via pandoc; outputs to `data/outputs/book/`. |
 | `scripts/optimize_poster_layout.py` / `scripts/analyze_poster_layout.py` | none | none | Uses local proposal inputs, authors, and layout assets |
 | poster sequencing scripts under `scripts/` | none | none | Use local proposals and embeddings |
 | `scripts/build_ui_data.py` | none | none | Stage 6: builds the static-JSON data package consumed by the SvelteKit site under `site/` |
@@ -773,6 +774,43 @@ relying on older baked-in defaults.
 ### 10. Build The Static UI
 
 The current latest delivery step is the **Atlas UI — SvelteKit site under `site/`**, fed by the Python data-package builder under `src/ohbm2026/ui_data/`. See the "Atlas UI" section near the top of this README for the canonical build recipe (`scripts/build_ui_data.py` then `pnpm dev` / `pnpm build`). The legacy `ohbmcli export-ui` / `build-ui` commands that wrote a hand-rolled HTML+JSON bundle into `data/outputs/exported-sites/ui-site__<state-key>/` have been removed.
+
+### 11. Book Of Abstracts (Stage 11)
+
+Compose a publication-quality book of every accepted abstract — title,
+authors with affiliations, full body text, embedded figures, and the
+author-supplied references — sorted by `poster_id` (default), `title`,
+or `first_author` surname, with a paginated author index at the back.
+
+Markdown is the canonical intermediate; PDF + DOCX derive from
+`book.md` via pandoc (PDF through xelatex with `\makeindex` /
+`\printindex`; optional `tufte-book` document class via `--style tufte`).
+Content sourced exclusively from Stage-1 artefacts (`data/primary/abstracts.json`
++ `authors.json` + `data/inputs/assets/`); **zero Stage-2 / LLM
+content reaches the book** (SC-006 audit logged in `provenance.json`).
+
+System deps: install `pandoc` + a LaTeX engine (Tectonic recommended)
+once per machine — see `specs/011-abstracts-book/quickstart.md` step 2
+for the brew / apt commands. Optional Python extra:
+
+```bash
+uv pip install --python .venv/bin/python ".[abstracts_book]"
+```
+
+Then invoke:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli book --format pdf --sort poster_id
+```
+
+Output lands at `data/outputs/book/book__<state-key>/` with
+`book.md` + `book.pdf` (and `book.docx` when `--format docx|all`) +
+`fig_assets/` + `provenance.json`. The figure-asset filename
+contract: `<submission_id>-<poster_id>-<type>[-<index>].<ext>` —
+flat directory; `<type>` is `methods` / `results`; `<index>` is
+1-based and only present when an abstract supplies more than one
+figure of the same type. Full design at
+`specs/011-abstracts-book/`.
 
 The deployed site lives at `abstractatlas.brainkb.org/ohbm2026/` (per spec 009-conference-subpath). PR previews surface at `/pr-<N>/ohbm2026/` in each PR's Deployments box. The bare root `abstractatlas.brainkb.org/` (and `/pr-<N>/`) is a static redirect island that bounces visitors to the conference subpath — gh-pages cannot serve a true HTTP 301, so this is a `<meta http-equiv="refresh">` + JS `location.replace`. Deploy workflows (`.github/workflows/deploy-ui.yml`, `pr-preview.yml`) stage the build into `site/publish/ohbm2026/` and copy `site/conference-root-redirect/{index,404}.html` to the publish root.
 
