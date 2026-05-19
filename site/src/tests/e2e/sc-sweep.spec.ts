@@ -2,7 +2,7 @@
  * T096 — Success-Criteria sweep against production.
  *
  * Each `test()` here verifies one SC item from spec.md. Runs against the
- * live production URL by default; override with `TARGET_BASE`.
+ * live production URL by default; override with `PLAYWRIGHT_BASE_URL`.
  *
  * Coverage in this spec (locally observable, no live data needed beyond a
  * deployed site):
@@ -33,18 +33,15 @@ import { test, expect, chromium, devices } from '@playwright/test';
 
 test.setTimeout(180_000);
 
-// Prefer `PLAYWRIGHT_BASE_URL` (used by CI when targeting a deployed
-// preview/prod URL); fall back to `TARGET_BASE` for backward compat
-// with the original sc-sweep invocation. Both spell out the FULL
-// URL of the conference home including any per-deploy prefix —
-// e.g. `https://abstractatlas.brainkb.org/pr-20/ohbm2026/`. Stripping
-// the trailing slash here lets `${BASE}/about/` and the like compose
+// `PLAYWRIGHT_BASE_URL` (set by CI) spells out the FULL URL of the
+// conference home including any per-deploy prefix — e.g.
+// `https://abstractatlas.brainkb.org/pr-20/ohbm2026/`. Stripping the
+// trailing slash here lets `${BASE}/about/` and the like compose
 // without double-slashes.
-const BASE = (
-	process.env.PLAYWRIGHT_BASE_URL ||
-	process.env.TARGET_BASE ||
-	'http://127.0.0.1:4173/ohbm2026'
-).replace(/\/$/, '');
+const BASE = (process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4173/ohbm2026').replace(
+	/\/$/,
+	''
+);
 
 test.describe('SC sweep', () => {
 	test('SC-002 — search latency: typing returns a filtered count in < 500 ms (warm path)', async () => {

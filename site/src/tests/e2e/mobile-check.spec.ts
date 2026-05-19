@@ -11,17 +11,15 @@ const probes = [
   { label: 'desktop-landscape', viewport: { width: 1440, height: 900 }, mobile: false }
 ];
 
-// Was hardcoded to the PR-9 preview (long since closed). Default to
-// local; honour PLAYWRIGHT_BASE_URL for CI runs against PR preview /
-// production. The mobile-check probe is geometry-only, so any deploy
-// that renders the same DOM passes. BASE is the FULL URL of the
+// Default to local; honour PLAYWRIGHT_BASE_URL for CI runs against PR
+// preview / production. The mobile-check probe is geometry-only, so any
+// deploy that renders the same DOM passes. BASE is the FULL URL of the
 // conference home (including any per-deploy prefix); we strip the
 // trailing slash so `${BASE}/abstract/<id>/` composes cleanly.
-const BASE = (
-	process.env.PLAYWRIGHT_BASE_URL ||
-	process.env.TARGET_BASE ||
-	'http://127.0.0.1:4173/ohbm2026'
-).replace(/\/$/, '');
+const BASE = (process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4173/ohbm2026').replace(
+	/\/$/,
+	''
+);
 
 test('multi-viewport overflow probe', async () => {
   const browser = await chromium.launch();

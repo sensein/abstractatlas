@@ -7,10 +7,10 @@
  * the goal is to flag broken affordances, not perfect every contrast ratio.
  *
  * Run against the live production site:
- *   TARGET_BASE=https://abstractatlas.brainkb.org/ohbm2026/ pnpm exec playwright test a11y
+ *   PLAYWRIGHT_BASE_URL=https://abstractatlas.brainkb.org/ohbm2026/ pnpm exec playwright test a11y
  *
- * Run against the PR preview:
- *   TARGET_BASE=https://abstractatlas.brainkb.org/pr-9/ohbm2026/ pnpm exec playwright test a11y
+ * Run against a PR preview:
+ *   PLAYWRIGHT_BASE_URL=https://abstractatlas.brainkb.org/pr-9/ohbm2026/ pnpm exec playwright test a11y
  */
 
 import AxeBuilder from '@axe-core/playwright';
@@ -18,16 +18,13 @@ import { test, expect, chromium } from '@playwright/test';
 
 test.setTimeout(180_000);
 
-// Prefer PLAYWRIGHT_BASE_URL (CI env), then legacy TARGET_BASE, then
-// default to the local preview server (matches playwright.config.ts).
-// BASE is the FULL URL of the conference home (including any per-
-// deploy prefix); we strip the trailing slash so the `${BASE}/x/`
-// composition stays single-slash.
-const BASE = (
-	process.env.PLAYWRIGHT_BASE_URL ||
-	process.env.TARGET_BASE ||
-	'http://127.0.0.1:4173/ohbm2026'
-).replace(/\/$/, '');
+// PLAYWRIGHT_BASE_URL (CI env) is the FULL URL of the conference home
+// including any per-deploy prefix. Strip the trailing slash so the
+// `${BASE}/x/` composition stays single-slash.
+const BASE = (process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4173/ohbm2026').replace(
+	/\/$/,
+	''
+);
 
 async function auditRoute(
 	pathSuffix: string,
