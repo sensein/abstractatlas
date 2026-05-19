@@ -85,11 +85,11 @@ function bytesAsAsyncBuffer(bytes: Uint8Array) {
  * Walk decoded Parquet rows and coerce any BigInt values to Number.
  * pyarrow stores integer columns as INT64 by default; hyparquet returns
  * INT64 columns as BigInt for safety. Stage-6 UI consumers expect plain
- * Numbers (abstract_ids, cluster_ids, neighbour_ids) — BigInts break
+ * Numbers (poster_ids, cluster_ids, neighbour_ids) — BigInts break
  * `===` joins against Number-typed IDs from other shards and can't be
  * JSON-serialised.
  *
- * Our IDs all fit in float64 (max abstract_id ~10^6); the coercion is
+ * Our IDs all fit in float64 (max poster_id ~3333); the coercion is
  * loss-free for this dataset. If a future corpus grows past 2^53, the
  * fix is to cast columns to INT32 in the Python emitter explicitly.
  */
@@ -199,7 +199,7 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 		} else if (name.startsWith('neighbors:')) {
 			const cellKey = name.slice('neighbors:'.length);
 			const parallel = rows as Array<{
-				abstract_id: number;
+				poster_id: number;
 				nearest_ids: number[];
 				nearest_distances: number[];
 				farthest_ids: number[];
@@ -210,7 +210,7 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 				build_info: buildInfo,
 				cell_key: cellKey,
 				k: parallel[0]?.nearest_ids.length ?? 0,
-				abstract_ids: parallel.map((r) => r.abstract_id),
+				poster_ids: parallel.map((r) => r.poster_id),
 				nearest_ids: parallel.map((r) => r.nearest_ids),
 				nearest_distances: parallel.map((r) => r.nearest_distances),
 				farthest_ids: parallel.map((r) => r.farthest_ids),
@@ -219,19 +219,19 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 		}
 	}
 
-	// Combine the two flattened enrichment tables back into the Stage-6
-	// `{records: {str(id): {claims, figures}}}` envelope.
+	// Combine the two flattened enrichment tables back into the
+	// `{records: {String(poster_id): {claims, figures}}}` envelope.
 	const claimsRow = outerRows.find((r) => r.table_name === 'enrichment_claims');
 	const figuresRow = outerRows.find((r) => r.table_name === 'enrichment_figures');
 	const claims = claimsRow ? await decodeBlob(claimsRow.table_bytes) : [];
 	const figures = figuresRow ? await decodeBlob(figuresRow.table_bytes) : [];
 	const records: Record<string, { claims: unknown[]; figures: unknown[] }> = {};
-	for (const c of claims as Array<{ abstract_id: number }>) {
-		const k = String(c.abstract_id);
+	for (const c of claims as Array<{ poster_id: number }>) {
+		const k = String(c.poster_id);
 		(records[k] ??= { claims: [], figures: [] }).claims.push(c);
 	}
-	for (const f of figures as Array<{ abstract_id: number }>) {
-		const k = String(f.abstract_id);
+	for (const f of figures as Array<{ poster_id: number }>) {
+		const k = String(f.poster_id);
 		(records[k] ??= { claims: [], figures: [] }).figures.push(f);
 	}
 	out.set('data/enrichment.json', {

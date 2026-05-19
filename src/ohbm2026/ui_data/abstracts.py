@@ -335,6 +335,49 @@ def _load_standby_times(
     return out
 
 
+def build_abstract_to_poster_map(
+    *,
+    corpus_path: Path,
+    withdrawn_path: Path | None,
+) -> dict[int, int]:
+    """Return ``{oxford_submission_id: poster_id_int}`` for the accepted,
+    deduped corpus.
+
+    Stage 10: this is the canonical translation table threaded into every
+    sub-builder so each emits poster_id-keyed shapes directly (no
+    post-process). The dedup logic mirrors ``iter_abstracts`` —
+    first-encountered record per poster_id wins; records without a
+    numeric poster_id are excluded.
+    """
+    corpus = _load_corpus(corpus_path)
+    withdrawn = _withdrawn_ids(withdrawn_path)
+    out: dict[int, int] = {}
+    seen: set[int] = set()
+    for raw in corpus:
+        if raw.get("accepted_for") == "Withdrawn":
+            continue
+        abstract_id = raw.get("id")
+        if abstract_id is None:
+            continue
+        if int(abstract_id) in withdrawn:
+            continue
+        poster_raw = raw.get("poster_id")
+        if poster_raw is None:
+            continue
+        poster_raw_str = str(poster_raw)
+        if not poster_raw_str.isdigit():
+            raise Stage6BuildError(
+                f"non-numeric poster_id {poster_raw_str!r} on submission {abstract_id}; "
+                f"Stage-10 export uses int16 poster_id throughout"
+            )
+        poster_id_int = int(poster_raw_str)
+        if poster_id_int in seen:
+            continue
+        seen.add(poster_id_int)
+        out[int(abstract_id)] = poster_id_int
+    return out
+
+
 def iter_abstracts(
     *,
     corpus_path: Path,
@@ -373,7 +416,7 @@ def iter_abstracts(
     # field is stale for 1248744). Treat them as a single poster: keep
     # the first-encountered record (corpus iteration order), drop later
     # ones with the same poster_id. Log so the call is visible.
-    seen_poster_ids: set[str] = set()
+    seen_poster_ids: set[int] = set()
     deduped_oxford_ids: list[int] = []
     for raw in corpus:
         if raw.get("accepted_for") == "Withdrawn":
@@ -388,11 +431,24 @@ def iter_abstracts(
         if not raw.get("poster_id"):
             skipped_no_poster_id += 1
             continue
-        poster_id_str = str(raw.get("poster_id"))
-        if poster_id_str in seen_poster_ids:
+        # Coerce poster_id to int. Stage-10: the poster_id is the sole
+        # user-facing identifier across the export and is stored as int16
+        # (range 1–3333). Source values from Oxford are zero-padded strings
+        # like "0503", "2335"; we strip the padding here and rely on the UI
+        # to re-pad for display (`String(id).padStart(4, '0')`). Reject
+        # non-numeric poster_ids loudly — they would silently break the
+        # exported schema (no historical case of non-numeric in OHBM).
+        poster_raw = str(raw.get("poster_id"))
+        if not poster_raw.isdigit():
+            raise Stage6BuildError(
+                f"non-numeric poster_id {poster_raw!r} on submission {abstract_id}; "
+                f"Stage-10 export uses int16 poster_id throughout"
+            )
+        poster_id_int = int(poster_raw)
+        if poster_id_int in seen_poster_ids:
             deduped_oxford_ids.append(int(abstract_id))
             continue
-        seen_poster_ids.add(poster_id_str)
+        seen_poster_ids.add(poster_id_int)
 
         questions = question_lookup(raw)
         enriched = enriched_by_id.get(int(abstract_id), {})
@@ -424,8 +480,13 @@ def iter_abstracts(
         # always 1 hour, so the end is implicit (start + 1h).
         standby = standby_by_sid.get(int(abstract_id), {})
         yield {
+            # `abstract_id` is the Oxford submission id. It stays on the
+            # yielded record so the rest of the build pipeline can join
+            # against rollup/analysis files (which key by submission id).
+            # The parquet emitter drops this field — only `poster_id`
+            # lands in the exported shard.
             "abstract_id": int(abstract_id),
-            "poster_id": str(raw.get("poster_id")),
+            "poster_id": poster_id_int,
             "title": cleaned_abstract_title(raw.get("title")) or "",
             "accepted_for": raw.get("accepted_for") or "Unknown",
             "sections": {

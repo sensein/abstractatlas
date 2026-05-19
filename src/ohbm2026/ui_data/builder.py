@@ -19,7 +19,7 @@ from typing import Any
 # CDN content hashes). Epoch 0 trips some tools; use 2026-01-01 instead.
 DETERMINISTIC_MTIME = 1767225600  # 2026-01-01T00:00:00Z
 
-from ohbm2026.ui_data.abstracts import build_abstracts
+from ohbm2026.ui_data.abstracts import build_abstract_to_poster_map, build_abstracts
 from ohbm2026.ui_data.authors import build_authors
 from ohbm2026.ui_data.cells import build_cells
 from ohbm2026.ui_data.enrichment import build_enrichment
@@ -135,12 +135,23 @@ def build_ui_data_package(
     # new field propagates without per-emitter changes.
     build_info = {**build_info, "conference_id": conference_id}
 
+    # Stage 10: build the canonical {abstract_id → poster_id} map FIRST.
+    # Every sub-builder takes this map and emits poster_id-keyed records
+    # natively (no post-process remap). The map encodes the corpus dedup
+    # decisions, so any submission absent from the map is implicitly
+    # dropped from every shard.
+    abstract_to_poster = build_abstract_to_poster_map(
+        corpus_path=Path(corpus_path),
+        withdrawn_path=Path(withdrawn_path) if withdrawn_path else None,
+    )
+
     # Build authors first to derive the raw→synthetic id remap; the abstracts
     # builder uses it so `author_ids` references match the authors shard
     # directly (closes invariant 4).
     authors_envelope, author_id_remap = build_authors(
         corpus_path=Path(corpus_path),
         authors_path=Path(authors_path),
+        abstract_to_poster=abstract_to_poster,
         build_info=build_info,
         return_remap=True,
     )
@@ -167,6 +178,7 @@ def build_ui_data_package(
     cells_envelopes = build_cells(
         rollup_db=rollup_db,
         abstract_ids=abstract_ids,
+        abstract_to_poster=abstract_to_poster,
         build_info=build_info,
         analysis_root=Path(analysis_root) if analysis_root else None,
     )
@@ -184,6 +196,7 @@ def build_ui_data_package(
         neighbors_envelopes = build_neighbors(
             analysis_root=Path(analysis_root),
             cell_keys=list(cells_envelopes.keys()),
+            abstract_to_poster=abstract_to_poster,
             build_info=build_info,
         )
 
@@ -206,6 +219,7 @@ def build_ui_data_package(
     enrichment_envelope = build_enrichment(
         enriched_path=Path(enriched_path) if enriched_path else None,
         abstract_ids=abstract_ids,
+        abstract_to_poster=abstract_to_poster,
         build_info=build_info,
     )
     minilm_bin: bytes | None = None
@@ -214,6 +228,7 @@ def build_ui_data_package(
             minilm_bin, minilm_sidecar = build_minilm_vectors(
                 embeddings_root=Path(minilm_root),
                 abstract_ids=abstract_ids,
+                abstract_to_poster=abstract_to_poster,
                 build_info=build_info,
             )
         except FileNotFoundError as exc:
@@ -300,55 +315,43 @@ def _validate_invariants(
             f"abstracts shard has {len(abstract_records)} records"
         )
 
-    # 2. Each cell shard has the same count + positional order.
-    abstract_ids = [r["abstract_id"] for r in abstract_records]
+    # 2. Each cell shard has the same count + positional order. Join key
+    # is `poster_id` (Stage 10) — the cells emitter no longer carries
+    # the Oxford `abstract_id`. The abstracts envelope still has both
+    # internally so we anchor the expected order via poster_id.
+    poster_ids_in_order = [r["poster_id"] for r in abstract_records]
     for cell_key, envelope in cells.items():
         rows = envelope["rows"]
         if len(rows) != expected_count:
             raise Stage6BuildError(
                 f"Invariant 2 violated: cell {cell_key} has {len(rows)} rows, expected {expected_count}"
             )
-        for idx, (aid, row) in enumerate(zip(abstract_ids, rows)):
-            if row["abstract_id"] != aid:
+        for idx, (pid, row) in enumerate(zip(poster_ids_in_order, rows)):
+            if row["poster_id"] != pid:
                 raise Stage6BuildError(
-                    f"Invariant 2 violated: cell {cell_key} row {idx} abstract_id={row['abstract_id']} "
-                    f"!= abstracts[{idx}].abstract_id={aid}"
+                    f"Invariant 2 violated: cell {cell_key} row {idx} poster_id={row['poster_id']} "
+                    f"!= abstracts[{idx}].poster_id={pid}"
                 )
 
     # 3. Accepted-only invariant.
-    leaked = [r["abstract_id"] for r in abstract_records if r.get("accepted_for") == "Withdrawn"]
+    leaked = [r["poster_id"] for r in abstract_records if r.get("accepted_for") == "Withdrawn"]
     if leaked:
         raise Stage6BuildError(
             f"Invariant 3 violated: {len(leaked)} withdrawn records leaked into abstracts shard "
-            f"(ids: {leaked[:5]}{'...' if len(leaked) > 5 else ''})"
+            f"(poster_ids: {leaked[:5]}{'...' if len(leaked) > 5 else ''})"
         )
 
-    # 3a. Poster-id uniqueness — warn-only. The Oxford ingest preserves
-    # all submission IDs (unique), but poster_id is assigned downstream
-    # by the program committee and can collide (one known collision on
-    # `2335` between Oxford submissions 1246466 + 1248744). The UI's
-    # `loadAbstractByPosterId('<dup>')` resolves to whichever record
-    # appears first — surfacing the collision here keeps it visible
-    # until an organizer reassigns one of the IDs upstream.
+    # 3a. Poster-id uniqueness — the dedup in `iter_abstracts` guarantees
+    # this, but we double-check here so any future refactor that bypasses
+    # the dedup loop trips loudly.
     from collections import Counter as _Counter
 
-    poster_id_counts = _Counter(
-        r.get("poster_id") for r in abstract_records if r.get("poster_id")
-    )
+    poster_id_counts = _Counter(r["poster_id"] for r in abstract_records)
     duplicates = {pid: c for pid, c in poster_id_counts.items() if c > 1}
     if duplicates:
-        # Map each duplicate poster_id back to its Oxford submission ids so
-        # an organizer can chase the fix at the source.
-        groups: dict[str, list[Any]] = {pid: [] for pid in duplicates}
-        for r in abstract_records:
-            pid = r.get("poster_id")
-            if pid in groups:
-                groups[pid].append(r.get("abstract_id") or r.get("id"))
-        print(
-            f"warning: {len(duplicates)} poster_id collision(s) — "
-            f"poster_id is not unique in the accepted corpus. "
-            f"Upstream Oxford submissions sharing a poster_id: "
-            + "; ".join(f"poster_id={pid} → {ids}" for pid, ids in groups.items())
+        raise Stage6BuildError(
+            f"Invariant 3a violated: {len(duplicates)} poster_id collision(s) survived "
+            f"the dedup pass — {duplicates}"
         )
 
     # 4. Author referential integrity (now enforced — see US1 remap in

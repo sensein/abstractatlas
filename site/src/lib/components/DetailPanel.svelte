@@ -50,8 +50,8 @@
 	// Reset per-section/per-card open state when the focused abstract changes
 	// so the next abstract starts in the same collapsed default.
 	let prevAbstractId: number | null = null;
-	$: if (abstract && abstract.abstract_id !== prevAbstractId) {
-		prevAbstractId = abstract.abstract_id;
+	$: if (abstract && abstract.poster_id !== prevAbstractId) {
+		prevAbstractId = abstract.poster_id;
 		openSections = {};
 		openClaims = {};
 		openFigures = {};
@@ -71,7 +71,7 @@
 		if (!abstract || !allCells) return [] as ClusterRow[];
 		const rows: ClusterRow[] = [];
 		for (const [cellKey, { cell, topics }] of allCells) {
-			const row = cell.rows.find((r) => r.abstract_id === abstract!.abstract_id);
+			const row = cell.rows.find((r) => r.poster_id === abstract!.poster_id);
 			if (!row) continue;
 			const topicMap = new Map<number, string>();
 			if (topics) {
@@ -105,7 +105,7 @@
 	})();
 	$: enrichment = (() => {
 		if (!abstract || !enrichmentShard) return null;
-		const rec = enrichmentShard.records[String(abstract.abstract_id)];
+		const rec = enrichmentShard.records[String(abstract.poster_id)];
 		return (rec as EnrichmentRecord | undefined) ?? null;
 	})();
 	$: claimsModelId = enrichmentShard?.ai_provenance.claims_model_id ?? null;
@@ -156,10 +156,10 @@
 		kind: 'nearest' | 'farthest'
 	): RelatedEntry[] {
 		if (!shards || focusedId === undefined) return [];
-		// abstract_id → { distances: [], cellKeys: [] }
+		// poster_id → { distances: [], cellKeys: [] }
 		const buckets = new Map<number, { distances: number[]; cellKeys: string[] }>();
 		for (const [cellKey, shard] of shards) {
-			const row = shard.abstract_ids.indexOf(focusedId);
+			const row = shard.poster_ids.indexOf(focusedId);
 			if (row < 0) continue;
 			const ids = kind === 'nearest' ? shard.nearest_ids[row] : shard.farthest_ids[row];
 			const dist =
@@ -206,11 +206,11 @@
 		return out;
 	}
 
-	$: focusedId = abstract?.abstract_id;
+	$: focusedId = abstract?.poster_id;
 	$: nearest = aggregateRelated(allNeighbors, focusedId, 'nearest');
 	$: farthest = aggregateRelated(allNeighbors, focusedId, 'farthest');
 
-	function focusRelated(posterId: string) {
+	function focusRelated(posterId: number) {
 		if (posterId) $focusedAbstract = posterId;
 	}
 
@@ -654,7 +654,7 @@
 						</h3>
 						<div class="related-scroll" tabindex="0" role="region" aria-label="Most-similar abstracts list">
 						<ul class="related-list" data-testid="related-nearest-list">
-							{#each nearest as entry, i (entry.abstract.abstract_id)}
+							{#each nearest as entry, i (entry.abstract.poster_id)}
 								{@const inCartNow = $cartStore.has(entry.abstract.poster_id)}
 								<li>
 									<div class="related-link">
@@ -744,7 +744,7 @@
 						</h3>
 						<div class="related-scroll" tabindex="0" role="region" aria-label="Most-different abstracts list">
 						<ul class="related-list" data-testid="related-farthest-list">
-							{#each farthest as entry, i (entry.abstract.abstract_id)}
+							{#each farthest as entry, i (entry.abstract.poster_id)}
 								{@const inCartFar = $cartStore.has(entry.abstract.poster_id)}
 								<li>
 									<div class="related-link">

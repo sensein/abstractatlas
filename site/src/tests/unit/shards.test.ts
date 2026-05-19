@@ -47,8 +47,7 @@ const ABSTRACTS: AbstractsShard = {
 	build_info: BUILD_INFO,
 	abstracts: [
 		{
-			abstract_id: 1001,
-			poster_id: 'M-AM-101',
+			poster_id: 1001,
 			title: 'Memory fMRI in aging',
 			accepted_for: 'Poster',
 			sections: { introduction: '', methods: '', results: '', conclusion: '', references: '' },
@@ -70,7 +69,7 @@ const ABSTRACTS: AbstractsShard = {
 const AUTHORS: AuthorsShard = {
 	schema_version: 'authors.v1',
 	build_info: BUILD_INFO,
-	authors: [{ author_id: 0, name: 'Jane Smith', affiliations: ['Stanford'], abstract_ids: [1001] }]
+	authors: [{ author_id: 0, name: 'Jane Smith', affiliations: ['Stanford'], poster_ids: [1001] }]
 };
 
 const CELL: CellShard = {
@@ -79,7 +78,7 @@ const CELL: CellShard = {
 	cell_key: 'neuroscape_abstract',
 	rows: [
 		{
-			abstract_id: 1001,
+			poster_id: 1001,
 			umap2d: [0.1, 0.2],
 			umap3d: [0.1, 0.2, 0.3],
 			community_id: 7,
@@ -126,7 +125,7 @@ describe('shard loaders (in-memory data-package map)', () => {
 		mockPackage({ 'data/abstracts.json': ABSTRACTS });
 		const a = await loadAbstracts();
 		expect(a?.abstracts).toHaveLength(1);
-		expect(a?.abstracts[0].poster_id).toBe('M-AM-101');
+		expect(a?.abstracts[0].poster_id).toBe(1001);
 	});
 
 	it('loadAuthors reads `data/authors.json` from the map', async () => {

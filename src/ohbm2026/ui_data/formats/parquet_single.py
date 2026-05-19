@@ -101,16 +101,15 @@ _POSTER_STANDBY_TYPE = pa.struct(
 
 def _abstracts_to_table(envelope: Mapping[str, Any]) -> pa.Table:
     """Build the abstracts table. STRUCT columns for sections / topics
-    / facets / poster_standby. Poster stand-by times use Parquet's
-    native TIMESTAMP[ms, UTC] — int64 on disk, dict-encodes well over
-    the ~8 unique conference slots."""
+    / facets / poster_standby. poster_id is INT16 (range 1–3333).
+    Stage 10: `abstract_id` (Oxford submission id) is dropped from the
+    export; `poster_id` is the sole identifier on the wire."""
     rows = []
     for r in envelope["abstracts"]:
         standby = r.get("poster_standby") or {}
         rows.append(
             {
-                "abstract_id": int(r["abstract_id"]),
-                "poster_id": str(r["poster_id"]),
+                "poster_id": int(r["poster_id"]),
                 "title": str(r.get("title", "")),
                 "accepted_for": str(r.get("accepted_for", "Unknown")),
                 "sections": dict(r.get("sections", {})),
@@ -121,11 +120,6 @@ def _abstracts_to_table(envelope: Mapping[str, Any]) -> pa.Table:
                 "reference_dois": list(r.get("reference_dois", [])),
                 "reference_urls": list(r.get("reference_urls", [])),
                 "reference_titles": list(r.get("reference_titles", [])),
-                # Poster stand-by start times sourced from the
-                # proposal-listing CSV (not in Oxford GraphQL).
-                # `datetime`-or-`None` values; pyarrow promotes them to
-                # TIMESTAMP[ms, UTC] via the explicit type below. UI
-                # suppresses display until values are confirmed correct.
                 "poster_standby": {
                     "first": standby.get("first"),
                     "second": standby.get("second"),
@@ -133,10 +127,15 @@ def _abstracts_to_table(envelope: Mapping[str, Any]) -> pa.Table:
             }
         )
     table = pa.Table.from_pylist(rows)
-    # Force the poster_standby column to the typed STRUCT — pylist
-    # inference defaults to ns precision and a timezone-naive type
-    # depending on input, which then carries through to hyparquet as
-    # an int64 raw value. Casting once here gives a stable schema.
+    # Pin types explicitly: poster_id → INT16, poster_standby → typed
+    # STRUCT with TIMESTAMP[ms, UTC]. Without the casts pylist inference
+    # would default to INT64 / ns-precision-naive timestamps, defeating
+    # the storage win.
+    table = table.set_column(
+        table.schema.get_field_index("poster_id"),
+        "poster_id",
+        table["poster_id"].cast(pa.int16()),
+    )
     return table.set_column(
         table.schema.get_field_index("poster_standby"),
         "poster_standby",
@@ -145,11 +144,23 @@ def _abstracts_to_table(envelope: Mapping[str, Any]) -> pa.Table:
 
 
 def _authors_to_table(envelope: Mapping[str, Any]) -> pa.Table:
-    return pa.Table.from_pylist(envelope["authors"])
+    """Authors: `poster_ids` is LIST<INT16> (each author lists every
+    accepted poster they co-authored; max poster value 3333)."""
+    table = pa.Table.from_pylist(envelope["authors"])
+    if "poster_ids" in table.schema.names:
+        idx = table.schema.get_field_index("poster_ids")
+        table = table.set_column(idx, "poster_ids", table["poster_ids"].cast(pa.list_(pa.int16())))
+    return table
 
 
 def _cell_to_table(envelope: Mapping[str, Any]) -> pa.Table:
-    return pa.Table.from_pylist(envelope["rows"])
+    """Cells: poster_id int16, geometry + cluster columns inferred."""
+    table = pa.Table.from_pylist(envelope["rows"])
+    return table.set_column(
+        table.schema.get_field_index("poster_id"),
+        "poster_id",
+        table["poster_id"].cast(pa.int16()),
+    )
 
 
 def _topic_to_table(envelope: Mapping[str, Any]) -> pa.Table:
@@ -157,32 +168,54 @@ def _topic_to_table(envelope: Mapping[str, Any]) -> pa.Table:
 
 
 def _neighbours_to_table(envelope: Mapping[str, Any]) -> pa.Table:
+    """Per-row neighbour record: each cell has K=10 nearest + 10 farthest
+    poster_ids. All id columns are LIST<INT16> (range 1–3333)."""
     rows: list[dict[str, Any]] = []
-    for idx, aid in enumerate(envelope["abstract_ids"]):
+    for idx, pid in enumerate(envelope["poster_ids"]):
         rows.append(
             {
-                "abstract_id": int(aid),
-                "nearest_ids": list(envelope["nearest_ids"][idx]),
+                "poster_id": int(pid),
+                "nearest_ids": [int(x) for x in envelope["nearest_ids"][idx]],
                 "nearest_distances": list(envelope["nearest_distances"][idx]),
-                "farthest_ids": list(envelope["farthest_ids"][idx]),
+                "farthest_ids": [int(x) for x in envelope["farthest_ids"][idx]],
                 "farthest_distances": list(envelope["farthest_distances"][idx]),
             }
         )
-    return pa.Table.from_pylist(rows)
+    table = pa.Table.from_pylist(rows)
+    # Cast every id column to int16. The k-length variable-length lists
+    # carry their element type from the schema (Parquet stores them as
+    # LIST<INT16>; dict-encoded the per-value cost drops to <1 byte).
+    for col_name in ("poster_id", "nearest_ids", "farthest_ids"):
+        idx = table.schema.get_field_index(col_name)
+        if col_name == "poster_id":
+            new_col = table[col_name].cast(pa.int16())
+        else:
+            new_col = table[col_name].cast(pa.list_(pa.int16()))
+        table = table.set_column(idx, col_name, new_col)
+    return table
 
 
 def _enrichment_to_tables(envelope: Mapping[str, Any]) -> tuple[pa.Table, pa.Table]:
+    """Flatten the records dict into two parallel tables (claims, figures).
+    Each row carries the int16 `poster_id` of the abstract it belongs to."""
     claim_rows: list[dict[str, Any]] = []
     figure_rows: list[dict[str, Any]] = []
-    for aid_str, rec in envelope.get("records", {}).items():
-        aid = int(aid_str)
+    for pid_str, rec in envelope.get("records", {}).items():
+        pid = int(pid_str)
         for i, c in enumerate(rec.get("claims", []) or []):
-            claim_rows.append({"abstract_id": aid, "claim_index": i, **c})
+            claim_rows.append({"poster_id": pid, "claim_index": i, **c})
         for i, f in enumerate(rec.get("figures", []) or []):
-            figure_rows.append({"abstract_id": aid, "figure_index": i, **f})
+            figure_rows.append({"poster_id": pid, "figure_index": i, **f})
     claims_table = pa.Table.from_pylist(claim_rows) if claim_rows else pa.table({})
     figures_table = pa.Table.from_pylist(figure_rows) if figure_rows else pa.table({})
-    return claims_table, figures_table
+
+    def _pin_int16(t: pa.Table) -> pa.Table:
+        if t.num_columns == 0 or "poster_id" not in t.schema.names:
+            return t
+        idx = t.schema.get_field_index("poster_id")
+        return t.set_column(idx, "poster_id", t["poster_id"].cast(pa.int16()))
+
+    return _pin_int16(claims_table), _pin_int16(figures_table)
 
 
 def _manifest_to_table(manifest: Mapping[str, Any]) -> pa.Table:

@@ -19,13 +19,13 @@
 	$: items = [...$cartStore]
 		.map((pid) => byPosterId.get(pid))
 		.filter((r): r is AbstractRecord => r !== undefined);
-	$: leadAuthorByAbstractId = (() => {
+	$: leadAuthorByPosterId = (() => {
 		const m = new Map<number, string>();
 		for (const rec of items) {
 			const id = rec.author_ids[0];
 			if (id === undefined) continue;
 			const name = authorsById.get(id)?.name;
-			if (name) m.set(rec.abstract_id, name);
+			if (name) m.set(rec.poster_id, name);
 		}
 		return m;
 	})();
@@ -44,11 +44,11 @@
 	// cart is empty so the anchor remains valid HTML but a click is a
 	// no-op (anchor also carries aria-disabled).
 	$: mailtoHref =
-		items.length > 0 ? buildMailtoLink(items, leadAuthorByAbstractId, { siteUrl }) : '#';
+		items.length > 0 ? buildMailtoLink(items, leadAuthorByPosterId, { siteUrl }) : '#';
 	async function copyList() {
 		if (items.length === 0) return;
 		try {
-			const text = buildPlainTextList(items, leadAuthorByAbstractId, siteUrl);
+			const text = buildPlainTextList(items, leadAuthorByPosterId, siteUrl);
 			await navigator.clipboard.writeText(text);
 			clipboardStatus = 'copied';
 			setTimeout(() => (clipboardStatus = 'idle'), 2000);
@@ -77,7 +77,7 @@
 			</p>
 		{:else}
 			<ul class="items" tabindex="0" aria-label="Your saved abstracts">
-				{#each items as record (record.abstract_id)}
+				{#each items as record (record.poster_id)}
 					<li class="item">
 						<button
 							type="button"

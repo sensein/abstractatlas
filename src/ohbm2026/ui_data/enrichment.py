@@ -65,21 +65,23 @@ def iter_enrichment(
     *,
     enriched_path: Path | None,
     abstract_ids: Iterable[int],
+    abstract_to_poster: Mapping[int, int],
 ) -> Iterator[tuple[dict[str, Any], dict[str, set[str]]]]:
     """Yield per-abstract enrichment rows AND the accumulating model_ids set.
 
-    Stage-10 entry point. Each yielded tuple is:
-    ``({abstract_id, claims, figures}, {"claims": {…model_ids}, "figures": {…}})``
+    Each yielded tuple is
+    ``({poster_id, claims, figures}, {"claims": {…model_ids}, "figures": {…}})``.
 
     The model_ids set is shared mutable state across yields — it builds up
     as records are consumed. After the iterator exhausts, the caller has
-    the full ``ai_provenance`` set to write into a `meta` table / envelope.
+    the full ``ai_provenance`` set.
 
     Records with no claims AND no figures are skipped (Stage-6 semantics:
     the UI treats a missing key as 'no enrichment available').
 
-    Stage-10 promotes ``abstract_id`` to a column on the row, eliminating
-    the Stage-6 ``{str(id): record}`` `range: Any` (FR-201 / FR-202).
+    Stage 10: rows carry the user-facing ``poster_id`` (int) — the
+    enriched SQLite is indexed by Oxford submission id internally, and
+    we translate via *abstract_to_poster* at emit time.
     """
     keep_ids = set(abstract_ids)
     model_ids: dict[str, set[str]] = {"claims": set(), "figures": set()}
@@ -87,6 +89,11 @@ def iter_enrichment(
         return
     for abstract_id, payload in _iter_enriched_rows(Path(enriched_path)):
         if abstract_id not in keep_ids:
+            continue
+        poster_id = abstract_to_poster.get(int(abstract_id))
+        if poster_id is None:
+            # Dedup drop or missing poster_id — record is not in the
+            # exported corpus.
             continue
         claims_raw = payload.get("claims") or []
         figures_raw = payload.get("figure_interpretation") or []
@@ -101,7 +108,7 @@ def iter_enrichment(
             if isinstance(f, dict) and f.get("model_id"):
                 model_ids["figures"].add(f["model_id"])
         yield (
-            {"abstract_id": int(abstract_id), "claims": claims, "figures": figures},
+            {"poster_id": int(poster_id), "claims": claims, "figures": figures},
             model_ids,
         )
 
@@ -110,24 +117,22 @@ def build_enrichment(
     *,
     enriched_path: Path | None,
     abstract_ids: Iterable[int],
+    abstract_to_poster: Mapping[int, int],
     build_info: Mapping[str, str],
 ) -> dict[str, Any]:
-    """Return the enrichment shard envelope keyed by ``abstract_id``.
+    """Return the enrichment shard envelope keyed by ``str(poster_id)``.
 
     Records with no claims AND no figures are omitted from the records dict
     entirely (the UI treats a missing key as "no enrichment available").
-
-    Wraps ``iter_enrichment`` to preserve the Stage-6 envelope shape (used
-    by the json_shards candidate emitter). The Stage-10 row stream lives
-    in ``iter_enrichment``; this function is the backward-compat list-then-
-    envelope wrapper.
     """
     records: dict[str, dict[str, Any]] = {}
     model_ids_final: dict[str, set[str]] = {"claims": set(), "figures": set()}
     for row, accumulated in iter_enrichment(
-        enriched_path=enriched_path, abstract_ids=abstract_ids
+        enriched_path=enriched_path,
+        abstract_ids=abstract_ids,
+        abstract_to_poster=abstract_to_poster,
     ):
-        records[str(row["abstract_id"])] = {
+        records[str(row["poster_id"])] = {
             "claims": row["claims"],
             "figures": row["figures"],
         }
