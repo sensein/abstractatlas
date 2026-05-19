@@ -21,13 +21,15 @@ def build_author_index(
     because it folds in the middle initial). Stable for deterministic
     output.
     """
-    # Aggregate.
-    bucket: dict[tuple[str, str], dict] = {}
+    # Aggregate keyed by `display_name` (exact string match — no
+    # canonicalisation in v1 per the spec's Assumptions section).
+    # First-seen wins for latex_index_key + sort_key when the same
+    # display name appears with variant middle initials.
+    bucket: dict[str, dict] = {}
     for entry in entries:
         for author in entry.authors:
-            key = (author.display_name, author.sort_key_last_first)
             slot = bucket.setdefault(
-                (author.display_name,),
+                author.display_name,
                 {
                     "display_name": author.display_name,
                     "latex_index_key": author.latex_index_key,
@@ -36,11 +38,6 @@ def build_author_index(
                 },
             )
             slot["poster_ids"].add(entry.poster_id)
-            # Keep the earliest-seen sort_key + latex_index_key; if
-            # variants exist across records (different middle
-            # initials), we follow the first one we saw (spec: no
-            # canonicalisation in v1).
-            _ = key
 
     rows = [
         AuthorIndexEntry(

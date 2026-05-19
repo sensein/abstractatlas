@@ -12,9 +12,12 @@ keeps the import surface stable so the CLI can lazy-load it.
 from __future__ import annotations
 
 import datetime as _dt
+import io
 import pathlib
+import re
 import shutil
 import subprocess
+import zipfile
 from importlib import resources
 
 from ohbm2026.exceptions import BookBuildError
@@ -211,10 +214,6 @@ def _strip_docx_metadata(docx_path: pathlib.Path) -> None:
     """Rewrite docProps/core.xml created/modified to a fixed epoch +
     rebuild the zip with sorted entries and zeroed mtimes (R6).
     """
-    import io
-    import re
-    import zipfile
-
     fixed_iso = "1970-01-01T00:00:00Z"
     payload: dict[str, bytes] = {}
     with zipfile.ZipFile(docx_path, "r") as zin:

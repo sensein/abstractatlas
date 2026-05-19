@@ -12,6 +12,8 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+import re
+import sys
 from typing import Iterable, Mapping, Sequence
 
 from ohbm2026.book.figure_check import probe_figure
@@ -127,8 +129,6 @@ def _figure_type(question_name: str) -> str:
         stem = stem[:-7].strip()
     stem = stem.casefold()
     # Replace any run of non-alphanumeric with a single dash.
-    import re
-
     stem = re.sub(r"[^a-z0-9]+", "-", stem).strip("-")
     return stem or "figure"
 
@@ -376,13 +376,12 @@ def load_book(
     if deduped_oxford_ids:
         # CA-006 / Principle VI — visible logging, not a silent skip.
         # Same wording shape as the UI builder so audit-grep finds both.
-        import sys as _sys
         print(
             f"book.corpus: dropped {len(deduped_oxford_ids)} duplicate-poster_id "
             f"record(s) (Oxford submission ids: {deduped_oxford_ids}). "
             f"First-encountered record per poster_id wins; check upstream "
             f"Oxford `program_code` for stale assignments.",
-            file=_sys.stderr,
+            file=sys.stderr,
         )
 
     state_key = _derive_state_key(corpus_path, authors_path, withdrawn_path)
