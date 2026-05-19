@@ -179,13 +179,30 @@ def _build_figures(
             continue
         local_path_str = la.get("local_path") or ""
         local_path = pathlib.Path(local_path_str)
-        # If the caller passed an assets_root override (test fixtures
-        # or relocated installs), prefer a file with the same basename
-        # under that root.
-        if assets_root is not None:
-            candidate = assets_root / local_path.name
-            if candidate.exists():
-                local_path = candidate
+        # The corpus's `local_path` is the absolute path Stage 1
+        # wrote at fetch time. Files often get relocated between
+        # `data/inputs/assets/` (legacy default) and
+        # `data/primary/assets/` (current default) without the
+        # corpus being re-fetched, so the recorded path can be
+        # stale. Resolution order (first hit wins):
+        #   1. corpus-as-written (absolute path)
+        #   2. <assets_root>/<basename> (operator override)
+        #   3. data/primary/assets/<basename> (current default)
+        #   4. data/inputs/assets/<basename> (legacy default)
+        # Falling back to (3) + (4) by basename keeps the loader
+        # working through corpus / filesystem drift without the
+        # operator having to refetch.
+        if not local_path.exists():
+            basename = local_path.name
+            candidates: list[pathlib.Path] = []
+            if assets_root is not None:
+                candidates.append(assets_root / basename)
+            candidates.append(pathlib.Path("data/primary/assets") / basename)
+            candidates.append(pathlib.Path("data/inputs/assets") / basename)
+            for cand in candidates:
+                if cand.exists():
+                    local_path = cand
+                    break
         width, height, err = probe_figure(local_path)
         figs.append(
             FigureBlock(

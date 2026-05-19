@@ -65,8 +65,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--assets-root",
-        default="data/inputs/assets",
-        help="Directory holding the high-resolution figure files.",
+        default="data/primary/assets",
+        help=(
+            "Directory holding the high-resolution figure files. "
+            "Falls back to `data/inputs/assets/` (legacy) and the "
+            "corpus-recorded absolute path; first hit wins."
+        ),
     )
     p.add_argument(
         "--standby-csv",
