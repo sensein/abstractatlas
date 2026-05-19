@@ -616,20 +616,25 @@
 				<!-- tabindex=0 + role="region" + aria-label so the
 					 overflow:auto scroll container is reachable by keyboard
 					 users (axe scrollable-region-focusable / WCAG 2.1.1). -->
-				<ul
-					class="cluster-grid"
+				<!-- Wrap the <ul> in a region-roled <div>; putting role="region"
+					 on the <ul> itself strips its implicit list role and axe
+					 then flags the child <li>s as "must be in a <ul>/<ol>". -->
+				<div
+					class="cluster-grid-region"
 					tabindex="0"
 					role="region"
 					aria-label="Cluster membership across all (model × input) cells"
 				>
-					{#each clusterMemberships as row (row.cellKey)}
-						<li class="cluster-row">
-							<code class="cluster-cell">{row.cellKey}</code>
-							<span class="cluster-id">#{row.communityId}</span>
-							<span class="cluster-label" title={row.label}>{row.label}</span>
-						</li>
-					{/each}
-				</ul>
+					<ul class="cluster-grid">
+						{#each clusterMemberships as row (row.cellKey)}
+							<li class="cluster-row">
+								<code class="cluster-cell">{row.cellKey}</code>
+								<span class="cluster-id">#{row.communityId}</span>
+								<span class="cluster-label" title={row.label}>{row.label}</span>
+							</li>
+						{/each}
+					</ul>
+				</div>
 			</section>
 		{/if}
 		{/snippet}
@@ -647,7 +652,8 @@
 							Most similar
 							<span class="hint">closest 5 shown; scroll for more</span>
 						</h3>
-						<ul class="related-list related-scroll" data-testid="related-nearest-list" tabindex="0" role="region" aria-label="Most-similar abstracts list">
+						<div class="related-scroll" tabindex="0" role="region" aria-label="Most-similar abstracts list">
+						<ul class="related-list" data-testid="related-nearest-list">
 							{#each nearest as entry, i (entry.abstract.abstract_id)}
 								{@const inCartNow = $cartStore.has(entry.abstract.poster_id)}
 								<li>
@@ -727,6 +733,7 @@
 								</li>
 							{/each}
 						</ul>
+						</div>
 					</div>
 				{/if}
 				{#if farthest.length}
@@ -735,7 +742,8 @@
 							Most different
 							<span class="hint">farthest 5 shown; scroll for more</span>
 						</h3>
-						<ul class="related-list related-scroll" data-testid="related-farthest-list" tabindex="0" role="region" aria-label="Most-different abstracts list">
+						<div class="related-scroll" tabindex="0" role="region" aria-label="Most-different abstracts list">
+						<ul class="related-list" data-testid="related-farthest-list">
 							{#each farthest as entry, i (entry.abstract.abstract_id)}
 								{@const inCartFar = $cartStore.has(entry.abstract.poster_id)}
 								<li>
@@ -815,6 +823,7 @@
 								</li>
 							{/each}
 						</ul>
+						</div>
 					</div>
 				{/if}
 			</section>
@@ -1239,6 +1248,11 @@
 		flex-wrap: wrap;
 		gap: 0.4rem;
 	}
+	.cluster-grid-region {
+		max-height: 14rem;
+		overflow-y: auto;
+		padding-right: 0.3rem;
+	}
 	.cluster-grid {
 		list-style: none;
 		padding: 0;
@@ -1246,9 +1260,6 @@
 		display: grid;
 		grid-template-columns: 1fr;
 		gap: 0.2rem;
-		max-height: 14rem;
-		overflow-y: auto;
-		padding-right: 0.3rem;
 	}
 	.cluster-row {
 		display: grid;
