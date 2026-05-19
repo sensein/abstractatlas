@@ -193,21 +193,31 @@ def main(argv: list[str] | None = None) -> int:
     author_index = build_author_index(entries)
     book = replace(book, entries=entries, author_index=author_index)
 
-    # State-key from inputs + flags.
+    # State-key from inputs + flags. We stage every step under
+    # `.staging__<state-key>/` and only atomically promote the
+    # directory to `book__<state-key>/` after EVERY requested
+    # artefact has been written. Partial failures leave the staging
+    # dir on disk so the operator can inspect it; the next run with
+    # the same state-key cleans it up and starts fresh.
     state_key = _derive_state_key(args, book.corpus_state_key)
-    output_dir = _resolve_output_dir(output_root, state_key)
+    final_dir = _resolve_output_dir(output_root, state_key)
+    staging_dir = output_root / f".staging__{state_key}"
     try:
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_root.mkdir(parents=True, exist_ok=True)
+        if staging_dir.exists():
+            import shutil as _sh
+            _sh.rmtree(staging_dir)
+        staging_dir.mkdir(parents=True)
         # Touch a sentinel to fail fast if unwritable.
-        sentinel = output_dir / ".write-probe"
+        sentinel = staging_dir / ".write-probe"
         sentinel.write_text("ok")
         sentinel.unlink()
     except OSError as exc:
-        print(f"error: output root {output_dir} is not writable: {exc}", file=sys.stderr)
+        print(f"error: output root {output_root} is not writable: {exc}", file=sys.stderr)
         return 2
 
     # Emit the canonical markdown bundle (always).
-    emit_book_md(book, output_dir)
+    emit_book_md(book, staging_dir)
 
     strip_metadata = not args.no_determinism_strip
 
@@ -217,8 +227,8 @@ def main(argv: list[str] | None = None) -> int:
 
         try:
             to_pdf(
-                output_dir / "book.md",
-                output_dir / "book.pdf",
+                staging_dir / "book.md",
+                staging_dir / "book.pdf",
                 style=args.style,
                 strip_metadata=strip_metadata,
             )
@@ -226,16 +236,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             if exc.details:
                 print(f"  details: {exc.details}", file=sys.stderr)
+            print(
+                f"  partial artefacts left in {staging_dir} for inspection",
+                file=sys.stderr,
+            )
             return 2
 
-    # DOCX (US3 — stubbed).
+    # DOCX (US3).
     if need_docx:
         from ohbm2026.book.render_via_pandoc import to_docx
 
         try:
             to_docx(
-                output_dir / "book.md",
-                output_dir / "book.docx",
+                staging_dir / "book.md",
+                staging_dir / "book.docx",
                 strip_metadata=strip_metadata,
             )
         except NotImplementedError as exc:
@@ -245,6 +259,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             if exc.details:
                 print(f"  details: {exc.details}", file=sys.stderr)
+            print(
+                f"  partial artefacts left in {staging_dir} for inspection",
+                file=sys.stderr,
+            )
             return 2
 
     # Provenance.
@@ -252,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         write_provenance(
             book,
-            output_dir,
+            staging_dir,
             corpus_path=corpus_path,
             authors_path=authors_path,
             withdrawn_path=withdrawn_path,
@@ -264,5 +282,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    print(f"ok: book written to {output_dir}", file=sys.stderr)
+    # Atomic promotion. The staging dir + the final dir live under
+    # the same `output_root` on the same filesystem, so the rename
+    # is a single inode op (POSIX guarantees atomicity on same-fs
+    # renames). A prior final_dir for the same state-key is replaced
+    # — that's the intentional re-run-is-idempotent behaviour.
+    import shutil as _sh
+
+    if final_dir.exists():
+        _sh.rmtree(final_dir)
+    staging_dir.rename(final_dir)
+
+    print(f"ok: book written to {final_dir}", file=sys.stderr)
     return 0
