@@ -303,6 +303,13 @@ def emit_book_md(book: Book, output_dir: pathlib.Path) -> None:
     full = header.rstrip() + "\n\n" + "\n".join(body_chunks).rstrip() + "\n\n" + back_matter
     # Normalize trailing whitespace + ensure exactly one trailing newline.
     full = "\n".join(line.rstrip() for line in full.splitlines()).rstrip() + "\n"
+    # Second-pass normalisation: catches Unicode glyphs the emitter
+    # itself injected (e.g. `→` in the anchor-link back matter) that
+    # never went through `html_to_pandoc_md`. Idempotent on
+    # already-converted spans.
+    from ohbm2026.book.html_to_md import normalise_for_latex
+
+    full = normalise_for_latex(full)
     (output_dir / "book.md").write_text(full, encoding="utf-8")
 
     # Copy the figure assets — flat directory, names from the contract.

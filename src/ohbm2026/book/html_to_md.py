@@ -208,6 +208,19 @@ def _fold_one_math_alphanumeric(cp: int) -> str:
     return chr(cp)
 
 
+def normalise_for_latex(text: str) -> str:
+    """Idempotent pipeline that takes any string (markdown OR plain
+    text the book emitter produces) and folds away the Unicode that
+    Latin Modern can't render. Safe to apply over already-converted
+    HTML output: the patterns are character-class-driven and don't
+    touch ASCII or already-converted `$...$` math spans.
+    """
+    text = _fold_math_alphanumerics(text)
+    text = _normalise_unicode_super_sub(text)
+    text = _normalise_greek_and_math(text)
+    return text
+
+
 def _normalise_greek_and_math(text: str) -> str:
     """Wrap Greek letters and math operators in `$...$` inline-math
     markers so they fall through to LaTeX's math mode (Computer
@@ -250,6 +263,18 @@ def html_to_pandoc_md(html: str) -> str:
         return ""
 
     soup = BeautifulSoup(html, "html.parser")
+
+    # Flatten nested <sup>/<sub> first. The Oxford rich-text editor
+    # occasionally produces `<sup><sup>2</sup></sup>` (operator error
+    # or paste artefact). If left as-is the conversion below emits
+    # `^^2^^` which pandoc parses as a literal-caret + invalid super
+    # → "Double superscript" LaTeX error. Unwrapping the inner tag
+    # before conversion produces a clean `^2^`.
+    for tag in list(soup.find_all(["sup", "sub"])):
+        parent = tag.parent
+        while parent is not None and parent.name in ("sup", "sub"):
+            tag.unwrap()
+            break
 
     # Pre-pass: convert sup/sub to pandoc literals BEFORE markdownify
     # collapses them into stray HTML islands. We replace each
