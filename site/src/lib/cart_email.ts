@@ -21,19 +21,18 @@ import type { AbstractRecord } from '$lib/shards';
 /** Item-based cap for the email body. Beyond this many items the
  * body switches to "first N items + truncation marker"; the
  * restore-URL at the top still lets the recipient open all of them
- * via the Atlas. Item-count cap (instead of byte cap) gives every
- * cart of typical size a complete, self-contained email body —
- * the whole point of "email my list" is to transfer the data OUT
- * of the site.
+ * via the Atlas.
  */
 export const MAX_EMAIL_ITEMS = 100;
 
-/** Legacy byte cap, kept as a backstop. Most modern mail clients
- *  accept much larger mailto URLs (Mac Mail, Gmail web, Outlook
- *  365 all handle >5 KB); we don't enforce this for typical-sized
- *  carts but the constant remains for tests + future tuning.
+/** Safe mailto-URL length budget — Gmail web refuses to open
+ * mailto: hrefs much over 8 KB, Outlook caps at 2 KB. We aim well
+ * below the Gmail cap so the affordance works for both. When the
+ * full body would exceed this, the builder falls through to a
+ * compact form (no per-item list — just the restore URL + a copy
+ * hint).
  */
-export const MAX_MAILTO_LENGTH = 1900;
+export const MAX_MAILTO_LENGTH = 6000;
 
 export interface CartEmailOptions {
 	/** Public site origin + path, used to embed permalinks per item. Trailing slash optional. */
@@ -119,23 +118,19 @@ export function buildMailtoLink(
 		options.siteUrl,
 		items.map((r) => r.poster_id)
 	);
-	// Lead the body with the cart-restore URL so a recipient (or
-	// sender on a different machine) can rebuild the full saved-list
-	// state with one click — useful when their cart is empty on the
-	// device they're opening the email from.
 	const header =
 		`Saved abstracts from the OHBM 2026 Atlas (${items.length} item${items.length === 1 ? '' : 's'}).\n\n` +
-		`★ Open all ${items.length} item${items.length === 1 ? '' : 's'} in the Atlas (restores the cart): ${restoreUrl}\n\n` +
-		`Each entry below has an "Open:" link that lands directly on its full-detail page.\n\n`;
+		`★ Open all ${items.length} item${items.length === 1 ? '' : 's'} in the Atlas (restores the cart): ${restoreUrl}\n\n`;
 	const footer = `\n\n— Browse the rest at ${siteHome}/`;
 
-	// Item-count cap, NOT byte cap. The mailto's purpose is to ship
-	// the data out of the site; cutting the body short to please
-	// Outlook 2083 defeats that. Modern mail clients accept much
-	// larger URLs; for huge carts (> MAX_EMAIL_ITEMS) we truncate
-	// and the restore URL above does the rest.
+	// Try full body first (up to MAX_EMAIL_ITEMS items). If the
+	// resulting URL would exceed Gmail's tolerance, drop the per-item
+	// list and emit a COMPACT body — restore URL + a "use Copy" hint.
+	// For VERY large carts where even the restore URL pushes the
+	// URL past the budget, the restore URL goes in the body anyway
+	// but the user is warned it may not open in some mail clients.
 	const visibleCount = Math.min(items.length, MAX_EMAIL_ITEMS);
-	const truncated = items.length > MAX_EMAIL_ITEMS;
+	const allItemsFit = items.length <= MAX_EMAIL_ITEMS;
 	const lines = items
 		.slice(0, visibleCount)
 		.map((rec, i) =>
@@ -146,12 +141,29 @@ export function buildMailtoLink(
 				i + 1
 			)
 		);
-	const truncationSuffix = truncated
+	const truncationSuffix = !allItemsFit
 		? `\n\n…(${items.length - visibleCount} more items not shown above; click the ★ link at the top to load the FULL list back into your cart.)`
 		: '';
+	const fullBody =
+		header +
+		`Each entry below has an "Open:" link that lands directly on its full-detail page.\n\n` +
+		lines.join('\n\n') +
+		truncationSuffix +
+		footer;
+	const fullUrl = subjectPart + encodeURIComponent(fullBody);
+	if (fullUrl.length <= MAX_MAILTO_LENGTH) {
+		return fullUrl;
+	}
 
-	const body = header + lines.join('\n\n') + truncationSuffix + footer;
-	return subjectPart + encodeURIComponent(body);
+	// Compact: header (with restore URL) + Copy hint, no per-item list.
+	const compactBody =
+		header +
+		`(This cart is too large to fit the full list in an email. The ` +
+		`★ link above will open every saved abstract in the Atlas. ` +
+		`Alternatively, use the "Copy" button on the cart drawer to copy ` +
+		`every item as plain text — the clipboard has no length limit.)\n\n` +
+		footer;
+	return subjectPart + encodeURIComponent(compactBody);
 }
 
 /** Plain-text rendering (for the clipboard fallback). Includes
