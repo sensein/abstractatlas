@@ -68,7 +68,13 @@ jobs:
           BASE_PATH: /pr-${{ github.event.pull_request.number }}/ohbm2026
           VITE_BUILD_SHA: ${{ github.event.pull_request.head.sha }}
           VITE_BUILD_AT: ${{ github.event.pull_request.head.repo.pushed_at }}
-          VITE_DATA_PACKAGE_URL: ${{ vars.OHBM2026_UI_DATA_PACKAGE_URL }}
+          # Branch-conditional URL override for the open Stage-10 parquet
+          # PR: main code still consumes the legacy tarball (the global
+          # `OHBM2026_UI_DATA_PACKAGE_URL` variable points there until
+          # the parquet PR merges), but this PR's bundle needs the
+          # parquet URL. Remove this branch after Stage-10 merges and
+          # the global variable flips back to parquet.
+          VITE_DATA_PACKAGE_URL: ${{ github.event.pull_request.head.ref == 'feat/stage10-parquet-single' && 'https://www.dropbox.com/scl/fi/rnnhggs2h9wi8wjlxwau1/data.parquet?rlkey=kua22h5eqtux71dxi375k7mnd&dl=0' || vars.OHBM2026_UI_DATA_PACKAGE_URL }}
         run: |
           export VITE_BUILD_SHA_SHORT="${VITE_BUILD_SHA:0:7}"
           pnpm build
