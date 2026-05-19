@@ -40,11 +40,11 @@
 	function close() {
 		open = false;
 	}
-	function emailList() {
-		if (items.length === 0) return;
-		const url = buildMailtoLink(items, leadAuthorByAbstractId, { siteUrl });
-		window.location.href = url;
-	}
+	// Reactive mailto: href for the cart-email anchor. Empty `#` when the
+	// cart is empty so the anchor remains valid HTML but a click is a
+	// no-op (anchor also carries aria-disabled).
+	$: mailtoHref =
+		items.length > 0 ? buildMailtoLink(items, leadAuthorByAbstractId, { siteUrl }) : '#';
 	async function copyList() {
 		if (items.length === 0) return;
 		try {
@@ -103,14 +103,19 @@
 			</ul>
 
 			<footer class="cart-footer">
-				<button
-					type="button"
+				<!-- Anchor instead of button: the href is part of the visible
+					 contract (e2e tests + accessibility tools read the mailto:
+					 URL without simulating a click). The browser opens the
+					 user's mail client on activation, same UX as the prior
+					 button + `window.location.href = ...` handler. -->
+				<a
 					class="cart-action primary"
-					on:click={emailList}
+					href={mailtoHref}
+					aria-disabled={items.length === 0}
 					data-testid="cart-email"
 				>
 					✉ Email my list
-				</button>
+				</a>
 				<button
 					type="button"
 					class="cart-action secondary"

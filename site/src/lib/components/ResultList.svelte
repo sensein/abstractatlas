@@ -127,11 +127,21 @@
 		<ul class="cards">
 			{#each pageItems as record (record.abstract_id)}
 				{@const lead = leadAuthor(record)}
-				<li class="card" class:focused={$focusedAbstract === record.poster_id}>
+				<li
+					class="card"
+					class:focused={$focusedAbstract === record.poster_id}
+					data-testid="result-card"
+					data-poster-id={record.poster_id}
+				>
 					<!-- The card-body used to be a single <button>, which prevented
 						 nesting a real <button> for the author click. Switched to a
 						 role="button" div + keyboard handler so the meta row can host
-						 a separate author button. -->
+						 a separate author button. The `result-card` testid + the
+						 `data-poster-id` attribute live on the <li> so the entire
+						 card (body + actions) is one logical selector — the
+						 card-actions row (with the cart icon) is a sibling of
+						 .card-body, and tests need to reach the cart icon by
+						 scoping through the card. -->
 					<div
 						class="card-body"
 						role="button"
@@ -143,8 +153,6 @@
 								focus(record.poster_id);
 							}
 						}}
-						data-testid="result-card"
-						data-poster-id={record.poster_id}
 					>
 						<div class="card-top">
 							<span class="poster-id">{record.poster_id || `id ${record.abstract_id}`}</span>

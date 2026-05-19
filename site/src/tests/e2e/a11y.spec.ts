@@ -18,7 +18,9 @@ import { test, expect, chromium } from '@playwright/test';
 
 test.setTimeout(180_000);
 
-const BASE = process.env.TARGET_BASE || 'https://abstractatlas.brainkb.org';
+// Prefer PLAYWRIGHT_BASE_URL (CI env), then legacy TARGET_BASE,
+// then default to the local preview server (matches playwright.config.ts).
+const BASE = process.env.PLAYWRIGHT_BASE_URL || process.env.TARGET_BASE || 'http://127.0.0.1:4173';
 
 async function auditRoute(
 	pathSuffix: string,

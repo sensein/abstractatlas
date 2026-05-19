@@ -11,7 +11,11 @@ const probes = [
   { label: 'desktop-landscape', viewport: { width: 1440, height: 900 }, mobile: false }
 ];
 
-const BASE = 'https://abstractatlas.brainkb.org/pr-9';
+// Was hardcoded to the PR-9 preview (long since closed). Default to
+// local; honour PLAYWRIGHT_BASE_URL for CI runs against PR preview /
+// production. The mobile-check probe is geometry-only, so any deploy
+// that renders the same DOM passes.
+const BASE = process.env.PLAYWRIGHT_BASE_URL || process.env.TARGET_BASE || 'http://127.0.0.1:4173';
 
 async function waitForRecentDeploy(page: any, expectedSha: string) {
   for (let i = 0; i < 30; i++) {
