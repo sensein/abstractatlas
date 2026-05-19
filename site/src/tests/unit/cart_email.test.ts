@@ -53,36 +53,35 @@ describe('buildMailtoLink', () => {
 		expect(body).toContain('— José García');
 	});
 
-	it('truncates by item count (not byte budget) and inserts a marker', () => {
-		// Manufacture 500 fake abstracts; truncation now kicks in at the
-		// item-count cap (MAX_EMAIL_ITEMS = 100). The body may exceed
-		// MAX_MAILTO_LENGTH — modern mail clients tolerate that, and the
-		// whole point is to transfer the saved-list data OUT of the site.
+	it('falls back to compact body when full body would exceed the URL budget', () => {
+		// 500 abstracts → full body (with item-list and 500-id restore
+		// URL) would blow past MAX_MAILTO_LENGTH; expect compact form.
 		const many = Array.from({ length: 500 }, (_, i) =>
 			rec(i + 1, `Abstract title number ${i} — a longish placeholder so each line eats bytes`)
 		);
 		const url = buildMailtoLink(many, new Map(), { siteUrl: 'https://example.org/atlas' });
+		// Total URL stays under the budget.
+		expect(url.length).toBeLessThanOrEqual(MAX_MAILTO_LENGTH);
 		const body = decodeURIComponent(url.split('&body=')[1]);
-		expect(body).toContain('more items not shown');
-		// Body MUST also carry the cart-restore URL so the recipient
-		// can rebuild the full saved-list state with one click.
+		// Restore URL is still present.
 		expect(body).toMatch(/\?cart=\d{4}(,\d{4})+/);
-		// All 500 ids should be in the restore URL despite the visible
-		// list being truncated.
-		const restoreMatch = body.match(/\?cart=([\d,]+)/);
-		expect(restoreMatch).not.toBeNull();
-		expect(restoreMatch![1].split(',').length).toBe(500);
+		// Per-item list is NOT — compact body, no "1. [0001] Title" lines.
+		expect(body).not.toMatch(/^1\. \[/m);
+		// Compact body steers the user to the Copy button.
+		expect(body).toContain('Copy');
 	});
 
-	it('includes ALL items in the body when the cart is at-or-below the item cap', () => {
-		// 100-item cart should land in the body in full, no truncation.
-		const at_cap = Array.from({ length: 100 }, (_, i) => rec(i + 1, `Title ${i}`));
-		const url = buildMailtoLink(at_cap, new Map(), { siteUrl: 'https://example.org' });
+	it('includes the full item list when the cart fits in the URL budget', () => {
+		// 20-item cart with short titles fits comfortably inside
+		// MAX_MAILTO_LENGTH so the body retains every entry.
+		const small = Array.from({ length: 20 }, (_, i) => rec(i + 1, `Title ${i}`));
+		const url = buildMailtoLink(small, new Map(), { siteUrl: 'https://example.org' });
 		const body = decodeURIComponent(url.split('&body=')[1]);
 		expect(body).not.toContain('more items not shown');
 		// First and last item numbers both present.
 		expect(body).toMatch(/^1\. \[/m);
-		expect(body).toMatch(/^100\. \[/m);
+		expect(body).toMatch(/^20\. \[/m);
+		expect(url.length).toBeLessThanOrEqual(MAX_MAILTO_LENGTH);
 	});
 
 	it('handles an empty cart gracefully', () => {
