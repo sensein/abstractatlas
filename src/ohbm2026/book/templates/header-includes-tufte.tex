@@ -1,0 +1,37 @@
+% Tufte styling preamble — loaded by pandoc via `-H` when the
+% operator selects `--style tufte`. The `tufte-book` class provides
+% ET-Book typography (with TeX-Gyre fallback when ET-Book isn't
+% installed), ragged-right body setting, generous outer margin, and
+% Tufte's hand-set figure rules.
+%
+% Pandoc emits a `\documentclass{article}` by default; we override
+% with `\renewcommand`-style hooks by setting the class via the
+% command line (`--variable=documentclass:tufte-book` would be the
+% cleaner path, but pandoc treats the `-H` file as a strict preamble,
+% not class-override). The standalone setup below loads tufte-book
+% explicitly and disables pandoc's `\title`/`\author` block (Tufte
+% has its own).
+
+\documentclass[nobib,nofonts]{tufte-book}
+
+% Pandoc emits `\usepackage{graphicx}` and `\usepackage{microtype}`
+% by default; tufte-book pulls them in too, but be defensive against
+% the load-order race.
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{makeidx}
+\makeindex
+
+% xelatex's default math font (Latin Modern Math) has the Greek
+% alphabet + standard scientific operators. The html_to_md
+% preprocessor wraps Greek letters + math operators in `\(...\)` so
+% they render via the default math font; no fontspec / system-font
+% setup needed.
+
+% Hyperref last (canonical LaTeX ordering).
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+}

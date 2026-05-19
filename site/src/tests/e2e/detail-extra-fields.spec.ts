@@ -59,6 +59,7 @@ test.describe('FR-011 — detail panel renders only Topics + Methods extras', ()
 		const headings = await page.getByTestId('detail-panel').locator('h2').allTextContents();
 		const allowedLeads = [
 			'Authors',
+			'Stand-by times',
 			'Introduction',
 			'Methods',
 			'Results',

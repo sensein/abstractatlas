@@ -67,6 +67,37 @@
 	}
 
 	onMount(async () => {
+		// Cart-restore deep-link: `<siteUrl>/?cart=0001,0042,...` merges
+		// the listed poster_ids into the cart store on load. Used by the
+		// "Email my list" link so a recipient (or sender on a different
+		// machine) can rebuild the full saved-list state with one click.
+		// Merge semantics — never clobber an existing cart silently.
+		try {
+			const sp = new URLSearchParams(window.location.search);
+			const cartParam = sp.get('cart');
+			if (cartParam) {
+				const ids = cartParam
+					.split(',')
+					.map((s) => Number.parseInt(s.trim(), 10))
+					.filter((n) => Number.isFinite(n) && n > 0);
+				if (ids.length) {
+					cartStore.addMany(ids);
+				}
+				// Strip the param from the visible URL so the user sees a
+				// clean home URL after the restore (the cart is now in
+				// localStorage; no need to keep the param around).
+				sp.delete('cart');
+				const cleanQuery = sp.toString();
+				const cleanUrl =
+					window.location.pathname +
+					(cleanQuery ? `?${cleanQuery}` : '') +
+					window.location.hash;
+				window.history.replaceState({}, '', cleanUrl);
+			}
+		} catch {
+			/* malformed query param — ignore */
+		}
+
 		const [m, a, au] = await Promise.all([loadManifest(), loadAbstracts(), loadAuthors()]);
 		manifest = m;
 		if (a && au) {

@@ -168,29 +168,40 @@ Current canonical defaults (the UI consumes these):
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at `specs/010-export-redesign/plan.md`. The companion design artifacts
+at `specs/011-abstracts-book/plan.md`. The companion design artefacts
 under the same directory — `research.md`, `data-model.md`,
-`contracts/decoder.md`, `contracts/shards.linkml.yaml` (stub pending
-the bench), and `quickstart.md` — pin the Stage-10 data export
-redesign: LinkML-tight schema (eliminate or annotate every `range:
-Any`), compact storage (target ≥ 30 % gzipped-tarball shrink), and a
-cross-conference foundation (a `conference_id` affordance + a cross-
-conference linking surface that doesn't require regenerating either
-conference's base shards). **The on-disk format choice is empirical,
-not pre-committed**: Phase 0 runs a documented bench matrix across
-six candidate containers (status-quo-tightened gzipped JSON,
-multi-file Parquet, Parquet + DuckDB-WASM, single-file SQLite,
-single-file DuckDB, Arrow IPC), measuring six metrics each (on-disk
-size, cold-start TTI on 1 Mbps, session wire bytes, decoder bundle,
-cross-conf feasibility, schema fidelity). An LLM architect-agent
-reviews the populated decision table; the human commits to a format
-AFTER the numbers land, not before. Phase 1 design artifacts
-(data-model.md Layer 2, contracts/shards.linkml.yaml) are
-format-conditional and finalised post-bench. If no candidate clears
-the SC-201 + SC-205 thresholds, the rework downgrades to schema
-tightening only.
+`contracts/cli.md`, and `quickstart.md` — pin the Book-of-Abstracts
+exporter: a deterministic `ohbmcli book` subcommand that composes
+every accepted abstract (title, authors with affiliations, full
+body text, embedded figures, references) into a printable book in
+three formats (`md` bundle + `pdf` + `docx`), with three sort
+orders (`poster_id`, `title`, `first_author`) and a paginated
+author index at the back. **No AI-generated content reaches the
+book** — sourced exclusively from Stage-1 artefacts
+(`data/primary/abstracts.json` + `authors.json` +
+`data/inputs/assets/`), never from Stage-2 enrichments. **Markdown
+is the canonical intermediate** (2026-05-19 clarification): HTML
+→ markdown happens once at corpus load, and PDF + DOCX both
+derive from the same `book.md` via pandoc — PDF through xelatex
+with `\makeindex`/`\printindex` for the page-numbered author
+index, optional `tufte-book` document class via `--style tufte`;
+DOCX through pandoc's native docx writer (anchor-link index, not
+PAGEREF — documented limitation). System deps: `pandoc` + a LaTeX
+engine (`tectonic` recommended). Key research discoveries in
+`research.md`: the corpus has NO author-supplied figure captions
+(figures only carry a `question_name` label — "Methods Figure" /
+"Results Figure"), and all long-form responses are HTML (not
+markdown) and are converted once at the corpus boundary.
 
 Previous-stage plans:
+- Stage 10 data export redesign: `specs/010-export-redesign/plan.md`
+  (single-file Parquet with row-group-per-table layout; LinkML-tight
+  schema eliminating every `range: Any`; magic-byte sniff dispatch
+  via the in-browser hyparquet decoder; `poster_id` int16 as the
+  sole user-facing identifier replacing Oxford submission_id;
+  cross-conference Phase 5 deferred — conference outputs frozen
+  post-build, cross-conf linking ships as a UI-side artefact when a
+  second conference is ingested). Shipped in PR #20.
 - Stage 9 conference subpath rework: `specs/009-conference-subpath/plan.md`
   (every OHBM-2026 surface under `/ohbm2026/`; static meta-refresh
   root-redirect island via `<meta http-equiv="refresh">` + JS

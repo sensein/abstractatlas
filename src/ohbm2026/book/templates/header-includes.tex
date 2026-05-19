@@ -1,0 +1,22 @@
+% LaTeX preamble for the plain (book class) PDF rendering.
+% Loaded by pandoc via `-H header-includes.tex`.
+
+\usepackage{makeidx}
+\makeindex
+\usepackage{graphicx}
+% Pandoc's --resource-path injects the book-output directory so
+% relative `fig_assets/...` paths resolve.
+\usepackage{microtype}
+
+% xelatex's default math font is Latin Modern Math (built into every
+% TeX distribution incl. Tectonic), which has the full Greek alphabet
+% plus standard scientific operators. The html_to_md preprocessor
+% wraps Greek letters + math operators in `\(...\)` so they render
+% via this default math font without needing fontspec / system fonts.
+
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+}

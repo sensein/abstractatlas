@@ -1,0 +1,201 @@
+{
+  "fetched_at": "2026-05-19T00:00:00Z",
+  "event_ids": [99999],
+  "abstract_count": 8,
+  "abstracts": [
+    {
+      "id": 9000001,
+      "poster_id": "0001",
+      "title": "Test-retest reliability of sgACC-DLPFC connectivity",
+      "accepted_for": "Poster",
+      "authors": [
+        {"author_order": 0, "id": 80001},
+        {"author_order": 1, "id": 80002}
+      ],
+      "responses": [
+        {"question_name": "Title", "value": "Test-retest reliability of sgACC-DLPFC connectivity"},
+        {"question_name": "4. Country", "value": "United States"},
+        {"question_name": "Introduction", "value": "<p id=\"isPasted\">Resting-state functional connectivity<sup>1</sup> is widely used<sup>2,3</sup> in&plusmn;clinical neuroscience.</p>"},
+        {"question_name": "Methods", "value": "<p style=\"font-family:Arial;\">Twenty participants (mean age 28&plusmn;4 yrs) underwent fMRI at 3T.</p>"},
+        {"question_name": "Results", "value": "<p>ICC values exceeded <strong>0.7</strong> for the right hemisphere; see <em>Figure 1</em>.</p>"},
+        {"question_name": "Conclusion", "value": "<p>The sgACC-DLPFC connection shows good test-retest reliability.</p>"},
+        {"question_name": "Acknowledgement", "value": "NIH R01 ABC123."},
+        {"question_name": "References/Citations", "value": "<ol><li>Smith et al., <em>NeuroImage</em> (2020).</li><li>Johnson et al., <em>NeuroImage</em> (2021).</li><li>Brown et al., <em>Brain</em> (2019).</li></ol>"}
+      ],
+      "external_urls": [],
+      "figure_urls": [
+        {"question_name": "Methods Figure", "source_url": "https://example/methods.png"},
+        {"question_name": "Results Figure", "source_url": "https://example/results.png"}
+      ],
+      "program_sessions": [],
+      "local_assets": [
+        {
+          "source_url": "https://example/methods.png",
+          "source_question_name": "Methods Figure",
+          "local_path": "tests/fixtures/book/assets/9000001_methods.png",
+          "content_type": "image/png",
+          "downloaded": true,
+          "error": null
+        },
+        {
+          "source_url": "https://example/results.png",
+          "source_question_name": "Results Figure",
+          "local_path": "tests/fixtures/book/assets/9000001_results.png",
+          "content_type": "image/png",
+          "downloaded": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": 9000002,
+      "poster_id": "0002",
+      "title": "Aging-related volume changes in cortex",
+      "accepted_for": "Poster",
+      "authors": [
+        {"author_order": 0, "id": 80003}
+      ],
+      "responses": [
+        {"question_name": "Title", "value": "Aging-related volume changes in cortex"},
+        {"question_name": "Introduction", "value": "<p>Cortical volume declines with age.</p>"},
+        {"question_name": "Methods", "value": "<p>T1 MRI on 174 participants.</p>"},
+        {"question_name": "Results", "value": "<p>Volume decreased ~0.6% per year.</p>"},
+        {"question_name": "Conclusion", "value": "<p>Linear decline is reproducible.</p>"}
+      ],
+      "external_urls": [],
+      "figure_urls": [
+        {"question_name": "Results Figure", "source_url": "https://example/2-results.png"}
+      ],
+      "program_sessions": [],
+      "local_assets": [
+        {
+          "source_url": "https://example/2-results.png",
+          "source_question_name": "Results Figure",
+          "local_path": "tests/fixtures/book/assets/9000002_results.png",
+          "content_type": "image/png",
+          "downloaded": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": 9000003,
+      "poster_id": "0003",
+      "title": "A short note on multimodal preprocessing",
+      "accepted_for": "Oral",
+      "authors": [
+        {"author_order": 0, "id": 80004}
+      ],
+      "responses": [
+        {"question_name": "Introduction", "value": "<p>We summarise preprocessing best practices.</p>"}
+      ],
+      "external_urls": [],
+      "figure_urls": [],
+      "program_sessions": [],
+      "local_assets": []
+    },
+    {
+      "id": 9000004,
+      "poster_id": "0004",
+      "title": "Two-figure abstract for index-suffix coverage",
+      "accepted_for": "Poster",
+      "authors": [
+        {"author_order": 0, "id": 80005},
+        {"author_order": 1, "id": 80003}
+      ],
+      "responses": [
+        {"question_name": "Methods", "value": "<p>fMRI with two task blocks.</p>"},
+        {"question_name": "Results", "value": "<p>Block A shown in Fig 1; Block B in Fig 2.</p>"},
+        {"question_name": "Conclusion", "value": "<p>Both blocks elicit distinct activity.</p>"}
+      ],
+      "external_urls": [],
+      "figure_urls": [
+        {"question_name": "Results Figure", "source_url": "https://example/4-r1.png"},
+        {"question_name": "Results Figure", "source_url": "https://example/4-r2.png"}
+      ],
+      "program_sessions": [],
+      "local_assets": [
+        {
+          "source_url": "https://example/4-r1.png",
+          "source_question_name": "Results Figure",
+          "local_path": "tests/fixtures/book/assets/9000004_results_1.png",
+          "content_type": "image/png",
+          "downloaded": true,
+          "error": null
+        },
+        {
+          "source_url": "https://example/4-r2.png",
+          "source_question_name": "Results Figure",
+          "local_path": "tests/fixtures/book/assets/9000004_results_2.png",
+          "content_type": "image/png",
+          "downloaded": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": 9000005,
+      "poster_id": "0005",
+      "title": "Abstract with a missing figure asset",
+      "accepted_for": "Poster",
+      "authors": [
+        {"author_order": 0, "id": 80006}
+      ],
+      "responses": [
+        {"question_name": "Methods", "value": "<p>Standard pipeline.</p>"},
+        {"question_name": "Results", "value": "<p>See figure (asset upload failed upstream).</p>"}
+      ],
+      "external_urls": [],
+      "figure_urls": [
+        {"question_name": "Methods Figure", "source_url": "https://example/5-missing.png"}
+      ],
+      "program_sessions": [],
+      "local_assets": [
+        {
+          "source_url": "https://example/5-missing.png",
+          "source_question_name": "Methods Figure",
+          "local_path": "tests/fixtures/book/assets/9000005_methods.png",
+          "content_type": "image/png",
+          "downloaded": false,
+          "error": "404 from upstream"
+        }
+      ]
+    },
+    {
+      "id": 9000099,
+      "poster_id": "9999",
+      "title": "Withdrawn abstract (should be filtered)",
+      "accepted_for": "Poster",
+      "authors": [],
+      "responses": [],
+      "external_urls": [],
+      "figure_urls": [],
+      "program_sessions": [],
+      "local_assets": []
+    },
+    {
+      "id": 9000098,
+      "poster_id": null,
+      "title": "Null-poster-id row (should be filtered)",
+      "accepted_for": "Poster",
+      "authors": [],
+      "responses": [],
+      "external_urls": [],
+      "figure_urls": [],
+      "program_sessions": [],
+      "local_assets": []
+    },
+    {
+      "id": 9000097,
+      "poster_id": "0097",
+      "title": "Non-Poster-non-Oral row (should be filtered)",
+      "accepted_for": "Demo",
+      "authors": [],
+      "responses": [],
+      "external_urls": [],
+      "figure_urls": [],
+      "program_sessions": [],
+      "local_assets": []
+    }
+  ]
+}
