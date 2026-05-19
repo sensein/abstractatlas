@@ -76,6 +76,11 @@ class TestEveryShardCarriesBuildInfo(unittest.TestCase):
                 discover_rollup=False,
                 output_dir=output,
                 build_info=BUILD_INFO,
+                # Stage-10 flipped the default emitter to `parquet-single`
+                # (one `.parquet` file). The shard-level assertions below
+                # walk JSON files, so pin to the legacy emitter for this
+                # invariant test.
+                output_format="gzip-json-shards",
             )
             self.assertEqual(rc, 0)
 
