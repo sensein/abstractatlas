@@ -196,9 +196,17 @@ export function recomputeFacets(
 				counts.set(v, (counts.get(v) ?? 0) + 1);
 			}
 		}
+		// Standby blocks are chronological by design — the `Day N (...)
+		// HH:MM-HH:MM` keys lex-sort to schedule order. Every other facet
+		// stays count-DESC so the most-active options surface first.
+		const valueAscFacets: ReadonlySet<FacetKey> = new Set(['standby_block']);
 		const sorted: FacetOption[] = [...counts.entries()]
 			.map(([value, count]) => ({ value, count }))
-			.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+			.sort(
+				valueAscFacets.has(key)
+					? (a, b) => a.value.localeCompare(b.value)
+					: (a, b) => b.count - a.count || a.value.localeCompare(b.value)
+			);
 		out.set(key, sorted);
 	}
 	return out;
