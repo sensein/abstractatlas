@@ -11,6 +11,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { waitForHomeReady } from './_helpers';
 
 const DATA_AVAILABLE = process.env.UI_DATA_AVAILABLE !== '0';
 
@@ -19,7 +20,7 @@ test.describe('US5: saved-list cart + email export', () => {
 
 	test('add via card icon, reload, drawer still shows the item', async ({ page }) => {
 		await page.goto('./');
-		await page.getByTestId('search-input').waitFor();
+		await waitForHomeReady(page);
 		const card = page.getByTestId('result-card').first();
 		await card.waitFor({ timeout: 10_000 });
 		const posterId = await card.getAttribute('data-poster-id');
@@ -43,7 +44,7 @@ test.describe('US5: saved-list cart + email export', () => {
 
 	test('clear empties the cart', async ({ page }) => {
 		await page.goto('./');
-		await page.getByTestId('search-input').waitFor();
+		await waitForHomeReady(page);
 		await page
 			.getByTestId('result-card')
 			.first()
@@ -59,7 +60,7 @@ test.describe('US5: saved-list cart + email export', () => {
 
 	test('email-my-list opens a mailto: URL with the poster_ids', async ({ page }) => {
 		await page.goto('./');
-		await page.getByTestId('search-input').waitFor();
+		await waitForHomeReady(page);
 		const card = page.getByTestId('result-card').first();
 		await card.waitFor({ timeout: 10_000 });
 		const posterId = (await card.getAttribute('data-poster-id')) ?? '';
