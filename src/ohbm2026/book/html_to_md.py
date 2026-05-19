@@ -126,6 +126,88 @@ _GREEK_RE = re.compile("([" + "".join(_GREEK_LATEX.keys()) + "])")
 _MATH_OP_RE = re.compile("([" + "".join(re.escape(c) for c in _MATH_OP_LATEX.keys()) + "])")
 
 
+def _fold_math_alphanumerics(text: str) -> str:
+    """Normalise the Unicode Mathematical Alphanumeric Symbols block
+    (U+1D400-U+1D7FF) to plain ASCII / Greek so the downstream
+    Greek/math normaliser can handle them through a single map.
+
+    Authors paste italicised math letters (e.g. 𝜌 U+1D70C "MATHEMATICAL
+    ITALIC SMALL RHO") directly into body text. Latin Modern lacks
+    every codepoint in this block. The Unicode standard defines each
+    char as a stylistic variant of a basic letter (Latin a-z / A-Z
+    or Greek α-ω / Α-Ω); we fold the styles away and let the basic
+    glyph carry the meaning. Italic / bold styling is lost.
+    """
+    out: list[str] = []
+    for ch in text:
+        cp = ord(ch)
+        if 0x1D400 <= cp <= 0x1D7FF:
+            out.append(_fold_one_math_alphanumeric(cp))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _fold_one_math_alphanumeric(cp: int) -> str:
+    """Map one codepoint in the Mathematical Alphanumeric Symbols
+    block to its basic-letter equivalent. Returns the original glyph
+    when the codepoint is one of the gap reservations Unicode skips.
+    """
+    # The block is laid out as 13 alphabets × 52 letters (A-Z then
+    # a-z), then a digits-only tail. Within each alphabet:
+    #   block_base + i*52 + 0..25  ⇒  uppercase Latin A..Z
+    #   block_base + i*52 + 26..51 ⇒  lowercase Latin a..z
+    # Greek alphabets start at U+1D6A8 (Greek bold uppercase).
+    # Digits start at U+1D7CE.
+    LATIN_BASES = [
+        0x1D400, 0x1D434, 0x1D468, 0x1D49C,  # bold, italic, bold-italic, script
+        0x1D4D0, 0x1D504, 0x1D538, 0x1D56C,  # script-bold, fraktur, double-struck, fraktur-bold
+        0x1D5A0, 0x1D5D4, 0x1D608, 0x1D63C,  # sans-serif, sans-bold, sans-italic, sans-bold-italic
+        0x1D670,                              # monospace
+    ]
+    GREEK_BASES = [
+        0x1D6A8, 0x1D6E2, 0x1D71C, 0x1D756, 0x1D790,
+    ]  # 25 + 28 = 53 chars per alphabet (Greek has extras)
+    DIGIT_BASES = [0x1D7CE, 0x1D7D8, 0x1D7E2, 0x1D7EC, 0x1D7F6]
+
+    # Latin alphabets (52 chars each: 26 upper + 26 lower).
+    for base in LATIN_BASES:
+        if base <= cp < base + 52:
+            idx = cp - base
+            if idx < 26:
+                return chr(ord("A") + idx)
+            return chr(ord("a") + (idx - 26))
+
+    # Greek alphabets. Layout per Unicode 14 (each block is 58 codepoints):
+    #   base + 0..24    → CAPITAL ALPHA..OMEGA (25 letters)
+    #   base + 25       → NABLA (∇, special)
+    #   base + 26..50   → small alpha..omega (25 letters)
+    #   base + 51       → PARTIAL DIFFERENTIAL (∂)
+    #   base + 52..57   → epsilon/theta/kappa/phi/rho/pi symbols (variants)
+    # We fold to the basic Greek glyph when possible; skip the variants
+    # (callers' Greek-to-LaTeX map handles the basic forms).
+    for base in GREEK_BASES:
+        # 25 capitals: Alpha .. Omega
+        if base <= cp < base + 25:
+            return chr(0x0391 + (cp - base))
+        # Nabla
+        if cp == base + 25:
+            return "∇"  # ∇
+        # 25 lowercase: alpha .. omega
+        if base + 26 <= cp < base + 51:
+            return chr(0x03B1 + (cp - base - 26))
+        # Partial differential
+        if cp == base + 51:
+            return "∂"  # ∂
+
+    # Digits (10 chars each, 5 alphabets).
+    for base in DIGIT_BASES:
+        if base <= cp < base + 10:
+            return chr(ord("0") + (cp - base))
+
+    return chr(cp)
+
+
 def _normalise_greek_and_math(text: str) -> str:
     """Wrap Greek letters and math operators in `\\(...\\)` math
     markers so they fall through to Latin Modern Math (which has
@@ -198,6 +280,13 @@ def html_to_pandoc_md(html: str) -> str:
         if prior_limit < _RECURSION_FLOOR:
             sys.setrecursionlimit(prior_limit)
 
+    # Fold the Mathematical Alphanumeric Symbols block (U+1D400-
+    # U+1D7FF) — math-italic letters and styled digits authors paste
+    # directly — into basic Latin / Greek / digit glyphs. Loses the
+    # italic/bold styling (acceptable in body prose) and lets the
+    # Greek+math normaliser below pick up the math-italic Greek
+    # variants through a single code path.
+    md = _fold_math_alphanumerics(md)
     # Normalise direct Unicode super/subscript glyphs into pandoc
     # `^...^` / `~...~` literals. Run AFTER markdownify so we operate
     # on plain text — any `<sup>`/`<sub>` already became `^...^` /

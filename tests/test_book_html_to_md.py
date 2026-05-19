@@ -76,6 +76,17 @@ class TestHtmlToMd(unittest.TestCase):
         self.assertIn(r"\(\leq\)", md)
         self.assertIn(r"\(\approx\)", md)
 
+    def test_math_italic_greek_folded(self) -> None:
+        # 𝜌 (U+1D70C) is MATHEMATICAL ITALIC SMALL RHO — different
+        # codepoint from basic ρ (U+03C1). Folder maps it to the
+        # basic Greek; then the Greek normaliser wraps it in math.
+        md = html_to_pandoc_md("<p>The 𝜌 value is 0.42</p>")
+        self.assertIn(r"\(\rho\)", md)
+        # 𝑥 (U+1D465) is MATHEMATICAL ITALIC SMALL X — folds to ASCII x.
+        md = html_to_pandoc_md("<p>variable 𝑥</p>")
+        self.assertIn("x", md)
+        self.assertNotIn("𝑥", md)
+
     def test_minus_sign_normalised_to_ascii(self) -> None:
         md = html_to_pandoc_md("<p>Result: −0.42</p>")
         # MINUS SIGN (U+2212) → ASCII hyphen (no math wrap needed)

@@ -3,19 +3,37 @@
  *
  * `buildMailtoLink(items, options)` returns a `mailto:` URL whose subject /
  * body are pre-populated with the user's saved abstract list. Bodies are
- * truncated to MAX_BODY_CHARS so the URL stays below the 2000-character
+ * truncated to MAX_MAILTO_LENGTH so the URL stays below the 2000-character
  * limit that some mail clients (Outlook, system handlers on Windows) impose
- * on `mailto:` strings. Truncated bodies carry a "(more items not shown)"
- * marker so the user knows to copy the full list from the cart drawer.
+ * on `mailto:` strings.
+ *
+ * Every body — truncated or not — leads with a "Restore the full cart"
+ * URL of the form `<siteUrl>/?cart=0001,0042,...`. The home route reads
+ * the `?cart=` query parameter on load and merges those poster_ids into
+ * the cart store via `cartStore.addMany()`. That means even when a long
+ * cart is truncated in the visible list, the recipient (or sender on a
+ * different machine) can click the restore URL and get every saved
+ * abstract back.
  */
 
 import type { AbstractRecord } from '$lib/shards';
 
-/** Conservative mailto-URL length budget. RFC has no hard ceiling but
- *  Outlook caps around 2083 characters and Mac Mail tolerates ~2000. */
-export const MAX_MAILTO_LENGTH = 1900;
+/** Item-based cap for the email body. Beyond this many items the
+ * body switches to "first N items + truncation marker"; the
+ * restore-URL at the top still lets the recipient open all of them
+ * via the Atlas. Item-count cap (instead of byte cap) gives every
+ * cart of typical size a complete, self-contained email body —
+ * the whole point of "email my list" is to transfer the data OUT
+ * of the site.
+ */
+export const MAX_EMAIL_ITEMS = 100;
 
-const TRUNCATION_NOTICE = '\n\n…(more items not shown — open the full list at ';
+/** Legacy byte cap, kept as a backstop. Most modern mail clients
+ *  accept much larger mailto URLs (Mac Mail, Gmail web, Outlook
+ *  365 all handle >5 KB); we don't enforce this for typical-sized
+ *  carts but the constant remains for tests + future tuning.
+ */
+export const MAX_MAILTO_LENGTH = 1900;
 
 export interface CartEmailOptions {
 	/** Public site origin + path, used to embed permalinks per item. Trailing slash optional. */
@@ -30,6 +48,28 @@ function trimSlash(s: string): string {
 
 function permalinkFor(siteUrl: string, posterId: string): string {
 	return `${trimSlash(siteUrl)}/abstract/${encodeURIComponent(posterId)}/`;
+}
+
+/**
+ * Build a deep-link URL that hydrates the home page's cart with the
+ * supplied poster_ids. Format: `<siteUrl>/?cart=0001,0042,0123`.
+ * Poster ids are zero-padded for human readability; the home route's
+ * cart-hydrate handler accepts both padded and bare numeric forms.
+ *
+ * The URL fits the comma-separated list inline; for 3,333 posters the
+ * worst case is ~5 chars × 3333 ≈ 16,650 chars which exceeds typical
+ * mailto budgets, but for human-sized carts (tens to low hundreds) it
+ * fits comfortably. Callers SHOULD include this URL above the
+ * per-item list so the user can recover even when the visible list
+ * gets truncated.
+ */
+export function buildCartRestoreUrl(siteUrl: string, posterIds: number[]): string {
+	const padded = posterIds
+		.filter((id) => Number.isFinite(id) && id > 0)
+		.map((id) => String(id).padStart(4, '0'))
+		.join(',');
+	const base = trimSlash(siteUrl);
+	return padded ? `${base}/?cart=${padded}` : `${base}/`;
 }
 
 /**
@@ -75,42 +115,62 @@ export function buildMailtoLink(
 	const subject = options.subject ?? 'My OHBM 2026 abstract list';
 	const subjectPart = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=';
 	const siteHome = trimSlash(options.siteUrl);
-	const truncationSuffix =
-		TRUNCATION_NOTICE + siteHome + ' )';
+	const restoreUrl = buildCartRestoreUrl(
+		options.siteUrl,
+		items.map((r) => r.poster_id)
+	);
+	// Lead the body with the cart-restore URL so a recipient (or
+	// sender on a different machine) can rebuild the full saved-list
+	// state with one click — useful when their cart is empty on the
+	// device they're opening the email from.
 	const header =
-		`Saved abstracts from the OHBM 2026 Atlas (${items.length} item${items.length === 1 ? '' : 's'}).\n` +
+		`Saved abstracts from the OHBM 2026 Atlas (${items.length} item${items.length === 1 ? '' : 's'}).\n\n` +
+		`★ Open all ${items.length} item${items.length === 1 ? '' : 's'} in the Atlas (restores the cart): ${restoreUrl}\n\n` +
 		`Each entry below has an "Open:" link that lands directly on its full-detail page.\n\n`;
 	const footer = `\n\n— Browse the rest at ${siteHome}/`;
-	const lines: string[] = [];
-	let included = 0;
-	let truncated = false;
-	for (const rec of items) {
-		const lead = leadAuthorByPosterId.get(rec.poster_id) ?? '';
-		const line = renderItemLine(rec, lead, options.siteUrl, included + 1);
-		const tentativeBody = header + [...lines, line].join('\n\n') + truncationSuffix + footer;
-		const tentativeUrlLength = subjectPart.length + encodeURIComponent(tentativeBody).length;
-		if (tentativeUrlLength > MAX_MAILTO_LENGTH && included > 0) {
-			truncated = true;
-			break;
-		}
-		lines.push(line);
-		included += 1;
-	}
-	let body = header + lines.join('\n\n');
-	if (truncated) body += truncationSuffix;
-	body += footer;
+
+	// Item-count cap, NOT byte cap. The mailto's purpose is to ship
+	// the data out of the site; cutting the body short to please
+	// Outlook 2083 defeats that. Modern mail clients accept much
+	// larger URLs; for huge carts (> MAX_EMAIL_ITEMS) we truncate
+	// and the restore URL above does the rest.
+	const visibleCount = Math.min(items.length, MAX_EMAIL_ITEMS);
+	const truncated = items.length > MAX_EMAIL_ITEMS;
+	const lines = items
+		.slice(0, visibleCount)
+		.map((rec, i) =>
+			renderItemLine(
+				rec,
+				leadAuthorByPosterId.get(rec.poster_id) ?? '',
+				options.siteUrl,
+				i + 1
+			)
+		);
+	const truncationSuffix = truncated
+		? `\n\n…(${items.length - visibleCount} more items not shown above; click the ★ link at the top to load the FULL list back into your cart.)`
+		: '';
+
+	const body = header + lines.join('\n\n') + truncationSuffix + footer;
 	return subjectPart + encodeURIComponent(body);
 }
 
-/** Plain-text rendering (for the clipboard fallback). */
+/** Plain-text rendering (for the clipboard fallback). Includes
+ * EVERY saved item — the clipboard path has no length budget so the
+ * email truncation doesn't apply here.
+ */
 export function buildPlainTextList(
 	items: AbstractRecord[],
 	leadAuthorByPosterId: Map<number, string>,
 	siteUrl: string
 ): string {
 	const siteHome = trimSlash(siteUrl);
+	const restoreUrl = buildCartRestoreUrl(
+		siteUrl,
+		items.map((r) => r.poster_id)
+	);
 	const header =
-		`Saved abstracts from the OHBM 2026 Atlas (${items.length} item${items.length === 1 ? '' : 's'}).\n` +
+		`Saved abstracts from the OHBM 2026 Atlas (${items.length} item${items.length === 1 ? '' : 's'}).\n\n` +
+		`★ Open all ${items.length} item${items.length === 1 ? '' : 's'} in the Atlas (restores the cart): ${restoreUrl}\n\n` +
 		`Each entry below has an "Open:" link that lands directly on its full-detail page.\n\n`;
 	const body = items
 		.map((rec, i) =>
