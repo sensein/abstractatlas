@@ -218,7 +218,25 @@ def normalise_for_latex(text: str) -> str:
     text = _fold_math_alphanumerics(text)
     text = _normalise_unicode_super_sub(text)
     text = _normalise_greek_and_math(text)
+    text = _collapse_caret_runs(text)
     return text
+
+
+# Pandoc's `^...^` superscript syntax pairs ONE opening + ONE closing
+# caret around the content. A run of 2+ adjacent carets (`^^`,
+# `^^^`, `(R^^2^^`, `^4^^^`, …) comes from corpus artefacts —
+# accidentally-pasted carets, empty `<sup></sup>` tags collapsing,
+# or `<sup><sup>` flattening edge cases — and pandoc emits `^^` to
+# LaTeX where it triggers "Double superscript" errors at xelatex.
+#
+# Policy: any adjacent run of 2+ carets reduces to a single escaped
+# literal caret (`\^`). Already-valid `^N^` super spans (where the
+# carets are NOT adjacent — content sits between them) are untouched.
+_DOUBLE_CARET_RE = re.compile(r"\^{2,}")
+
+
+def _collapse_caret_runs(text: str) -> str:
+    return _DOUBLE_CARET_RE.sub(r"\\^", text)
 
 
 def _normalise_greek_and_math(text: str) -> str:
