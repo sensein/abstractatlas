@@ -15,7 +15,28 @@ stages can mirror the pattern.
 
 from __future__ import annotations
 
-from ohbm2026.fetch.graphql_api import GraphQLAPIError
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Re-exported via module-level __getattr__ to avoid a circular
+    # import: fetch/__init__.py loads fetch.stage, which itself imports
+    # `from ohbm2026.exceptions import ...`. Eager-importing
+    # `ohbm2026.fetch.graphql_api` at the top of THIS module triggers
+    # fetch/__init__.py before exceptions.py finishes loading, which
+    # explodes any direct `from ohbm2026.exceptions import X` outside
+    # the cli/dispatch sequence (e.g. a new stage module like
+    # `ohbm2026.book.corpus`). Deferring to runtime resolution via
+    # __getattr__ keeps the public surface unchanged.
+    from ohbm2026.fetch.graphql_api import GraphQLAPIError  # noqa: F401
+
+
+def __getattr__(name: str):
+    if name == "GraphQLAPIError":
+        from ohbm2026.fetch.graphql_api import GraphQLAPIError
+
+        return GraphQLAPIError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "GraphQLAPIError",
@@ -47,6 +68,7 @@ __all__ = [
     "CommunityResolutionDegenerate",
     "UIBuildError",
     "Stage6Error",
+    "BookBuildError",
 ]
 
 
@@ -297,6 +319,22 @@ class TopicGroupingHallucination(AnalysisError):
     orchestrator aborts the run rather than caching the hallucinated
     response.
     """
+
+
+class BookBuildError(OhbmStageError):
+    """Stage 11 (book-of-abstracts) precondition failed or render aborted.
+
+    Raised by `ohbm2026.book` when the canonical corpus inputs are
+    missing/empty, the filtered entry set is empty, the output root
+    is unwritable, a required system dep (`pandoc` / `xelatex`) is
+    absent from PATH, or pandoc returns non-zero. `details` captures
+    subprocess stderr (or any other supporting context) verbatim so
+    operators can diagnose without re-running.
+    """
+
+    def __init__(self, message: str, *, details: str | None = None) -> None:
+        super().__init__(message)
+        self.details = details
 
 
 class CommunityResolutionDegenerate(Warning):

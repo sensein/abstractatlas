@@ -1,0 +1,104 @@
+{
+  "fetched_at": "2026-05-19T00:00:00Z",
+  "author_count": 7,
+  "authors": [
+    {
+      "id": 80001,
+      "first_name": "Jane",
+      "middle_initial": "A",
+      "last_name": "Smith",
+      "title": null,
+      "degree": "PhD",
+      "orcid_id": null,
+      "presenting": true,
+      "submission_id": 9000001,
+      "affiliations": [
+        {"id": 1, "affiliation_order": 0, "institution": "MIT", "city": "Cambridge", "state": "MA", "country": "United States"}
+      ]
+    },
+    {
+      "id": 80002,
+      "first_name": "Karl",
+      "middle_initial": null,
+      "last_name": "Johnson",
+      "title": null,
+      "degree": null,
+      "orcid_id": null,
+      "presenting": false,
+      "submission_id": 9000001,
+      "affiliations": [
+        {"id": 2, "affiliation_order": 0, "institution": "Harvard", "city": "Cambridge", "state": "MA", "country": "United States"}
+      ]
+    },
+    {
+      "id": 80003,
+      "first_name": "Maria",
+      "middle_initial": "B",
+      "last_name": "Brown",
+      "title": null,
+      "degree": "PhD",
+      "orcid_id": null,
+      "presenting": true,
+      "submission_id": 9000002,
+      "affiliations": [
+        {"id": 3, "affiliation_order": 0, "institution": "Stanford", "city": "Stanford", "state": "CA", "country": "United States"}
+      ]
+    },
+    {
+      "id": 80003,
+      "first_name": "Maria",
+      "middle_initial": "B",
+      "last_name": "Brown",
+      "title": null,
+      "degree": "PhD",
+      "orcid_id": null,
+      "presenting": false,
+      "submission_id": 9000004,
+      "affiliations": [
+        {"id": 3, "affiliation_order": 0, "institution": "Stanford", "city": "Stanford", "state": "CA", "country": "United States"}
+      ]
+    },
+    {
+      "id": 80004,
+      "first_name": "Paul",
+      "middle_initial": null,
+      "last_name": "Davis",
+      "title": null,
+      "degree": null,
+      "orcid_id": null,
+      "presenting": true,
+      "submission_id": 9000003,
+      "affiliations": [
+        {"id": 4, "affiliation_order": 0, "institution": "Oxford", "city": "Oxford", "state": null, "country": "United Kingdom"}
+      ]
+    },
+    {
+      "id": 80005,
+      "first_name": "Quinn",
+      "middle_initial": null,
+      "last_name": "Lee",
+      "title": null,
+      "degree": "MD",
+      "orcid_id": null,
+      "presenting": true,
+      "submission_id": 9000004,
+      "affiliations": [
+        {"id": 5, "affiliation_order": 0, "institution": "Yale", "city": "New Haven", "state": "CT", "country": "United States"}
+      ]
+    },
+    {
+      "id": 80006,
+      "first_name": "Ravi",
+      "middle_initial": null,
+      "last_name": "Wilson",
+      "title": null,
+      "degree": null,
+      "orcid_id": null,
+      "presenting": true,
+      "submission_id": 9000005,
+      "affiliations": [
+        {"id": 6, "affiliation_order": 0, "institution": "UCL", "city": "London", "state": null, "country": "United Kingdom"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "fetched_at": "2026-05-19T00:00:00Z",
+  "event_ids": [99999],
+  "abstract_count": 1,
+  "abstracts": [
+    {
+      "id": 9000099,
+      "poster_id": null,
+      "title": "Withdrawn abstract (should be filtered)",
+      "accepted_for": null,
+      "authors": [],
+      "responses": [],
+      "external_urls": [],
+      "figure_urls": [],
+      "program_sessions": [],
+      "local_assets": []
+    }
+  ]
+}
