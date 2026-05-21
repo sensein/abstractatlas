@@ -219,6 +219,7 @@ def normalise_for_latex(text: str) -> str:
     text = _normalise_unicode_super_sub(text)
     text = _normalise_greek_and_math(text)
     text = _collapse_caret_runs(text)
+    text = _caret_super_to_latex(text)
     return text
 
 
@@ -237,6 +238,31 @@ _DOUBLE_CARET_RE = re.compile(r"\^{2,}")
 
 def _collapse_caret_runs(text: str) -> str:
     return _DOUBLE_CARET_RE.sub(r"\\^", text)
+
+
+# Stage 12.1 — convert pandoc text-superscript syntax `^X^` to
+# explicit LaTeX `\textsuperscript{X}` so pandoc's math-mode parser
+# never sees stray carets adjacent to `$math$` spans. Without this,
+# patterns like `3$\times$3 mm^3^` get parsed weirdly: pandoc pairs
+# the dollars across the `mm^3^` boundary, creating a math-mode
+# span that contains `^3^` — which LaTeX reads as
+# "superscript-3-superscript" → "Double superscript" error.
+#
+# This was the dominant cause of the 76 broken-LaTeX abstracts in
+# Stage 11.1's `provenance.failed_abstracts[]` (clustered under
+# "Double superscript" error signatures).
+#
+# Match shape: `^<non-space-non-caret content>^`. Mostly affects:
+#   - author-affiliation markers (`Doe^1^`)
+#   - unit notations (`mm^3^`, `cm^2^`)
+#   - inline references (`Smith^2024^`)
+# Already-escaped `\^X^` won't match (the leading `^` is preceded
+# by `\`); we use a negative lookbehind to skip those.
+_CARET_SUPER_RE = re.compile(r"(?<!\\)\^([^\s^]+)\^")
+
+
+def _caret_super_to_latex(text: str) -> str:
+    return _CARET_SUPER_RE.sub(r"\\textsuperscript{\1}", text)
 
 
 def _normalise_greek_and_math(text: str) -> str:

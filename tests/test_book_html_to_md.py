@@ -101,5 +101,45 @@ class TestHtmlToMd(unittest.TestCase):
         self.assertEqual(html_to_pandoc_md(html), html_to_pandoc_md(html))
 
 
+class TestCaretSuperscriptToLatex(unittest.TestCase):
+    """Stage 12.1 — `normalise_for_latex` converts pandoc text-
+    superscript syntax `^X^` to explicit `\\textsuperscript{X}` so
+    the dominant cluster of "Double superscript" LaTeX errors (76
+    failed abstracts in Stage 11.1's provenance) is eliminated.
+    """
+
+    def test_simple_caret_to_textsuperscript(self) -> None:
+        from ohbm2026.book.html_to_md import normalise_for_latex
+
+        self.assertIn("\\textsuperscript{3}", normalise_for_latex("4 mm^3^"))
+        self.assertIn("\\textsuperscript{1,2}", normalise_for_latex("Doe^1,2^"))
+
+    def test_caret_survives_math_span_adjacency(self) -> None:
+        # The exact pattern that broke Stage 11.1: `$\times$3 mm^3^`.
+        from ohbm2026.book.html_to_md import normalise_for_latex
+
+        out = normalise_for_latex("3$\\times$3$\\times$4 mm^3^;")
+        # No bare `^3^` remains — pandoc's math-mode parser can't
+        # confuse the result anymore.
+        self.assertNotIn("mm^3^", out)
+        self.assertIn("\\textsuperscript{3}", out)
+
+    def test_escaped_caret_not_touched(self) -> None:
+        # Already-escaped `\^X^` (rare; usually authors who want a
+        # literal caret) should NOT be re-converted. The regex uses
+        # a negative lookbehind on `\\`.
+        from ohbm2026.book.html_to_md import normalise_for_latex
+
+        out = normalise_for_latex("a \\^x^ b")
+        self.assertNotIn("\\textsuperscript{x}", out)
+
+    def test_idempotent(self) -> None:
+        from ohbm2026.book.html_to_md import normalise_for_latex
+
+        once = normalise_for_latex("k^c^")
+        twice = normalise_for_latex(once)
+        self.assertEqual(once, twice)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

@@ -170,9 +170,18 @@ def entry_to_md(entry: BookEntry) -> str:
     filename side-effect list — figures are still written by
     :func:`emit_book_md` for the markdown bundle; the per-abstract
     render reads them via pandoc's ``--resource-path``.
+
+    Stage 12.1 — applies ``normalise_for_latex`` so per-chunk
+    markdown gets the same caret-superscript → ``\\textsuperscript{}``
+    conversion that the assembled ``book.md`` does. Without this,
+    abstracts with mixed ``$\\times$`` math spans + ``^N^`` text
+    superscripts trigger "Double superscript" LaTeX errors at
+    Tectonic time (the dominant Stage-11.1 failure cluster).
     """
 
-    return _entry_md(entry, fig_filenames=[])
+    from ohbm2026.book.html_to_md import normalise_for_latex
+
+    return normalise_for_latex(_entry_md(entry, fig_filenames=[]))
 
 
 def _entry_md(entry: BookEntry, fig_filenames: list[str]) -> str:
