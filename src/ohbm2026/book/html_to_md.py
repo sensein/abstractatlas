@@ -218,8 +218,17 @@ def normalise_for_latex(text: str) -> str:
     text = _fold_math_alphanumerics(text)
     text = _normalise_unicode_super_sub(text)
     text = _normalise_greek_and_math(text)
-    text = _collapse_caret_runs(text)
+    # Stage 12.1: convert well-formed `^X^` caret-super pairs BEFORE
+    # `_collapse_caret_runs` so adjacent pairs (`^X^^Y^` from HTML
+    # like `<sup>X</sup><sup>Y</sup>`) get cleanly split into
+    # `\textsuperscript{X}\textsuperscript{Y}` instead of being
+    # mangled by the `^^` collapse pass. Running the collapse first
+    # turned poster 239's `^-^^17^` into `^-\^17^` which downstream
+    # regexes captured wrong and produced
+    # `\textsuperscript{-\}17^` (Stage 11.1 / Stage 12 failure #2 in
+    # provenance.failed_abstracts[]).
     text = _caret_super_to_latex(text)
+    text = _collapse_caret_runs(text)
     return text
 
 

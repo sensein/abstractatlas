@@ -87,6 +87,66 @@ def _first_line(b: bytes) -> str:
     return b.decode("utf-8", errors="replace").splitlines()[0].strip()
 
 
+def _prewarm_tectonic_cache(pandoc_path: str, engine_binary: str) -> None:
+    """Pre-warm Tectonic's LaTeX bundle cache to avoid parallel
+    workers racing on the first cache populate.
+
+    Issue: when N joblib workers spawn ~simultaneously, each
+    Tectonic invocation does `\\usepackage{...}` resolution against
+    ``~/Library/Caches/Tectonic``. The first time the build
+    references a package (e.g. ``longtable`` or the ``size10.clo``
+    metric file), several workers race to populate the same cache
+    entry. Some get partial reads → "Metric (TFM) file not loadable"
+    errors → the chunks fail. With ``--workers 48`` this caused
+    ~17/3,164 spurious failures in the Stage 12.1 smoke.
+
+    Fix: pre-warm the cache by running a SINGLE Tectonic compile
+    that exercises the same preamble as the per-abstract chunks.
+    After this returns, the cache holds every package the workers
+    will request → no race, no spurious failures.
+
+    Cost: ~5 s on a cold Tectonic cache; ~0.5 s on a warm one.
+    """
+
+    # Lazy import to avoid the circular dep render_via_pandoc <→
+    # render_per_abstract (both reference each other for the
+    # production pipeline).
+    from ohbm2026.book.render_per_abstract import per_abstract_header_path
+
+    # Minimal markdown that exercises the per-abstract preamble:
+    # geometry + longtable + textsuperscript + math.
+    sample = (
+        "Pre-warm sample. "
+        r"$\times$ a\textsuperscript{1}. "
+        r"\begin{longtable}{r r} a & b \\ \end{longtable}"
+    )
+    per_chunk_header = per_abstract_header_path().resolve()
+    try:
+        subprocess.run(
+            [
+                pandoc_path,
+                "--from=markdown+raw_tex+pandoc_title_block-strikeout",
+                "--to=pdf",
+                f"--pdf-engine={engine_binary}",
+                "-H",
+                str(per_chunk_header),
+                "--standalone",
+                "-o",
+                "/dev/null",
+            ],
+            input=sample,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        # If the pre-warm fails, the joblib workers may hit the
+        # original race, but the build still proceeds — we don't
+        # want a one-time warmup to break the pipeline. Failures
+        # are loud at the per-abstract level anyway.
+        pass
+
+
 def _header_includes_path(style: str, *, margins: str = "tight") -> pathlib.Path:
     """Return the absolute path to the right LaTeX header-includes
     file. Files live alongside the book package so the operator never
@@ -176,6 +236,18 @@ def to_pdf(
     engine_binary, engine_version = engine
 
     pandoc_version = _first_line(subprocess.check_output([pandoc, "--version"]))
+
+    # Stage 12.1 — pre-warm Tectonic's local LaTeX bundle cache by
+    # running a single throwaway compile BEFORE the joblib pool fans
+    # out. Tectonic resolves `\usepackage{...}` against ~/Library/
+    # Caches/Tectonic on every invocation; the FIRST time a high-
+    # parallelism build needs `size10.clo` (or any uncached metric
+    # file), N workers race to read+populate the cache simultaneously
+    # → some get partial reads → "Metric (TFM) file not loadable"
+    # errors. Pre-warming serialises that first fetch so subsequent
+    # workers see a fully-populated cache. Cost: ~5 s on a cold
+    # cache; ~0.5 s on a warm one.
+    _prewarm_tectonic_cache(pandoc, engine_binary)
 
     header_includes = _header_includes_path(style, margins=margins)
     if not header_includes.exists():
