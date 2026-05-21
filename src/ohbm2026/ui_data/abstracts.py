@@ -67,6 +67,9 @@ _SECTION_QUESTION = {
     "results": "Results",
     "conclusion": "Conclusion",
     "references": "References/Citations",
+    # Stage 12 US1: surface the Acknowledgement field so the
+    # permalink page can render it under the verbatim left column.
+    "acknowledgments": "Acknowledgement",
 }
 
 
@@ -522,6 +525,9 @@ def iter_abstracts(
                 "results": _section(questions, "results"),
                 "conclusion": _section(questions, "conclusion"),
                 "references": _section(questions, "references"),
+                # Stage 12 US1 — empty string when corpus's
+                # `Acknowledgement` response is absent or whitespace.
+                "acknowledgments": _section(questions, "acknowledgments"),
             },
             "topics": _topics(questions),
             "methods_checklist": parse_string_list_value(

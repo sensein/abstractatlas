@@ -73,6 +73,15 @@ export interface AbstractRecord {
 		results: string;
 		conclusion: string;
 		references: string;
+		/**
+		 * Stage 12 US1 — trimmed `Acknowledgement` response. Optional
+		 * because older parquet shards (pre-Stage-12) don't carry the
+		 * field; the SvelteKit `loader.ts` doesn't backfill. Empty
+		 * string means "present but blank"; `undefined` means "shard
+		 * was emitted before Stage 12". UI MUST treat both as absent.
+		 * See `specs/013-book-layout-polish/`.
+		 */
+		acknowledgments?: string;
 	};
 	topics: {
 		primary: string;
