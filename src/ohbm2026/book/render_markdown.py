@@ -146,6 +146,19 @@ def _standby_md(entry: BookEntry) -> str | None:
     return "**Standby**: " + " · ".join(parts)
 
 
+def entry_to_md(entry: BookEntry) -> str:
+    """Render one abstract section as markdown (Stage 11.1 public helper).
+
+    Stable wrapper around `_entry_md` for the per-abstract PDF pipeline
+    in :mod:`ohbm2026.book.render_per_abstract`. Discards the figure-
+    filename side-effect list — figures are still written by
+    :func:`emit_book_md` for the markdown bundle; the per-abstract
+    render reads them via pandoc's ``--resource-path``.
+    """
+
+    return _entry_md(entry, fig_filenames=[])
+
+
 def _entry_md(entry: BookEntry, fig_filenames: list[str]) -> str:
     """Render one abstract section as markdown.
 
@@ -292,14 +305,18 @@ def emit_book_md(
     into ``fig_assets/``. Set to None to copy figures byte-for-byte
     from the original `local_path`. Resizing keeps PNG bit-depth +
     JPEG quality at sensible defaults; aspect ratio preserved.
-    Without resize the OHBM corpus produces a 6 GB pandoc docx that
-    Word refuses to open.
+
+    Stage 11.1 — figure resizing runs joblib-parallel + skips
+    already-present destinations (no rmtree of fig_assets/ on entry),
+    so the first build pays the ~3-min cost once and subsequent runs
+    just byte-skip. **Operator: if you change ``--max-image-width``,
+    delete ``data/outputs/book/.staging__*/fig_assets/`` manually
+    OR `rm -rf data/outputs/book/`** — the cache has no per-file
+    width sidecar so it can't auto-invalidate.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     fig_dir = output_dir / "fig_assets"
-    if fig_dir.exists():
-        shutil.rmtree(fig_dir)
-    fig_dir.mkdir()
+    fig_dir.mkdir(exist_ok=True)
 
     template = _read_template()
     header = template.format(
@@ -326,8 +343,12 @@ def emit_book_md(
     (output_dir / "book.md").write_text(full, encoding="utf-8")
 
     # Copy the figure assets — flat directory, names from the contract.
-    # We iterate over entries again to recover the (fig, filename)
-    # pairing (deterministic order, no rely-on-side-effects).
+    # We iterate over entries to recover the (fig, filename) pairing
+    # (deterministic order, no rely-on-side-effects), then dispatch
+    # the resize work via joblib loky-backed parallel. Per-file
+    # `dest.exists()` short-circuit means warm runs are O(N) stat
+    # calls — no Pillow load.
+    copy_jobs: list[tuple[pathlib.Path, pathlib.Path, int | None]] = []
     for entry in book.entries:
         type_counts = collections.Counter(
             _figure_type(f.question_name) for f in entry.figures
@@ -343,7 +364,18 @@ def emit_book_md(
             )
             dest = fig_dir / filename
             if fig.local_path.exists() and not dest.exists():
-                _copy_figure(fig.local_path, dest, max_image_width)
+                copy_jobs.append((fig.local_path, dest, max_image_width))
+
+    if copy_jobs:
+        # Lazy import joblib — only the figure-resize codepath needs
+        # it; unit tests that compose the markdown without copying
+        # figures don't pay the import cost.
+        from joblib import Parallel, delayed
+
+        Parallel(n_jobs=-1, backend="loky")(
+            delayed(_copy_figure)(src, dest, max_width)
+            for (src, dest, max_width) in copy_jobs
+        )
 
 
 def _copy_figure(
@@ -360,6 +392,15 @@ def _copy_figure(
     # that don't render figures (e.g. unit tests on the markdown
     # composer only).
     from PIL import Image, UnidentifiedImageError
+
+    # Disable Pillow's decompression-bomb safety check. The default
+    # ~179 MP limit is meant to defend against malicious external
+    # uploads; our corpus comes from Oxford Abstracts and is fully
+    # trusted. A handful of legitimate figures (large screenshots /
+    # high-res neuroimaging exports) exceed 179 MP and would
+    # otherwise crash the whole joblib batch via raise-on-first-
+    # failure semantics.
+    Image.MAX_IMAGE_PIXELS = None
 
     try:
         with Image.open(src) as img:
