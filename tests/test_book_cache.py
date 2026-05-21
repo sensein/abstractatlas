@@ -114,13 +114,11 @@ class TestCacheLoadStore(unittest.TestCase):
 
     def test_store_then_load_round_trip(self) -> None:
         key = "0123456789abcdef"
-        index_entries = ("Doe, J.", "Smith, A.")
         path = self.store(
             self.cache_dir,
             key,
             self.pdf_bytes,
             page_count=1,
-            index_entries=index_entries,
         )
         self.assertTrue(path.exists())
         self.assertEqual(path.name, f"{key}.pdf")
@@ -130,7 +128,6 @@ class TestCacheLoadStore(unittest.TestCase):
         bytes_back, sidecar = loaded
         self.assertEqual(bytes_back, self.pdf_bytes)
         self.assertEqual(sidecar.get("page_count"), 1)
-        self.assertEqual(tuple(sidecar.get("index_entries", ())), index_entries)
 
     def test_store_writes_sidecar(self) -> None:
         key = "fedcba9876543210"
@@ -139,7 +136,6 @@ class TestCacheLoadStore(unittest.TestCase):
             key,
             self.pdf_bytes,
             page_count=3,
-            index_entries=("Last, F.",),
         )
         self.assertTrue((self.cache_dir / f"{key}.pdf").exists())
         self.assertTrue((self.cache_dir / f"{key}.json").exists())
@@ -152,12 +148,36 @@ class TestCacheLoadStore(unittest.TestCase):
             key,
             self.pdf_bytes,
             page_count=1,
-            index_entries=(),
         )
         stragglers = list(self.cache_dir.glob("*.tmp")) + list(
             self.cache_dir.glob("*.partial")
         )
         self.assertEqual(stragglers, [])
+
+    def test_store_from_path_avoids_bytes_round_trip(self) -> None:
+        """Stage-11.1.1 hot path — render_one's pandoc-to-temp workflow.
+
+        ``store_cached_pdf_from_path`` consumes the src path (atomic-
+        moves it into the cache). No read-bytes-then-write-temp
+        round-trip; the source path no longer exists after the call.
+        """
+        from ohbm2026.book.cache import store_cached_pdf_from_path
+
+        key = "1111222233334444"
+        # Write a temp PDF (same shape as pandoc's output would be).
+        src = self.cache_dir / "raw.pdf.tmp"
+        src.write_bytes(self.pdf_bytes)
+        final = store_cached_pdf_from_path(
+            self.cache_dir, key, src, page_count=1
+        )
+        self.assertTrue(final.exists())
+        self.assertFalse(src.exists(), "src path must be consumed")
+
+        loaded = self.load(self.cache_dir, key)
+        self.assertIsNotNone(loaded)
+        bytes_back, sidecar = loaded
+        self.assertEqual(bytes_back, self.pdf_bytes)
+        self.assertEqual(sidecar.get("page_count"), 1)
 
 
 if __name__ == "__main__":  # pragma: no cover

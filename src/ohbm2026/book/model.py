@@ -149,7 +149,6 @@ class AbstractPdfChunk:
     page_count: int
     cache_hit: bool
     pandoc_stderr: str | None
-    index_entries: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)

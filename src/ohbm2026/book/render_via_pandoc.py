@@ -175,7 +175,14 @@ def to_pdf(
     if cache_dir is None:
         cache_dir = pathlib.Path("data/cache/book/abstracts")
     cache_dir.mkdir(parents=True, exist_ok=True)
-    resource_path = output_dir  # fig_assets/ sits under here
+    # Resolve every path passed across the joblib boundary to absolute.
+    # Loky's worker pool may have been created in a prior cwd (pools
+    # are process-pool-cached); workers can't see relative paths that
+    # aren't relative to their initial cwd.
+    cache_dir = cache_dir.resolve()
+    resource_path = output_dir.resolve()  # fig_assets/ sits under here
+    header_includes_abs = header_includes.resolve()
+    per_chunk_header_abs = per_chunk_header.resolve()
 
     # ---- Per-abstract render pass ------------------------------------
     # joblib's loky backend gives process-level parallelism, matching
@@ -188,7 +195,7 @@ def to_pdf(
         delayed(render_one)(
             entry,
             style=style,
-            header_includes_path=per_chunk_header,
+            header_includes_path=per_chunk_header_abs,
             pandoc_path=pandoc,
             engine_name=engine_binary,
             engine_version=engine_version,
@@ -240,7 +247,7 @@ def to_pdf(
         engine_binary=engine_binary,
         engine_version=engine_version,
         pandoc_version=pandoc_version,
-        header_includes_path=header_includes,
+        header_includes_path=header_includes_abs,
         style=style,
         cache_dir=cache_dir,
         no_cache=no_cache,
@@ -254,7 +261,7 @@ def to_pdf(
         output_path,
         pandoc_path=pandoc,
         engine_binary=engine_binary,
-        header_includes_path=header_includes,
+        header_includes_path=header_includes_abs,
         style=style,
         draft_dir=draft_dir,
         author_index=book.author_index,
@@ -311,12 +318,17 @@ def _render_front_matter(
 ):
     """Render the front-matter chunk; cached like a per-abstract chunk."""
 
+    import os as _os
+    import tempfile as _tempfile
+
+    import pikepdf
+
     from ohbm2026.book.cache import (
         cache_pdf_path,
         compute_cache_key,
         hash_header_includes,
         load_cached_pdf,
-        store_cached_pdf,
+        store_cached_pdf_from_path,
     )
     from ohbm2026.book.model import AbstractPdfChunk
 
@@ -340,9 +352,18 @@ def _render_front_matter(
                 page_count=int(sidecar.get("page_count", 0)),
                 cache_hit=True,
                 pandoc_stderr=None,
-                index_entries=(),
             )
 
+    # Same write-temp-then-atomic-move pattern as render_one — no
+    # bytes round-trip.
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = _tempfile.mkstemp(
+        prefix=f"{key}.",
+        suffix=".pdf.tmp",
+        dir=str(cache_dir),
+    )
+    _os.close(fd)
+    tmp_path = pathlib.Path(tmp_name)
     argv = [
         pandoc_path,
         "--from=markdown+raw_tex+pandoc_title_block-strikeout",
@@ -353,35 +374,35 @@ def _render_front_matter(
         "--standalone",
         "--toc",
         "-o",
-        str(cache_pdf_path(cache_dir, key)),
+        str(tmp_path),
     ]
     proc = subprocess.run(argv, input=markdown, capture_output=True, text=True)
     if proc.returncode != 0:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
         raise BookBuildError(
             f"pandoc returned non-zero ({proc.returncode}) building front matter",
             details=(proc.stderr or "").strip(),
         )
 
-    import pikepdf
-
-    path = cache_pdf_path(cache_dir, key)
-    with pikepdf.Pdf.open(path) as pdf:
+    with pikepdf.Pdf.open(tmp_path) as pdf:
         page_count = len(pdf.pages)
-    store_cached_pdf(
+    final_path = store_cached_pdf_from_path(
         cache_dir,
         key,
-        path.read_bytes(),
+        tmp_path,
         page_count=page_count,
-        index_entries=(),
     )
     return AbstractPdfChunk(
         poster_id=-1,
         cache_key=key,
-        cached_path=path,
+        cached_path=final_path,
         page_count=page_count,
         cache_hit=False,
         pandoc_stderr=None,
-        index_entries=(),
     )
 
 

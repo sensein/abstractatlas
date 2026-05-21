@@ -12,7 +12,7 @@ operator intervention (CA-007: no hardcoded version allow-list).
 Storage layout under `cache_dir`:
 
     <key>.pdf            # the pre-rendered chunk bytes
-    <key>.json           # sidecar: {page_count, index_entries}
+    <key>.json           # sidecar: {page_count}
 
 Writes use the `temp + os.replace` pattern so concurrent joblib
 workers never observe a half-written `<key>.pdf`. The sidecar lets a
@@ -26,8 +26,8 @@ import hashlib
 import json
 import os
 import pathlib
+import shutil
 import tempfile
-from typing import Iterable
 
 
 _CACHE_KEY_LEN = 16
@@ -107,48 +107,101 @@ def store_cached_pdf(
     pdf_bytes: bytes,
     *,
     page_count: int,
-    index_entries: Iterable[str],
 ) -> pathlib.Path:
     """Atomically persist a rendered chunk + its sidecar.
 
     Returns the final `<key>.pdf` path. Both files land via temp +
     os.replace so a concurrent reader never sees a partial write
     (POSIX guarantees rename atomicity on the same filesystem).
+
+    Prefer :func:`store_cached_pdf_from_path` when the caller has
+    already written the PDF bytes to disk — it avoids the
+    read-bytes → write-temp → rename round-trip and is the hot path
+    used by ``render_per_abstract.render_one``.
     """
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     pdf_final = cache_pdf_path(cache_dir, key)
-    side_final = cache_sidecar_path(cache_dir, key)
-    entries = tuple(index_entries)
-
-    # Two-step: write the sidecar first (cheap), then the PDF. If the
-    # PDF write fails the sidecar gets orphaned — load_cached_pdf
-    # checks both, so an orphan is treated as a miss.
-    sidecar_payload = {
-        "page_count": int(page_count),
-        "index_entries": list(entries),
-    }
 
     pdf_tmp = _atomic_temp_path(pdf_final)
+    try:
+        pdf_tmp.write_bytes(pdf_bytes)
+        _commit_chunk(pdf_tmp, pdf_final, cache_dir, key, page_count)
+    finally:
+        if pdf_tmp.exists():
+            try:
+                pdf_tmp.unlink()
+            except OSError:
+                pass
+    return pdf_final
+
+
+def store_cached_pdf_from_path(
+    cache_dir: pathlib.Path,
+    key: str,
+    src_pdf: pathlib.Path,
+    *,
+    page_count: int,
+) -> pathlib.Path:
+    """Atomically move an already-written PDF into the cache + write sidecar.
+
+    Used by ``render_per_abstract.render_one`` to avoid the
+    read-then-write-back cycle: pandoc writes to a temp path inside
+    ``cache_dir`` (same filesystem, so ``os.replace`` is atomic),
+    pikepdf measures pages, then this helper moves the temp to its
+    final ``<key>.pdf`` location and writes the sidecar.
+
+    ``src_pdf`` is consumed — caller MUST NOT touch the path after
+    this returns. If ``src_pdf`` is on a different filesystem than
+    ``cache_dir``, falls back to a copy + unlink (rare; same-fs is
+    the documented contract).
+    """
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    pdf_final = cache_pdf_path(cache_dir, key)
+    _commit_chunk(src_pdf, pdf_final, cache_dir, key, page_count)
+    return pdf_final
+
+
+def _commit_chunk(
+    src_pdf: pathlib.Path,
+    pdf_final: pathlib.Path,
+    cache_dir: pathlib.Path,
+    key: str,
+    page_count: int,
+) -> None:
+    """Move ``src_pdf`` to its final ``<key>.pdf`` location + write sidecar.
+
+    Order: sidecar first (cheap), then PDF rename. If the rename
+    fails the sidecar gets orphaned — ``load_cached_pdf`` checks for
+    both, so an orphan is treated as a miss and the next render
+    cleans it up.
+    """
+
+    side_final = cache_sidecar_path(cache_dir, key)
     side_tmp = _atomic_temp_path(side_final)
+    sidecar_payload = {"page_count": int(page_count)}
     try:
         side_tmp.write_text(
             json.dumps(sidecar_payload, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        pdf_tmp.write_bytes(pdf_bytes)
         os.replace(side_tmp, side_final)
-        os.replace(pdf_tmp, pdf_final)
     finally:
-        # If anything blew up before replace(), clean up the temp files
-        # so the cache_dir doesn't accumulate junk.
-        for t in (pdf_tmp, side_tmp):
-            if t.exists():
-                try:
-                    t.unlink()
-                except OSError:
-                    pass
-    return pdf_final
+        if side_tmp.exists():
+            try:
+                side_tmp.unlink()
+            except OSError:
+                pass
+    try:
+        os.replace(src_pdf, pdf_final)
+    except OSError:
+        # Cross-filesystem fallback: copy + unlink.
+        shutil.copy2(src_pdf, pdf_final)
+        try:
+            src_pdf.unlink()
+        except OSError:
+            pass
 
 
 def _atomic_temp_path(final: pathlib.Path) -> pathlib.Path:

@@ -17,6 +17,24 @@ import re
 import shutil
 from importlib import resources
 
+# Disable Pillow's decompression-bomb safety check at module-import
+# time. The default ~179 MP limit defends against malicious external
+# uploads; our corpus comes from Oxford Abstracts and is fully
+# trusted. A handful of legitimate figures (large screenshots,
+# high-res neuroimaging exports) exceed 179 MP and would otherwise
+# crash the whole joblib batch via raise-on-first-failure semantics.
+# Setting it here (not inside _copy_figure) means each joblib loky
+# worker pays the override exactly once at module import, not on
+# every per-figure call. The Pillow import is lazy via a try block
+# so unit tests that compose the markdown without copying figures
+# don't pay the Pillow import cost when render_markdown loads.
+try:
+    from PIL import Image as _PIL_Image  # noqa: F401
+
+    _PIL_Image.MAX_IMAGE_PIXELS = None
+except ImportError:
+    pass
+
 from ohbm2026.book.model import (
     Author,
     AuthorIndexEntry,
@@ -364,7 +382,18 @@ def emit_book_md(
             )
             dest = fig_dir / filename
             if fig.local_path.exists() and not dest.exists():
-                copy_jobs.append((fig.local_path, dest, max_image_width))
+                # Resolve to absolute paths before handing off to joblib.
+                # Loky's worker pool may have been created in a prior
+                # cwd (pools are process-pool-cached); workers can't
+                # find relative paths that aren't relative to their
+                # initial cwd. Absolute paths are immune to that.
+                copy_jobs.append(
+                    (
+                        fig.local_path.resolve(),
+                        dest.resolve(),
+                        max_image_width,
+                    )
+                )
 
     if copy_jobs:
         # Lazy import joblib — only the figure-resize codepath needs
@@ -390,17 +419,11 @@ def _copy_figure(
         return
     # Lazy import — keeps Pillow off the startup path for callers
     # that don't render figures (e.g. unit tests on the markdown
-    # composer only).
+    # composer only). The decompression-bomb-check disable lives in
+    # this module's import-time block (see _disable_pillow_bomb_check
+    # below) so worker processes get the override exactly once at
+    # import — not on every per-figure call.
     from PIL import Image, UnidentifiedImageError
-
-    # Disable Pillow's decompression-bomb safety check. The default
-    # ~179 MP limit is meant to defend against malicious external
-    # uploads; our corpus comes from Oxford Abstracts and is fully
-    # trusted. A handful of legitimate figures (large screenshots /
-    # high-res neuroimaging exports) exceed 179 MP and would
-    # otherwise crash the whole joblib batch via raise-on-first-
-    # failure semantics.
-    Image.MAX_IMAGE_PIXELS = None
 
     try:
         with Image.open(src) as img:

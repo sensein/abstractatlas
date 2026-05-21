@@ -80,7 +80,6 @@ class TestTwoPassAssembly(unittest.TestCase):
                     page_count=self.page_counts[name],
                     cache_hit=True,
                     pandoc_stderr=None,
-                    index_entries=(f"Author{i}, A.",),
                 )
             )
         front = AbstractPdfChunk(
@@ -90,7 +89,6 @@ class TestTwoPassAssembly(unittest.TestCase):
             page_count=self.page_counts["front"],
             cache_hit=True,
             pandoc_stderr=None,
-            index_entries=(),
         )
         return front, chunks
 

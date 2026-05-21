@@ -184,21 +184,27 @@ def _build_index_markdown(
         return "\n".join(lines)
 
     for entry in author_index:
-        pages: list[str] = []
+        pages: list[int] = []
         for pid in entry.poster_ids:
             page = poster_to_start.get(pid)
             if page is None:
                 # Abstract dropped (failure isolation). Skip the page
                 # reference but keep the author present.
                 continue
-            pages.append(str(page))
+            pages.append(page)
         if not pages:
             # Every abstract for this author was filtered out.
             continue
         # `**Doe, J.**` followed by space + comma-separated page numbers.
-        # Each on its own line + a blank line for pandoc to treat as
-        # a paragraph.
-        lines.append(f"**{entry.display_name}** {', '.join(pages)}")
+        # Sort + dedupe so the printed back-of-book reads "12, 47, 50"
+        # not "50, 12, 47" — the input ``entry.poster_ids`` is sorted
+        # by poster_id (sort.py contract), but the poster_id→page
+        # mapping is non-monotonic when --sort is `title` or
+        # `first_author`. Explicit sort here keeps the printed index
+        # readable regardless of which --sort flag the operator
+        # passed.
+        sorted_pages = ", ".join(str(p) for p in sorted(set(pages)))
+        lines.append(f"**{entry.display_name}** {sorted_pages}")
         lines.append("")
     return "\n".join(lines)
 

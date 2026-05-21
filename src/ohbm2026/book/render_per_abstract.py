@@ -25,18 +25,22 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import os
 import pathlib
 import shutil
 import subprocess
 import sys
+import tempfile
 from importlib import resources
+
+import pikepdf
 
 from ohbm2026.book.cache import (
     cache_pdf_path,
     compute_cache_key,
     hash_header_includes,
     load_cached_pdf,
-    store_cached_pdf,
+    store_cached_pdf_from_path,
 )
 from ohbm2026.book.model import AbstractPdfChunk, BookEntry
 from ohbm2026.book.render_markdown import entry_to_md
@@ -85,14 +89,21 @@ def render_one(
                 page_count=int(sidecar.get("page_count", 0)),
                 cache_hit=True,
                 pandoc_stderr=None,
-                index_entries=tuple(sidecar.get("index_entries", ())),
             )
 
-    # Cache miss → pandoc subprocess.
+    # Cache miss → pandoc subprocess. Pandoc writes to a temp path
+    # inside cache_dir (same filesystem so the final os.replace is
+    # atomic); we measure the page count via pikepdf on the temp file
+    # then atomic-move it to <key>.pdf via store_cached_pdf_from_path.
+    # No bytes round-trip.
     cache_dir.mkdir(parents=True, exist_ok=True)
-    # We feed pandoc via stdin so the cache dir doesn't accumulate
-    # one-off .md files. Resource-path tells pandoc where to look for
-    # `fig_assets/<filename>` references in the markdown.
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f"{key}.",
+        suffix=".pdf.tmp",
+        dir=str(cache_dir),
+    )
+    os.close(fd)
+    tmp_path = pathlib.Path(tmp_name)
     argv = [
         pandoc_path,
         "--from=markdown+raw_tex+pandoc_title_block-strikeout",
@@ -103,7 +114,7 @@ def render_one(
         f"--resource-path={resource_path}",
         "--standalone",
         "-o",
-        str(cache_pdf_path(cache_dir, key)),
+        str(tmp_path),
     ]
     proc = subprocess.run(
         argv,
@@ -112,39 +123,30 @@ def render_one(
         text=True,
     )
     if proc.returncode != 0:
-        # Don't keep a half-written PDF — leave the cache clean.
-        out_path = cache_pdf_path(cache_dir, key)
-        if out_path.exists():
+        if tmp_path.exists():
             try:
-                out_path.unlink()
+                tmp_path.unlink()
             except OSError:
                 pass
         return AbstractPdfChunk(
             poster_id=entry.poster_id,
             cache_key=key,
-            cached_path=out_path,  # NOTE: does not exist on disk
+            cached_path=cache_pdf_path(cache_dir, key),  # NOTE: not on disk
             page_count=0,
             cache_hit=False,
             pandoc_stderr=_tail((proc.stderr or "").strip(), max_bytes=2048),
-            index_entries=(),
         )
 
-    # Probe page count via pikepdf — the assembler needs it for
-    # offset arithmetic anyway.
-    import pikepdf
-
-    pdf_path = cache_pdf_path(cache_dir, key)
-    with pikepdf.Pdf.open(pdf_path) as pdf:
+    # Probe page count via pikepdf, then atomic-move temp → <key>.pdf
+    # + write sidecar. No read-then-write-back cycle.
+    with pikepdf.Pdf.open(tmp_path) as pdf:
         page_count = len(pdf.pages)
 
-    pdf_bytes = pdf_path.read_bytes()
-    index_entries = tuple(a.display_name for a in entry.authors)
-    store_cached_pdf(
+    pdf_path = store_cached_pdf_from_path(
         cache_dir,
         key,
-        pdf_bytes,
+        tmp_path,
         page_count=page_count,
-        index_entries=index_entries,
     )
 
     return AbstractPdfChunk(
@@ -154,7 +156,6 @@ def render_one(
         page_count=page_count,
         cache_hit=False,
         pandoc_stderr=None,
-        index_entries=index_entries,
     )
 
 
