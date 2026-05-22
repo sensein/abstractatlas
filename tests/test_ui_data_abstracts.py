@@ -59,5 +59,38 @@ class TestAcceptedOnlyInvariant(unittest.TestCase):
             self.assertNotIn("submission_id", r)
 
 
+class TestHtmlToTextSupSub(unittest.TestCase):
+    """Stage 12.2 — `<sup>` / `<sub>` survive `_html_to_text` as
+    Unicode super/subscript glyphs instead of being flattened to
+    ambiguous adjacent digits ("ref1,2" reads as numeric).
+    """
+
+    def test_sup_digits_become_unicode_superscript(self) -> None:
+        from ohbm2026.ui_data.abstracts import _html_to_text
+
+        out = _html_to_text("<p>reference<sup>1,2</sup>.</p>")
+        self.assertIn("¹,²", out)
+        self.assertNotIn("<sup>", out)
+        self.assertNotIn("reference1,2", out)
+
+    def test_sup_single_digit(self) -> None:
+        from ohbm2026.ui_data.abstracts import _html_to_text
+
+        self.assertIn("mm³", _html_to_text("4 mm<sup>3</sup>"))
+
+    def test_sub_digits(self) -> None:
+        from ohbm2026.ui_data.abstracts import _html_to_text
+
+        self.assertIn("H₂O", _html_to_text("H<sub>2</sub>O"))
+
+    def test_math_delimiters_pass_through(self) -> None:
+        from ohbm2026.ui_data.abstracts import _html_to_text
+
+        # KaTeX picks these up client-side; the stripper leaves them
+        # intact.
+        out = _html_to_text(r"<p>The value $\alpha=0.05$ holds.</p>")
+        self.assertIn("$\\alpha=0.05$", out)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

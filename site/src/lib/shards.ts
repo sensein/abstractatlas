@@ -166,6 +166,14 @@ export interface CellRow {
 	topic_cluster_id: number;
 	neuroscape_cluster_id?: number;
 	neuroscape_cluster_distance?: number;
+	/**
+	 * True when the abstract has no UMAP projection (emitted by
+	 * `ui_data/cells.py` when an abstract is in the corpus but
+	 * neither 2D nor 3D UMAP coordinates resolved). Stage-10 carry-
+	 * over flag — UI filters these out so they don't render at the
+	 * origin or skew lasso selections.
+	 */
+	umap_missing?: boolean;
 }
 
 export interface CellShard {

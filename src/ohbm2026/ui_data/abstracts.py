@@ -33,6 +33,24 @@ SCHEMA_VERSION = "abstracts.v1"
 
 _BLOCK_TAGS = re.compile(r"</?(?:p|div|li|ul|ol|h[1-6]|br|tr|table|tbody|thead|section|article)[^>]*>", re.IGNORECASE)
 _TAG = re.compile(r"<[^>]+>")
+_SUP_TAG = re.compile(r"<sup[^>]*>([^<]*)</sup>", re.IGNORECASE)
+_SUB_TAG = re.compile(r"<sub[^>]*>([^<]*)</sub>", re.IGNORECASE)
+
+# Unicode super/sub digit + common-sign maps. Anything not in the
+# map falls back to the source character (untranslated) so we never
+# lose content; the UI renders these characters as-is — they're
+# standard codepoints in every modern web font, no font lookup.
+_SUPER_MAP = str.maketrans({
+    "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+    "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+    "+": "⁺", "-": "⁻", "=": "⁼", "(": "⁽", ")": "⁾",
+    "n": "ⁿ", "i": "ⁱ",
+})
+_SUB_MAP = str.maketrans({
+    "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄",
+    "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
+    "+": "₊", "-": "₋", "=": "₌", "(": "₍", ")": "₎",
+})
 _WHITESPACE = re.compile(r"[ \t ]+")
 _BLANK_LINES = re.compile(r"\n{3,}")
 
@@ -49,6 +67,14 @@ def _html_to_text(blob: str | None) -> str:
     if not blob:
         return ""
     text = str(blob)
+    # Stage 12.2 — convert `<sup>` / `<sub>` to Unicode super/subscript
+    # glyphs BEFORE stripping all tags so callouts like
+    # ``ref<sup>1,2</sup>`` survive as ``ref¹,²`` instead of being
+    # flattened to the ambiguous ``ref1,2`` that reads as a numeric
+    # value. Math-mode delimiters (``$...$``, ``\(...\)``) pass
+    # through unchanged for client-side KaTeX rendering.
+    text = _SUP_TAG.sub(lambda m: m.group(1).translate(_SUPER_MAP), text)
+    text = _SUB_TAG.sub(lambda m: m.group(1).translate(_SUB_MAP), text)
     # Insert paragraph boundaries before stripping block tags.
     text = _BLOCK_TAGS.sub("\n\n", text)
     # Strip remaining tags.

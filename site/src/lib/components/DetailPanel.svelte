@@ -10,6 +10,7 @@
 		masterToggleLabel,
 		nextStateAfterMasterToggle
 	} from '$lib/permalink_section_state';
+	import { renderMath } from '$lib/render_math';
 	import {
 		loadAllCellsWithTopics,
 		loadAllNeighbors,
@@ -188,7 +189,7 @@
 		$focusedAbstract = null;
 	}
 
-	function inCart(posterId: string): boolean {
+	function inCart(posterId: number): boolean {
 		return $cartStore.has(posterId);
 	}
 
@@ -527,7 +528,7 @@
 							data-zone="submitter"
 						>
 							<h3 class="section-label section-label-permalink">{slabel}</h3>
-							<p class="section-body" class:section-body-clamped={clampable && !expanded}>{sbody}</p>
+							<p class="section-body" class:section-body-clamped={clampable && !expanded}>{@html renderMath(sbody)}</p>
 							{#if clampable}
 								<button
 									type="button"
@@ -550,7 +551,7 @@
 								<span class="section-label">{slabel}</span>
 							</button>
 							{#if openSections[skey]}
-								<p class="section-body">{sbody}</p>
+								<p class="section-body">{@html renderMath(sbody)}</p>
 							{/if}
 						</section>
 					{/if}
