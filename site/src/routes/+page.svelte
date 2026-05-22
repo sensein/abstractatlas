@@ -495,7 +495,7 @@
 			<div class="facet-pane" class:open={showFacets} data-testid="facet-pane">
 				<FacetSidebar counts={facetCounts} />
 			</div>
-			<div class="list-pane" class:hidden={$navigatorMode}>
+			<div class="list-pane">
 				{#if !$navigatorMode}
 					<ResultList
 						{abstracts}

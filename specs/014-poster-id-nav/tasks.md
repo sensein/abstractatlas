@@ -108,9 +108,10 @@ doesn't fire from inside the SearchBar.
 - [X] T013 [P] Re-run the full vitest unit suite (`pnpm exec vitest --run src/tests/unit`) — must stay 103+ passing + the new goto_poster tests.
 - [X] T014 [P] Re-run `pnpm check` from `site/` — must remain 0 errors.
 - [X] T015 [P] Re-run `pnpm build` from `site/` — must succeed; verify the static build still emits the same prerendered HTML for `/` and `/abstract/[poster_id]/`.
-- [ ] T016 Verify accessibility manually: tab order reaches the SearchBar, focus ring visible, combobox semantics (`aria-expanded` toggling, `aria-activedescendant` on Arrow keys) announced correctly by VoiceOver (macOS) or NVDA (Windows). Record findings in the PR description.
+- [ ] T016 Verify accessibility manually:    <!-- deferred to post-merge — see PR description -->
+ tab order reaches the SearchBar, focus ring visible, combobox semantics (`aria-expanded` toggling, `aria-activedescendant` on Arrow keys) announced correctly by VoiceOver (macOS) or NVDA (Windows). Record findings in the PR description.
 - [X] T017 ~~Update `site/src/routes/about/+page.svelte`'s search-operator list~~ — discovered the About page narrates the stack in prose but does NOT enumerate operators. Operators live in the SearchBar's `?` help popover, which T007 updated to include `id:1234 — jump to a specific poster id (autocomplete suggests available ids only)`. CA-003 satisfied by the popover update.
-- [ ] T018 Open the PR for `014-poster-id-nav` against `main` with a description that lists US1 + US2 acceptance scenarios + the 5 success criteria from `spec.md` §"Measurable Outcomes". Confirm CI (`pr-preview`, `audit`, `pr-preview-e2e`) all green before merge.
+- [X] T018 Open the PR for `014-poster-id-nav` against `main` → PR #35 with a description that lists US1 + US2 acceptance scenarios + the 5 success criteria from `spec.md` §"Measurable Outcomes". Confirm CI (`pr-preview`, `audit`, `pr-preview-e2e`) all green before merge.
 
 ---
 

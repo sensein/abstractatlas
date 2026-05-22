@@ -6,6 +6,7 @@
 	import { navigatorMode, posterIdUndoBuffer, searchQuery } from '$lib/stores/selection';
 	import {
 		filterSuggestions,
+		normaliseQuery,
 		parseIdOperator,
 		type SuggestionResult
 	} from '$lib/goto_poster';
@@ -17,16 +18,13 @@
 	// nothing useful, but the rest of the bar still works).
 	export let abstractsByPosterId: Map<number, AbstractRecord> = new Map();
 
-	// Local input state. Mirrored to / from the `searchQuery` store so
-	// either side can update it (the `g` shortcut writes to the store,
-	// the user typing writes to `value`).
-	let value = get(searchQuery);
-	$: $searchQuery = value;
-	// Pull store updates back into the local binding (covers the `g`
-	// shortcut case where another component writes to the store).
-	searchQuery.subscribe((next) => {
-		if (next !== value) value = next;
-	});
+	// The input value lives in the `searchQuery` store. Binding the
+	// `<input bind:value={$searchQuery}>` directly handles both
+	// directions via Svelte's auto-subscription: user keystrokes
+	// update the store, and external writers (the `g` shortcut)
+	// propagate to the input immediately. `value` here is a
+	// convenience alias for in-script reads.
+	$: value = $searchQuery;
 
 	let inputEl: HTMLInputElement | null = null;
 
@@ -89,13 +87,15 @@
 			// longer restore the pre-`g` query after a successful
 			// commit). Always clear it on commit attempts.
 			commit();
-		} else if (e.key === 'Escape') {
-			e.preventDefault();
+		} else if (e.key === 'Escape' && !helpOpen) {
 			// Stage 14 — Escape restores the undo buffer IF the user
 			// hasn't typed any further keystrokes since `g` fired.
+			// Guard on `!helpOpen` so the window-level Escape handler
+			// owns the help-popover-close path uncontested.
+			e.preventDefault();
 			const undo = get(posterIdUndoBuffer);
 			if (undo !== null && value === 'id:') {
-				value = undo;
+				searchQuery.set(undo);
 				posterIdUndoBuffer.set(null);
 			}
 		}
@@ -121,11 +121,11 @@
 			return;
 		e.preventDefault();
 		posterIdUndoBuffer.set(value);
-		value = 'id:';
+		searchQuery.set('id:');
 		tick().then(() => {
 			if (inputEl) {
 				inputEl.focus();
-				inputEl.setSelectionRange(value.length, value.length);
+				inputEl.setSelectionRange(3, 3); // length of 'id:'
 			}
 		});
 	}
@@ -139,7 +139,7 @@
 	}
 
 	function onClear() {
-		value = '';
+		searchQuery.set('');
 		posterIdUndoBuffer.set(null);
 	}
 
@@ -161,7 +161,7 @@
 		id="search-input"
 		bind:this={inputEl}
 		type="search"
-		bind:value
+		bind:value={$searchQuery}
 		placeholder='Search… try "phrase", -exclude, word OR word, id:1234 (typos OK)'
 		autocomplete="off"
 		spellcheck="false"
@@ -219,7 +219,7 @@
 					<span class="title">{s.title}</span>
 				</li>
 			{/each}
-			{#if idPayload !== null && (idPayload as string).replace(/\D/g, '').replace(/^0+/, '') === ''}
+			{#if idPayload !== null && normaliseQuery(idPayload as string) === ''}
 				<li class="hint" data-testid="search-id-hint" role="status">
 					Type a poster number, e.g. <code>id:1234</code>
 				</li>
