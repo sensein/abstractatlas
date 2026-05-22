@@ -231,8 +231,269 @@ def normalise_for_latex(text: str) -> str:
     text = _caret_super_to_latex(text)
     text = _collapse_caret_runs(text)
     text = _escape_bare_ampersand(text)
+    text = _normalise_latex_aliases(text)
+    text = _wrap_bare_matrix_environments(text)
+    text = _autowrap_bare_math(text)
     text = _defang_unknown_commands(text)
     return text
+
+
+# Common author-shortened LaTeX commands that aren't real LaTeX.
+# Replace each with its standard equivalent BEFORE defang so the
+# result lands on a real command rather than getting stripped.
+_LATEX_ALIASES = {
+    "thinsp": "thinspace",
+    "negthinsp": "negthinspace",
+    "medsp": "medspace",
+    "thicksp": "thickspace",
+}
+_ALIAS_RE = re.compile(
+    r"(?<!\\)\\(" + "|".join(_LATEX_ALIASES) + r")\b"
+)
+
+
+def _normalise_latex_aliases(text: str) -> str:
+    return _ALIAS_RE.sub(lambda m: "\\" + _LATEX_ALIASES[m.group(1)], text)
+
+
+# Matrix-family environments require math mode. Authors who paste raw
+# LaTeX equations into the Oxford form often forget to wrap the
+# matrix in `$$...$$` / `\[...\]`. Without wrapping, Tectonic errors
+# with "Missing $ inserted" the moment it hits `\begin{matrix}`.
+# Other math envs (`equation`, `align`, `gather`, ...) open their
+# own display-math context and do NOT need wrapping.
+_MATRIX_ENV_NAMES = (
+    "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix",
+    "smallmatrix",
+)
+_MATRIX_ENV_RE = re.compile(
+    r"\\begin\{(" + "|".join(_MATRIX_ENV_NAMES) + r")\}.*?\\end\{\1\}",
+    re.DOTALL,
+)
+
+
+def _wrap_bare_matrix_environments(text: str) -> str:
+    """Wrap bare ``\\begin{matrix}...\\end{matrix}`` blocks in
+    ``\\[...\\]`` display-math so they compile. Skips occurrences
+    that are already inside an author-written ``$...$`` math span
+    (would produce broken ``$\\[...\\]$`` otherwise).
+    """
+    # Determine which positions are already inside `$...$`.
+    span_intervals = [
+        (m.start(), m.end()) for m in _MATH_SPAN_RE.finditer(text)
+    ]
+
+    def _is_in_math(pos: int) -> bool:
+        for s, e in span_intervals:
+            if s <= pos < e:
+                return True
+        return False
+
+    def _wrap(m: "re.Match[str]") -> str:
+        if _is_in_math(m.start()):
+            return m.group(0)
+        # Use `$$...$$` display math instead of `\[...\]`. Pandoc
+        # treats `\[` in markdown as a literal escaped bracket
+        # (`\[` → `{[}` in LaTeX output) — NOT display math. `$$`
+        # is the only delimiter pandoc reliably recognises for
+        # markdown→latex display math.
+        return "$$" + m.group(0) + "$$"
+
+    return _MATRIX_ENV_RE.sub(_wrap, text)
+
+
+# Math-only LaTeX commands an author would write in body text only by
+# accident. When we see one of these outside a `$...$` span we wrap
+# the surrounding math-token run so LaTeX accepts it. The commands
+# below need math mode to compile at all; their text-mode siblings
+# (e.g. `\textsuperscript`, `\emph`) are NOT in this set.
+_MATH_ONLY_COMMANDS = frozenset({
+    "alpha", "beta", "gamma", "delta", "epsilon", "varepsilon",
+    "zeta", "eta", "theta", "vartheta", "iota", "kappa", "lambda",
+    "mu", "nu", "xi", "pi", "varpi", "rho", "varrho", "sigma",
+    "varsigma", "tau", "upsilon", "phi", "varphi", "chi", "psi",
+    "omega", "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi",
+    "Sigma", "Upsilon", "Phi", "Psi", "Omega",
+    "left", "right", "big", "Big", "bigg", "Bigg",
+    "hat", "widehat", "tilde", "widetilde", "bar", "overline",
+    "vec", "dot", "ddot",
+    "frac", "sqrt", "sum", "prod", "int", "lim",
+    "mathrm", "mathbf", "mathit", "mathbb", "mathcal",
+    "leq", "geq", "neq", "approx", "equiv", "sim", "propto",
+    "pm", "mp", "cdot", "times", "infty", "partial", "nabla",
+    "in", "notin", "subset", "supset", "cap", "cup",
+    "to", "rightarrow", "leftarrow", "Rightarrow", "Leftarrow",
+})
+
+# Commands that are valid in BOTH text and math mode — don't trigger
+# auto-wrap on these alone (they're often legitimately in body text).
+_DUAL_MODE_COMMANDS = frozenset({
+    "textsuperscript", "textsubscript", "textbf", "textit", "emph",
+    "log", "ln", "exp", "sin", "cos", "tan",
+})
+
+_MATH_CMD_START_RE = re.compile(r"\\([a-zA-Z]+)")
+
+
+def _autowrap_bare_math(text: str) -> str:
+    """Wrap contiguous LaTeX math expressions in `$...$` when authors
+    write raw LaTeX math (e.g. ``\\rho\\left(s,j\\right)=corr(z,j)``)
+    in body text without dollar-wrapping it. Tectonic otherwise
+    errors with "Missing $ inserted" (observed: poster 2094).
+
+    Heuristic:
+    1. Split text by existing `$...$` math spans + `\\begin{ENV}...
+       \\end{ENV}` math environments (matrix / align / equation /
+       gather); skip those — they're already in math mode.
+    2. Scan for the first occurrence of a math-only command in a
+       non-math chunk.
+    3. Walk forward through valid math characters (`{}()[]_^=+-*/<>|,
+       digits, letters, whitespace, more `\\command`s) until a clear
+       sentence boundary: `.`, `?`, `!`, `;`, or `\\n\\n` outside
+       braces.
+    4. Wrap the captured run in `$...$`.
+    """
+    parts = _split_math_regions(text)
+    out: list[str] = []
+    for chunk, in_math in parts:
+        if in_math:
+            out.append(chunk)
+            continue
+        out.append(_wrap_math_runs(chunk))
+    return "".join(out)
+
+
+# Math environments where everything is already in math mode.
+# `\begin{matrix}...\end{matrix}` and friends MUST stay untouched by
+# autowrap or we double-wrap with `$...$` and break TeX. The
+# environment name list matches amsmath conventions.
+_MATH_ENV_NAMES = (
+    "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix",
+    "smallmatrix",
+    "align", "align\\*", "aligned", "alignat", "alignat\\*",
+    "gather", "gather\\*", "gathered",
+    "equation", "equation\\*", "eqnarray", "eqnarray\\*",
+    "multline", "multline\\*", "split", "cases",
+)
+_MATH_ENV_RE = re.compile(
+    r"\\begin\{(" + "|".join(_MATH_ENV_NAMES) + r")\}.*?\\end\{\1\}",
+    re.DOTALL,
+)
+
+
+def _split_math_regions(text: str) -> list[tuple[str, bool]]:
+    """Like ``_split_by_math_spans`` but also recognises
+    ``\\begin{matrix}...\\end{matrix}``-style math environments
+    that auto-wrap must skip."""
+    # First find all spans (math span + math env) and sort by start.
+    spans: list[tuple[int, int]] = []
+    for m in _MATH_SPAN_RE.finditer(text):
+        spans.append((m.start(), m.end()))
+    for m in _MATH_ENV_RE.finditer(text):
+        spans.append((m.start(), m.end()))
+    spans.sort()
+
+    # Merge overlapping/adjacent spans.
+    merged: list[tuple[int, int]] = []
+    for s, e in spans:
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+
+    out: list[tuple[str, bool]] = []
+    cursor = 0
+    for s, e in merged:
+        if s > cursor:
+            out.append((text[cursor:s], False))
+        out.append((text[s:e], True))
+        cursor = e
+    if cursor < len(text):
+        out.append((text[cursor:], False))
+    return out
+
+
+def _wrap_math_runs(text: str) -> str:
+    """Within a non-math text chunk, find each math-command anchored
+    run and wrap it in ``$...$``."""
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        anchor = _next_math_anchor(text, i)
+        if anchor is None:
+            out.append(text[i:])
+            break
+        a_start, a_end = anchor
+        out.append(text[i:a_start])
+        run_end = _scan_math_run_end(text, a_start)
+        out.append("$" + text[a_start:run_end] + "$")
+        i = run_end
+    return "".join(out)
+
+
+def _next_math_anchor(text: str, start: int) -> tuple[int, int] | None:
+    """Return ``(start, end)`` of the next math-only command in
+    ``text`` at or after ``start``, or None if none found."""
+    pos = start
+    while pos < len(text):
+        m = _MATH_CMD_START_RE.search(text, pos)
+        if m is None:
+            return None
+        name = m.group(1)
+        if name in _MATH_ONLY_COMMANDS:
+            return (m.start(), m.end())
+        pos = m.end()
+    return None
+
+
+# A math-run-terminator: sentence-final punctuation followed by
+# whitespace (or end-of-string), or a paragraph break. Inside the
+# math expression, periods/commas inside arguments are common, so
+# we only honour these when bracket depth is 0.
+def _scan_math_run_end(text: str, start: int) -> int:
+    """Walk forward from ``start`` consuming valid math tokens; return
+    the exclusive end index where the math run terminates."""
+    depth = 0  # nesting of {}, (), []
+    i = start
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "\\":
+            # Eat the command + optional argument brace.
+            j = i + 1
+            while j < n and text[j].isalpha():
+                j += 1
+            if j == i + 1 and j < n:
+                # Single-char escape like `\(`, `\)`, `\\`, `\!`. Treat
+                # `\(` and `\)` as natural run terminators — they'd
+                # open/close a separate math span.
+                if text[j] in "()":
+                    return i
+                j = i + 2
+            i = j
+            continue
+        if ch in "{([":
+            depth += 1
+            i += 1
+            continue
+        if ch in "})]":
+            if depth == 0:
+                return i  # don't consume an unmatched closer
+            depth -= 1
+            i += 1
+            continue
+        if depth == 0 and ch in ".?!;":
+            # Sentence-final outside any bracket → end the run.
+            return i
+        if depth == 0 and ch == "\n":
+            # A blank line ends the run (paragraph break).
+            if i + 1 < n and text[i + 1] == "\n":
+                return i
+            i += 1
+            continue
+        # Default: consume the character as part of the math run.
+        i += 1
+    return i
 
 
 # C0 (U+0000-U+001F) and C1 (U+0080-U+009F) control characters,
@@ -339,13 +600,27 @@ _KNOWN_COMMAND_PREFIXES = frozenset({
     # Spacing
     "thinspace", "negthinspace", "thinsp", "negthinsp",
     "medspace", "thickspace",
+    # Relations + sets + delimiters used in math
+    "mid", "parallel", "perp", "models", "vdash", "dashv",
+    "land", "lor", "lnot", "implies", "iff",
+    "varnothing", "complement", "setminus",
+    # Common math identifiers
+    "Re", "Im", "Pr",
+    "deg", "hom", "ker", "im", "coker",
+    "ll", "gg", "lll", "ggg", "doteq", "cong", "ncong",
+    "subseteq", "supseteq", "subsetneq", "supsetneq",
+    "preceq", "succeq", "prec", "succ",
+    # Greek-letter variants (used in equations)
+    "phantom", "vphantom", "hphantom",
 })
 
 # Match `\CamelCase` or `\R` style commands that are NOT followed by
 # `{` (we don't touch `\command{...}` forms — those are more likely
-# real commands and false-positive risk is higher). Only Latin
-# letters; anything else is unaffected.
-_UNKNOWN_CMD_RE = re.compile(r"\\([A-Za-z]+)(?![A-Za-z\{])")
+# real commands and false-positive risk is higher) AND NOT preceded
+# by another `\` (a literal `\\` — common in matrix row breaks —
+# must NOT be re-interpreted as a `\foo` command starting at the
+# second backslash). Only Latin letters; anything else is unaffected.
+_UNKNOWN_CMD_RE = re.compile(r"(?<!\\)\\([A-Za-z]+)(?![A-Za-z\{])")
 
 
 def _defang_unknown_commands(text: str) -> str:
