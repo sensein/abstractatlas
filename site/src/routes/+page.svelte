@@ -17,6 +17,7 @@
 	import { activeFilters, authorChips, cartOnly, focusedAbstract, lassoSelection, searchQuery, selectedCell, showMap } from '$lib/stores/selection';
 	import { lexicalSearch, parseQuery, queryForSemantic } from '$lib/filter';
 	import { filterByFacets, recomputeFacets, type FacetCellContext } from '$lib/facets';
+	import { normaliseQuery, parseIdOperator } from '$lib/goto_poster';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import ResultList from '$lib/components/ResultList.svelte';
 	import DetailPanel from '$lib/components/DetailPanel.svelte';
@@ -198,6 +199,26 @@
 		: null;
 	$: searchIds = mergeSearch(lexicalIds, semanticIdsForMerge, $searchQuery, lexicalNegationBlocked);
 
+	// Stage 14 — `id:` operator narrows the result list to abstracts
+	// whose poster_id's decimal form starts with the typed digits. When
+	// the operator is active it REPLACES `searchIds` entirely (the
+	// lexical/semantic pipeline doesn't apply to the literal `id:NNNN`
+	// string). When the payload is empty (`id:` with no digits) or
+	// matches nothing, the filter set is empty — the result list will
+	// show 0 cards, which matches the dropdown's "no matches" hint.
+	$: idPayload = parseIdOperator($searchQuery);
+	$: idFilterIds = (() => {
+		if (idPayload === null) return null;
+		const q = normaliseQuery(idPayload);
+		if (q === '') return new Set<number>();
+		const out = new Set<number>();
+		for (const id of abstractsByPosterId.keys()) {
+			if (id.toString().startsWith(q)) out.add(id);
+		}
+		return out;
+	})();
+	$: effectiveSearchIds = idPayload !== null ? idFilterIds : searchIds;
+
 	// Load the current (model, input) cell + its community topics so the
 	// Cluster facet can offer per-cell options. The same data feeds the
 	// UMAP panel; loadCell/loadTopics are cheap (Map-get from the in-memory
@@ -227,10 +248,10 @@
 	// don't further narrow the result list until Saved-only is turned off.
 	$: filteredIds = $cartOnly
 		? cartIds
-		: intersect(intersect(intersect(searchIds, $lassoSelection), facetIds), authorChipIds);
+		: intersect(intersect(intersect(effectiveSearchIds, $lassoSelection), facetIds), authorChipIds);
 	$: preFilterForFacetCounts = $cartOnly
 		? cartIds
-		: intersect(intersect(searchIds, $lassoSelection), authorChipIds);
+		: intersect(intersect(effectiveSearchIds, $lassoSelection), authorChipIds);
 	$: facetCounts = recomputeFacets(abstracts, $activeFilters, preFilterForFacetCounts, facetCtx);
 
 	function cartIdsFromStore(
@@ -346,7 +367,10 @@
 <div class="home" class:has-focus={focused !== null}>
 	<div class="top-row">
 		<div class="search-row">
-			<SearchBar />
+			<SearchBar {abstractsByPosterId} />
+			<span class="kbd-hint" data-testid="goto-kbd-hint" aria-hidden="true">
+				<kbd>g</kbd> jump to poster id
+			</span>
 			{#if $authorChips.size > 0}
 				<div class="author-chips" data-testid="author-chips">
 					<span class="chips-label">authors:</span>
@@ -541,6 +565,25 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.4rem;
+	}
+	.kbd-hint {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		padding-left: 0.2rem;
+	}
+	.kbd-hint kbd {
+		display: inline-block;
+		padding: 0.05rem 0.35rem;
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.7rem;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		border-radius: 3px;
+		color: var(--text);
+		margin-right: 0.25rem;
+	}
+	.search-row:focus-within .kbd-hint {
+		visibility: hidden;
 	}
 	.author-chips {
 		display: flex;
