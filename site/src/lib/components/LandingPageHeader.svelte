@@ -8,17 +8,30 @@
 -->
 <script lang="ts">
 	import { base } from '$app/paths';
+	import { SITE_MODE } from '$lib/site_mode';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { onMount } from 'svelte';
 
-	// The atlas-root build sets BASE_PATH='' so `base` resolves to ''.
-	// In production the gh-pages publish-tree puts ohbm2026/ and
-	// neuroscape/ at sibling paths relative to the bare root. For
-	// PR previews they live under `/pr-<N>/{,ohbm2026/,neuroscape/}`,
-	// which means relative `./ohbm2026/` works in both production
-	// AND previews.
-	const OHBM2026_HREF = `${base}/ohbm2026/`;
-	const NEUROSCAPE_HREF = `${base}/neuroscape/`;
+	// Outbound subsite links target SIBLING bases, not children of the
+	// current mode's base. Each build's `base` includes the per-mode
+	// suffix:
+	//   • atlas-root build → base = `/pr-37`        (no suffix)
+	//   • ohbm2026 build   → base = `/pr-37/ohbm2026`
+	//   • neuroscape build → base = `/pr-37/neuroscape`
+	// Constructing `${base}/ohbm2026/` from the neuroscape build would
+	// give `/pr-37/neuroscape/ohbm2026/` (a child of neuroscape, 404).
+	// Strip the per-mode suffix first to recover the deploy root.
+	function rootBase(): string {
+		if (SITE_MODE === 'ohbm2026' && base.endsWith('/ohbm2026'))
+			return base.slice(0, -'/ohbm2026'.length);
+		if (SITE_MODE === 'neuroscape' && base.endsWith('/neuroscape'))
+			return base.slice(0, -'/neuroscape'.length);
+		return base; // atlas-root: base IS the deploy root.
+	}
+	const ROOT = rootBase();
+	const HOME_HREF = ROOT || '/';
+	const OHBM2026_HREF = `${ROOT}/ohbm2026/`;
+	const NEUROSCAPE_HREF = `${ROOT}/neuroscape/`;
 
 	// Side-effect-initialise the theme store on first mount so the
 	// data-theme attribute reflects the user's chosen / system theme
@@ -30,7 +43,7 @@
 </script>
 
 <header class="landing-header" data-testid="landing-page-header">
-	<a class="brand" href={base || '/'}>abstractatlas</a>
+	<a class="brand" href={HOME_HREF}>abstractatlas</a>
 	<nav class="nav-links" aria-label="Sibling subsites">
 		<!-- rel="external" tells SvelteKit's prerenderer + link-
 		     interceptor that these point at a SIBLING SvelteKit

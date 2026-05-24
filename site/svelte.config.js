@@ -44,7 +44,39 @@ const config = {
 			strict: true
 		}),
 		paths: {
-			base: basePath
+			base: basePath,
+			// Stage 15: SvelteKit's prerender step rewrites absolute
+			// hrefs to relative-from-current-page when `relative` is
+			// true (the default when `paths.base` is set). That breaks
+			// the cross-deployment links in LandingPageHeader — from
+			// /pr-37/neuroscape/, an absolute /pr-37/ohbm2026/ gets
+			// rewritten to ./ohbm2026/, which the browser resolves to
+			// /pr-37/neuroscape/ohbm2026/ (404). Setting `relative:
+			// false` keeps the absolute form. Functional impact on
+			// ohbm2026 mode is zero — the browser resolves absolute
+			// and relative paths identically against the same origin.
+			relative: false
+		},
+		prerender: {
+			// Stage 15: cross-deployment links in `LandingPageHeader`
+			// (atlas-root → /ohbm2026/ + /neuroscape/, neuroscape →
+			// /ohbm2026/ + /, ohbm2026 → no LandingPageHeader) point
+			// outside the current build's `paths.base`. The prerender
+			// crawler tries to visit them anyway despite `rel="external"`
+			// and 404s because they don't start with the configured
+			// base. Silently ignore the "does not begin with `base`"
+			// error so the build succeeds — the targets exist in
+			// SIBLING builds at deploy time.
+			handleHttpError: ({ status, message }) => {
+				if (
+					status === 404 &&
+					typeof message === 'string' &&
+					message.includes('does not begin with `base`')
+				) {
+					return;
+				}
+				throw new Error(message);
+			}
 		}
 	}
 };
