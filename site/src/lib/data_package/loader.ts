@@ -80,9 +80,25 @@ export function getDataPackageUrl(): string | null {
  *  (the caller can show "Loading X MB…" instead). */
 export type LoadProgress = (loaded: number, total: number | null) => void;
 
+/** Phase callback. Lets the UI distinguish the three observable
+ *  steps that together feel like "loading":
+ *
+ *    'connecting' → request issued, no bytes yet
+ *    'downloading' → first chunk arrived; onProgress is now firing
+ *    'parsing'    → bytes complete, hyparquet decode is in flight
+ *                   (CPU-bound; the main thread will be busy)
+ *    'ready'      → result map is fully populated
+ *
+ *  Without this, fast connections show a blank placeholder for the
+ *  ~3-5s parsing window after the byte progress hits 100%, which
+ *  reads as "frozen". */
+export type LoadPhase = 'connecting' | 'downloading' | 'parsing' | 'ready';
+export type PhaseHook = (phase: LoadPhase) => void;
+
 export function loadDataPackage(
 	fetcher: typeof fetch = fetch,
-	onProgress: LoadProgress | null = null
+	onProgress: LoadProgress | null = null,
+	onPhase: PhaseHook | null = null
 ): Promise<Map<string, unknown> | null> {
 	if (packageCache !== null) return packageCache;
 	const url = getDataPackageUrl();
@@ -92,6 +108,7 @@ export function loadDataPackage(
 	}
 	packageCache = (async (): Promise<Map<string, unknown> | null> => {
 		try {
+			onPhase?.('connecting');
 			const response = await fetcher(url);
 			if (!response.ok || !response.body) return null;
 			// When a progress callback is provided, stream the body via
@@ -106,6 +123,7 @@ export function loadDataPackage(
 				const chunks: Uint8Array[] = [];
 				let loaded = 0;
 				onProgress(0, total);
+				onPhase?.('downloading');
 				// eslint-disable-next-line no-constant-condition
 				while (true) {
 					const { value, done } = await reader.read();
@@ -123,10 +141,18 @@ export function loadDataPackage(
 					offset += c.byteLength;
 				}
 			} else {
+				onPhase?.('downloading');
 				const buffer = await response.arrayBuffer();
 				bytes = new Uint8Array(buffer);
 			}
-			return await parseParquetSingle(bytes);
+			// Yield once so any pending DOM update (final 100% / final
+			// MB readout) flushes before parseParquetSingle blocks the
+			// main thread.
+			onPhase?.('parsing');
+			await new Promise<void>((r) => setTimeout(r, 0));
+			const result = await parseParquetSingle(bytes);
+			onPhase?.('ready');
+			return result;
 		} catch (err) {
 			console.error('[ohbm2026] failed to load data package:', err);
 			return null;

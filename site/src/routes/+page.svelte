@@ -422,6 +422,9 @@
 	let atlasError: string | null = null;
 	let atlasProgressLoaded = 0;
 	let atlasProgressTotal: number | null = null;
+	// Phase string drives the placeholder label so the parsing window
+	// (CPU-bound, no byte progress) doesn't look frozen on fast links.
+	let atlasPhase: 'connecting' | 'downloading' | 'parsing' | 'ready' = 'connecting';
 
 	async function loadAtlasData() {
 		if (SITE_MODE === 'ohbm2026') return;
@@ -429,11 +432,18 @@
 		atlasLoading = true;
 		atlasProgressLoaded = 0;
 		atlasProgressTotal = null;
+		atlasPhase = 'connecting';
 		try {
-			const pkg = await loadDataPackage(fetch, (loaded, total) => {
-				atlasProgressLoaded = loaded;
-				atlasProgressTotal = total;
-			});
+			const pkg = await loadDataPackage(
+				fetch,
+				(loaded, total) => {
+					atlasProgressLoaded = loaded;
+					atlasProgressTotal = total;
+				},
+				(phase) => {
+					atlasPhase = phase;
+				}
+			);
 			if (!pkg) {
 				atlasError =
 					SITE_MODE === 'atlas-root'
@@ -527,23 +537,50 @@
 				     "Loading…" state instead of a blank/empty panel. -->
 				<div class="atlas-scatter-placeholder" data-testid="atlas-scatter-loading">
 					<p class="placeholder-text">
-						Loading {SITE_MODE === 'atlas-root' ? 'cross-conference atlas' : 'NeuroScape atlas'}…
-						{#if atlasProgressPercent !== null}
-							<strong data-testid="atlas-loading-percent">{atlasProgressPercent}%</strong>
-						{:else if atlasProgressLoaded > 0}
-							<strong data-testid="atlas-loading-bytes">{formatMb(atlasProgressLoaded)}</strong>
+						{#if atlasPhase === 'connecting'}
+							Connecting to {SITE_MODE === 'atlas-root'
+								? 'cross-conference atlas'
+								: 'NeuroScape atlas'}…
+						{:else if atlasPhase === 'downloading'}
+							Downloading {SITE_MODE === 'atlas-root'
+								? 'cross-conference atlas'
+								: 'NeuroScape atlas'}…
+							{#if atlasProgressPercent !== null}
+								<strong data-testid="atlas-loading-percent">{atlasProgressPercent}%</strong>
+							{:else if atlasProgressLoaded > 0}
+								<strong data-testid="atlas-loading-bytes"
+									>{formatMb(atlasProgressLoaded)}</strong
+								>
+							{/if}
+						{:else if atlasPhase === 'parsing'}
+							Parsing
+							{#if atlasProgressLoaded > 0}
+								<strong data-testid="atlas-loading-parsing-bytes"
+									>{formatMb(atlasProgressLoaded)}</strong
+								>
+							{/if}
+							{SITE_MODE === 'atlas-root' ? 'cross-conference atlas' : 'NeuroScape atlas'}…
+						{:else}
+							Loading {SITE_MODE === 'atlas-root'
+								? 'cross-conference atlas'
+								: 'NeuroScape atlas'}…
 						{/if}
 					</p>
-					{#if atlasProgressPercent !== null}
+					{#if atlasPhase === 'downloading' && atlasProgressPercent !== null}
 						<progress
 							class="atlas-progress"
 							value={atlasProgressPercent}
 							max="100"
 							data-testid="atlas-loading-progressbar"
 						></progress>
-					{:else if atlasProgressLoaded > 0}
-						<!-- Indeterminate bar when the server didn't expose
-						     Content-Length and we only know "bytes so far". -->
+					{:else}
+						<!-- Always show an indeterminate bar when no determinate
+						     value is available — covers SSR (no progress yet),
+						     connecting (no bytes), parsing (no byte counter),
+						     and the no-Content-Length fallback. Without this,
+						     fast connections that finish the byte stream before
+						     the user can perceive the bar see only a blank
+						     "Loading…" text. -->
 						<progress class="atlas-progress" data-testid="atlas-loading-indeterminate"
 						></progress>
 					{/if}
