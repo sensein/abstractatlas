@@ -1,54 +1,83 @@
-<!DOCTYPE html>
-<!--
-  Stage 9 (spec 009-conference-subpath FR-105): static redirect island.
-
-  This file lives at the gh-pages publish root (production AND every
-  per-PR preview root AND the staging `/sandbox/` root) and bounces
-  any visitor who lands at the bare `<cname>/`, `<cname>/pr-<N>/`,
-  or `<cname>/sandbox/` into the conference shell.
-
-  gh-pages cannot serve a true HTTP 301 (it's static-only), so this is
-  the closest equivalent: a `<meta http-equiv="refresh">` directive
-  plus a JS `location.replace`. Browsers fire both before the first
-  paint, so the perceptual hop count is ≤ 1. `location.replace` (vs.
-  `location.href = …`) does not leave a back-button entry, mirroring
-  the 301 contract.
-
-  The target path is composed at runtime from `window.location.pathname`
-  so the same file works at the gh-pages root (target `/ohbm2026/`),
-  at every per-PR root (target `/pr-<N>/ohbm2026/`), and at the
-  sandbox root (target `/sandbox/ohbm2026/`).
-
-  Query and hash are preserved so deep-link query strings (e.g.
-  `?utm_source=…`) survive.
--->
+<!doctype html>
 <html lang="en">
-<head>
-	<meta charset="utf-8">
-	<title>Abstract Atlas — redirecting to OHBM 2026</title>
-	<meta name="robots" content="noindex">
-	<link rel="canonical" href="/ohbm2026/">
-	<script>
-		(function () {
-			var p = window.location.pathname;
-			// Two prefix shapes share this redirect island: per-PR previews
-			// (`/pr-<N>/`) and the staging sandbox (`/sandbox/`). Detect
-			// either so the island works without per-deploy customisation.
-			var prefixMatch = p.match(/^(\/(?:pr-\d+|sandbox))\//);
-			var prefix = prefixMatch ? prefixMatch[1] : '';
-			var target = prefix + '/ohbm2026/' + window.location.search + window.location.hash;
-			window.location.replace(target);
-		})();
-	</script>
-	<!-- No-JS fallback (text-mode browsers, scripting-disabled sandboxes):
-	     0-second meta-refresh and a manual link. Without JS we can't detect
-	     the PR-preview prefix, so this lands on the production conference
-	     home — acceptable as a worst-case fallback. -->
-	<meta http-equiv="refresh" content="0; url=/ohbm2026/">
-</head>
-<body>
-	<noscript>
-		<p>Redirecting to <a href="/ohbm2026/">the OHBM 2026 Atlas</a>.</p>
-	</noscript>
-</body>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<script>
+			// Theme boot — runs before any rendering to avoid FOUC.
+			// Resolves `light` | `dark` | `auto` from localStorage and sets
+			// data-theme on <html> + the CSS color-scheme so native form
+			// controls + scrollbars adopt the right palette immediately.
+			(function () {
+				try {
+					var raw = localStorage.getItem('ohbm2026.ui.theme.v1');
+					var choice = raw === 'light' || raw === 'dark' || raw === 'auto' ? raw : 'auto';
+					var effective =
+						choice === 'auto'
+							? window.matchMedia('(prefers-color-scheme: dark)').matches
+								? 'dark'
+								: 'light'
+							: choice;
+					document.documentElement.setAttribute('data-theme', effective);
+					document.documentElement.style.colorScheme = effective;
+				} catch (e) {
+					// localStorage might be unavailable; default to system pref.
+					document.documentElement.setAttribute(
+						'data-theme',
+						window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+					);
+				}
+			})();
+		</script>
+		<link href="./_app/immutable/entry/start.qa3efcUp.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/CN3PKg7j.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/NfLj-HvS.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/dFzn15Oj.js" rel="modulepreload">
+		<link href="./_app/immutable/entry/app.DLB0Jpnl.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/Dp1pzeXC.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/B77ESEr3.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/DHo1AxtR.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/CS6-H_EL.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/CUt-EYWd.js" rel="modulepreload">
+		<link href="./_app/immutable/nodes/0.hFuEqQrY.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/DJmS4oPq.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/BT_NM1mK.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/D2qcM2e_.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/DznnLJ8d.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/BKbuQtav.js" rel="modulepreload">
+		<link href="./_app/immutable/nodes/2.BKoIetCa.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/lB_xCaXP.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/Ehxd96cK.js" rel="modulepreload">
+		<!--12qhfyh--><!--[0--><!--]--><!----><title>Abstract Atlas — OHBM 2026 in the NeuroScape neuroscience landscape</title>
+		<link href="./_app/immutable/assets/0.BAG_664F.css" rel="stylesheet">
+		<link href="./_app/immutable/assets/DetailPanel.jzpL67me.css" rel="stylesheet">
+		<link href="./_app/immutable/assets/2.BYx7jswG.css" rel="stylesheet">
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents"><!--[--><!--[0--><!--[--><!--[0--><div class="atlas-root-shell svelte-12qhfyh"><main class="atlas-root-slot svelte-12qhfyh"><!--[--><!--[--><!--[0--><div class="atlas-root-home svelte-1uha8ag" data-testid="atlas-root-home"><header class="landing-header svelte-wenumx" data-testid="landing-page-header"><a class="brand svelte-wenumx" href=".">abstractatlas</a> <nav class="nav-links svelte-wenumx" aria-label="Sibling subsites"><a class="nav-link svelte-wenumx" href="./ohbm2026/" rel="external" data-testid="nav-ohbm2026">Browse OHBM 2026 abstracts <span class="arrow svelte-wenumx">→</span></a> <a class="nav-link svelte-wenumx" href="./neuroscape/" rel="external" data-testid="nav-neuroscape">Browse the NeuroScape PubMed atlas <span class="arrow svelte-wenumx">→</span></a></nav></header><!----> <main class="atlas-root-main svelte-1uha8ag"><div class="atlas-controls svelte-1uha8ag" data-testid="atlas-root-controls"><label class="atlas-overlay-toggle svelte-5mfxzf" data-testid="atlas-overlay-toggle" data-state="on" aria-label="Show OHBM 2026 overlay: on" title="Show OHBM 2026 overlay: on"><input type="checkbox" checked="" aria-label="Show OHBM 2026 overlay: on" class="svelte-5mfxzf"/> <span class="visible-label svelte-5mfxzf">Show OHBM 2026 overlay</span></label><!----> <label class="density-slider svelte-18umc1n" data-testid="backdrop-density-slider"><span class="label-text svelte-18umc1n">Backdrop opacity</span> <input type="range" min="0.05" max="1.0" step="0.05" value="0.25" aria-label="Backdrop opacity" class="svelte-18umc1n"/> <span class="value svelte-18umc1n" data-testid="backdrop-density-value">0.25</span></label><!----></div> <!--[-1--><div class="atlas-umap-panel svelte-10w1oe" data-testid="atlas-umap-panel"><!--[-1--><div class="plot-host svelte-10w1oe" data-testid="atlas-umap-plot"></div> <div class="counts svelte-10w1oe" data-testid="atlas-umap-counts" aria-live="polite"><span>0 backdrop pts</span> <!--[0--><span>·</span> <span>0 OHBM 2026 pts</span><!--]--></div><!--]--></div><!--]--></main></div><!--]--><!--]--><!--]--></main> <footer class="build-info svelte-b4k9dg" data-testid="build-info-footer"><!--[0--><button type="button" aria-expanded="false" aria-controls="build-info-detail" class="summary svelte-b4k9dg"><span class="label svelte-b4k9dg">build</span> <code data-testid="build-info-short-sha" class="svelte-b4k9dg">72bb8b9</code> <!--[0--><span class="sep svelte-b4k9dg">·</span> <time datetime="2026-05-24T18:20:56Z">2026-05-24T18:20:56Z</time><!--]--> <!--[-1--><!--]--> <!--[-1--><!--]--></button> <!--[-1--><!--]--><!--]--></footer><!----></div><!--]--><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_zjjr3u = {
+						base: new URL(".", location).pathname.slice(0, -1),
+						assets: "/pr-37"
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("./_app/immutable/entry/start.qa3efcUp.js"),
+						import("./_app/immutable/entry/app.DLB0Jpnl.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element, {
+							node_ids: [0, 2],
+							data: [null,null],
+							form: null,
+							error: null
+						});
+					});
+				}
+			</script>
+		</div>
+	</body>
 </html>
