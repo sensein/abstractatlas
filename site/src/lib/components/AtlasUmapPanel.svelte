@@ -28,7 +28,7 @@
 		lassoclear: void;
 	}>();
 
-	type PlotlyApi = typeof import('plotly.js-gl3d-dist-min');
+	type PlotlyApi = typeof import('plotly.js-dist-min');
 
 	type BackdropPoint = {
 		pubmed_id: number;
@@ -88,14 +88,12 @@
 		return map;
 	})();
 
-	// Both 2D and 3D use scatter3d so the bundle stays on
-	// plotly.js-gl3d-dist-min (which has scatter3d but NOT scattergl
-	// — switching modes inside that bundle is the difference between
-	// a 461K-point flat scatter3d (z=0, top-down camera) vs the
-	// rotatable 3D scatter. Using scattergl would require swapping
-	// to plotly.js-dist-min, +1.7 MB to the bundle. The 2D mode reads
-	// its own UMAP fit from `umap_2d` so geometry isn't a projection
-	// of the 3D one.
+	// Trace selection: 3D mode renders scatter3d (rotatable, camera
+	// controls); 2D mode renders scattergl (flat, supports lasso/box
+	// select via plotly_selected — the lasso event NEVER fires on
+	// scatter3d). Both trace types carry the same customdata shape
+	// so the pointclick / lassoselect handlers downstream don't need
+	// to branch on dimensionality.
 	function backdropTrace() {
 		const is3d = dimensionality === '3d';
 		const x = backdropPoints.map((p) =>
@@ -104,9 +102,6 @@
 		const y = backdropPoints.map((p) =>
 			is3d ? p.umap_3d[1] : (p.umap_2d ?? [0, 0])[1]
 		);
-		const z = is3d
-			? backdropPoints.map((p) => p.umap_3d[2])
-			: backdropPoints.map(() => 0);
 		const colours = backdropPoints.map(
 			(p) => clusterColour.get(p.cluster_id) ?? '#9c9c9c'
 		);
@@ -116,26 +111,36 @@
 					clusterTitle.get(p.cluster_id) ?? `Cluster ${p.cluster_id}`
 				)}`
 		);
+		const customdata = backdropPoints.map((p) => ({
+			kind: 'neuroscape',
+			id: p.pubmed_id
+		}));
+		if (is3d) {
+			return {
+				type: 'scatter3d' as const,
+				mode: 'markers' as const,
+				x,
+				y,
+				z: backdropPoints.map((p) => p.umap_3d[2]),
+				name: 'NeuroScape backdrop',
+				marker: { size: 2, color: colours, opacity: backdropOpacity, line: { width: 0 } },
+				hovertemplate: '%{text}<extra></extra>',
+				text: hoverText,
+				showlegend: false,
+				customdata
+			};
+		}
 		return {
-			type: 'scatter3d' as const,
+			type: 'scattergl' as const,
 			mode: 'markers' as const,
 			x,
 			y,
-			z,
 			name: 'NeuroScape backdrop',
-			marker: {
-				size: 2,
-				color: colours,
-				opacity: backdropOpacity,
-				line: { width: 0 }
-			},
+			marker: { size: 3, color: colours, opacity: backdropOpacity, line: { width: 0 } },
 			hovertemplate: '%{text}<extra></extra>',
 			text: hoverText,
 			showlegend: false,
-			customdata: backdropPoints.map((p) => ({
-				kind: 'neuroscape',
-				id: p.pubmed_id
-			}))
+			customdata
 		};
 	}
 
@@ -147,9 +152,6 @@
 		const y = overlayPoints.map((p) =>
 			is3d ? p.umap_3d[1] : (p.umap_2d ?? [0, 0])[1]
 		);
-		const z = is3d
-			? overlayPoints.map((p) => p.umap_3d[2])
-			: overlayPoints.map(() => 0);
 		const colours = overlayPoints.map(
 			(p) => clusterColour.get(p.nearest_cluster_id) ?? '#1f77b4'
 		);
@@ -159,27 +161,38 @@
 					clusterTitle.get(p.nearest_cluster_id) ?? `Cluster ${p.nearest_cluster_id}`
 				)}`
 		);
+		const customdata = overlayPoints.map((p) => ({
+			kind: 'ohbm2026',
+			id: p.poster_id
+		}));
+		if (is3d) {
+			return {
+				type: 'scatter3d' as const,
+				mode: 'markers' as const,
+				x,
+				y,
+				z: overlayPoints.map((p) => p.umap_3d[2]),
+				name: 'OHBM 2026 overlay',
+				visible: showOverlay,
+				marker: { size: 5, color: colours, opacity: 1.0, line: { color: '#111111', width: 1.5 } },
+				hovertemplate: '%{text}<extra></extra>',
+				text: hoverText,
+				showlegend: false,
+				customdata
+			};
+		}
 		return {
-			type: 'scatter3d' as const,
+			type: 'scattergl' as const,
 			mode: 'markers' as const,
 			x,
 			y,
-			z,
 			name: 'OHBM 2026 overlay',
 			visible: showOverlay,
-			marker: {
-				size: 5,
-				color: colours,
-				opacity: 1.0,
-				line: { color: '#111111', width: 1.5 }
-			},
+			marker: { size: 6, color: colours, opacity: 1.0, line: { color: '#111111', width: 1.5 } },
 			hovertemplate: '%{text}<extra></extra>',
 			text: hoverText,
 			showlegend: false,
-			customdata: overlayPoints.map((p) => ({
-				kind: 'ohbm2026',
-				id: p.poster_id
-			}))
+			customdata
 		};
 	}
 
@@ -210,43 +223,38 @@
 				}
 			};
 		}
-		// 2D mode: still scatter3d, but with z=0 + top-down camera +
-		// pan-only drag + flat aspect ratio so the scene presents as a
-		// flat plot.
+		// 2D mode: scattergl on a Cartesian layout. dragmode='lasso'
+		// makes lasso the default tool — drag-select a region and
+		// plotly_selected fires with the customdata of every point
+		// inside (drives the AtlasRootLassoResults modal).
 		return {
 			...baseLayout,
-			scene: {
-				xaxis: { visible: false, showspikes: false },
-				yaxis: { visible: false, showspikes: false },
-				zaxis: {
-					visible: false,
-					showspikes: false,
-					range: [-0.5, 0.5]
-				},
-				bgcolor: 'rgba(0,0,0,0)',
-				camera: {
-					eye: { x: 0, y: 0, z: 2.0 },
-					up: { x: 0, y: 1, z: 0 },
-					center: { x: 0, y: 0, z: 0 }
-				},
-				dragmode: 'pan' as const,
-				aspectmode: 'manual' as const,
-				aspectratio: { x: 1, y: 1, z: 0.001 }
-			}
+			xaxis: { visible: false, showspikes: false, scaleanchor: 'y' as const },
+			yaxis: { visible: false, showspikes: false },
+			plot_bgcolor: 'rgba(0,0,0,0)',
+			dragmode: 'lasso' as const
 		};
 	}
 
-	const plotConfig = {
+	// In 2D mode we want Plotly's modeBar visible so the visitor can
+	// switch between lasso, box-select, pan, and zoom. Hide it in 3D
+	// because the camera drag already handles everything natively.
+	$: plotConfig = {
 		responsive: true,
 		displaylogo: false,
 		modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'] as string[],
-		displayModeBar: false
+		displayModeBar: dimensionality === '2d'
 	};
 
 	async function ensurePlotly() {
 		if (plotly || plotError) return;
 		try {
-			plotly = (await import('plotly.js-gl3d-dist-min')).default as PlotlyApi;
+			// Full plotly.js-dist-min (~3.5MB) bundles BOTH scatter3d (for
+			// the 3D rotatable mode) AND scattergl (for the 2D flat mode
+			// — needed because Plotly's lasso/box select only fires on
+			// 2D traces, never on scatter3d). The bundle cost is the
+			// price of admission for the lasso interaction.
+			plotly = (await import('plotly.js-dist-min')).default as PlotlyApi;
 		} catch (err) {
 			plotError = `failed to load plotly: ${(err as Error)?.message ?? String(err)}`;
 		}

@@ -542,6 +542,7 @@ export type AtlasDriftEntry = {
 	expected: string; // state-key declared by atlas.parquet
 	actual: string | null; // state-key read from the sibling's manifest
 	reason: 'mismatch' | 'fetch-failed' | 'no-state-key';
+	error_message?: string; // for fetch-failed: the underlying error
 };
 
 export type AtlasDriftResult =
@@ -563,33 +564,56 @@ function neuroscapeSiblingUrl(): string | null {
 		.replace(/[?&]dl=0(\b|$)/, (m) => m.replace('dl=0', ''));
 }
 
+/**
+ * Read just the state_key from a sibling parquet's manifest row group.
+ *
+ * Network strategy: hyparquet's `asyncBufferFromUrl` uses HTTP Range
+ * requests so we don't pay the full 26-96 MB to read a few KB of
+ * manifest. But a single failure (transient network, Dropbox
+ * throttling on rapid-fire Range requests, etc.) shouldn't lose us
+ * the entire check — retry with exponential backoff before giving up.
+ *
+ * Throws on persistent failure. The caller (verifyAtlasSiblingDrift)
+ * catches and classifies as `reason: 'fetch-failed'`.
+ */
+const SIBLING_FETCH_RETRY_DELAYS_MS = [400, 1200, 3000] as const;
+
 async function readSiblingStateKey(url: string): Promise<string | null> {
-	const file = await asyncBufferFromUrl({ url });
-	// The outer parquet's `manifest` row group is the first one. We only
-	// need its single row, which holds the manifest_json string.
-	const rows = (await parquetReadObjects({
-		file,
-		compressors,
-		utf8: false
-	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
-	const manifestRow = rows.find((r) => r.table_name === 'manifest');
-	if (!manifestRow?.table_bytes) return null;
-	// Inner parquet decode for the manifest row group itself.
-	const innerFile = bytesAsAsyncBuffer(manifestRow.table_bytes);
-	const inner = (await parquetReadObjects({ file: innerFile, compressors })) as Array<{
-		manifest_json?: string;
-	}>;
-	const json = inner[0]?.manifest_json;
-	if (!json) return null;
-	try {
-		const meta = JSON.parse(json) as {
-			build_info?: { state_key?: string; corpus_state_key?: string };
-		};
-		// Sibling parquets may name the field either way — accept both.
-		return meta.build_info?.state_key ?? meta.build_info?.corpus_state_key ?? null;
-	} catch {
-		return null;
+	let lastErr: unknown = null;
+	for (let attempt = 0; attempt <= SIBLING_FETCH_RETRY_DELAYS_MS.length; attempt++) {
+		try {
+			const file = await asyncBufferFromUrl({ url });
+			const rows = (await parquetReadObjects({
+				file,
+				compressors,
+				utf8: false
+			})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
+			const manifestRow = rows.find((r) => r.table_name === 'manifest');
+			if (!manifestRow?.table_bytes) return null;
+			const innerFile = bytesAsAsyncBuffer(manifestRow.table_bytes);
+			const inner = (await parquetReadObjects({ file: innerFile, compressors })) as Array<{
+				manifest_json?: string;
+			}>;
+			const json = inner[0]?.manifest_json;
+			if (!json) return null;
+			const meta = JSON.parse(json) as {
+				build_info?: { state_key?: string; corpus_state_key?: string };
+			};
+			return meta.build_info?.state_key ?? meta.build_info?.corpus_state_key ?? null;
+		} catch (err) {
+			lastErr = err;
+			if (attempt < SIBLING_FETCH_RETRY_DELAYS_MS.length) {
+				await new Promise<void>((r) =>
+					setTimeout(r, SIBLING_FETCH_RETRY_DELAYS_MS[attempt])
+				);
+			}
+		}
 	}
+	// All retries exhausted — propagate so the caller can record the
+	// fetch-failed entry with an informative reason.
+	throw lastErr instanceof Error
+		? lastErr
+		: new Error(`sibling parquet fetch failed for ${url}: ${String(lastErr)}`);
 }
 
 /**
@@ -638,12 +662,13 @@ export async function verifyAtlasSiblingDrift(
 						});
 					}
 				})
-				.catch(() =>
+				.catch((err) =>
 					drift.push({
 						sibling: 'ohbm2026',
 						expected: expectedOhbm,
 						actual: null,
-						reason: 'fetch-failed'
+						reason: 'fetch-failed',
+						error_message: err instanceof Error ? err.message : String(err)
 					})
 				)
 		);
@@ -671,12 +696,13 @@ export async function verifyAtlasSiblingDrift(
 						});
 					}
 				})
-				.catch(() =>
+				.catch((err) =>
 					drift.push({
 						sibling: 'neuroscape',
 						expected: expectedNeuro,
 						actual: null,
-						reason: 'fetch-failed'
+						reason: 'fetch-failed',
+						error_message: err instanceof Error ? err.message : String(err)
 					})
 				)
 		);

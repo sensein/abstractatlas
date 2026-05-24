@@ -561,25 +561,22 @@
 				atlasBackdrop = backdropShard.points;
 				atlasOverlayPoints = overlayShard.points;
 				atlasClusters = clustersShard.clusters;
-				// T043 — Fire the sibling-state-key drift check in the
-				// background. Banner shows ONLY on `mismatch` (confirmed
-				// state-key disagreement). fetch-failed / no-state-key
-				// are ambiguous — could be transient network, CORS
-				// preflight on Range requests, or a sibling not yet
-				// deployed — and are logged for debuggability without
-				// alarming the visitor. R-012 calls for a visible
-				// banner on real drift; "we couldn't check" is a
-				// different signal.
+				// T043 — Sibling-state-key drift check. Fires after the
+				// atlas scatter renders, so a slow / unreachable sibling
+				// doesn't block first paint. The check itself retries
+				// each sibling fetch up to 4 times with 400/1200/3000 ms
+				// backoff (loader.ts) before giving up.
+				//
+				// Two distinct loud signals — never silent:
+				//   - `mismatch` → confirmed drift; cross-conference
+				//     links will point at stale ids. Per R-012.
+				//   - `fetch-failed` / `no-state-key` → couldn't verify
+				//     after retries. The atlas MAY be fine, but we
+				//     can't confirm. Surfaced with different copy so
+				//     the visitor can act on the actual signal.
 				const manifest = pkg.get('data/manifest.json');
 				void verifyAtlasSiblingDrift(manifest).then((result) => {
-					if (result.ok) return;
-					const confirmed = result.drift.filter((d) => d.reason === 'mismatch');
-					const noisy = result.drift.filter((d) => d.reason !== 'mismatch');
-					if (noisy.length > 0) {
-						// eslint-disable-next-line no-console
-						console.warn('[atlas-root] sibling state-key check skipped:', noisy);
-					}
-					if (confirmed.length > 0) atlasDrift = confirmed;
+					if (!result.ok) atlasDrift = result.drift;
 				});
 			} else if (SITE_MODE === 'neuroscape') {
 				const articlesShard = pkg.get('data/neuroscape/articles.json') as
@@ -625,31 +622,68 @@
 	<div class="atlas-root-home" data-testid="atlas-root-home" data-mode={SITE_MODE}>
 		<LandingPageHeader />
 		{#if SITE_MODE === 'atlas-root' && atlasDrift.length > 0}
-			<!-- T043 / R-012: cross-parquet drift banner. One of the
-			     sibling deployments doesn't match what atlas.parquet
-			     was built against. The scatter may show stale ids;
-			     surface this loudly rather than rendering a partial /
-			     silently-wrong cross-link experience. -->
-			<aside
-				class="atlas-drift-banner"
-				role="alert"
-				data-testid="atlas-drift-banner"
-			>
-				<strong>Atlas data is out of sync with a sibling subsite.</strong>
-				<ul class="atlas-drift-list" data-testid="atlas-drift-list">
-					{#each atlasDrift as d (d.sibling)}
-						<li>
-							<code>{d.sibling}</code> expected
-							<code>{d.expected.slice(0, 8)}…</code> but found
-							<code>{d.actual ? d.actual.slice(0, 8) + '…' : `(${d.reason})`}</code>
-						</li>
-					{/each}
-				</ul>
-				<p class="atlas-drift-explain">
-					Cross-conference links may point at stale ids. Rebuild
-					<code>atlas.parquet</code> against the current sibling parquets.
-				</p>
-			</aside>
+			<!-- T043 / R-012 — surface BOTH drift signals loudly.
+
+			     Confirmed drift (reason === 'mismatch'): visitor's
+			     cross-conference clicks may land on stale ids. Action:
+			     rebuild atlas.parquet against the current siblings.
+
+			     Cannot-verify (reason === 'fetch-failed' or
+			     'no-state-key'): we couldn't read the sibling's
+			     manifest after 4 retries with backoff. The atlas may
+			     be fine, but we can't confirm. Action: check the
+			     sibling deployment is reachable + the parquet has a
+			     state_key. -->
+			{#each [{ kind: 'mismatch', items: atlasDrift.filter((d) => d.reason === 'mismatch') }, { kind: 'cannot-verify', items: atlasDrift.filter((d) => d.reason !== 'mismatch') }] as section (section.kind)}
+				{#if section.items.length > 0}
+					<aside
+						class="atlas-drift-banner"
+						class:atlas-drift-banner--mismatch={section.kind === 'mismatch'}
+						class:atlas-drift-banner--cannot-verify={section.kind === 'cannot-verify'}
+						role="alert"
+						data-testid={`atlas-drift-banner-${section.kind}`}
+					>
+						{#if section.kind === 'mismatch'}
+							<strong>Atlas data is out of sync with a sibling subsite.</strong>
+							<ul class="atlas-drift-list" data-testid="atlas-drift-list">
+								{#each section.items as d (d.sibling)}
+									<li>
+										<code>{d.sibling}</code> expected
+										<code>{d.expected.slice(0, 8)}…</code> but found
+										<code>{d.actual ? d.actual.slice(0, 8) + '…' : '(unknown)'}</code>
+									</li>
+								{/each}
+							</ul>
+							<p class="atlas-drift-explain">
+								Cross-conference links may point at stale ids. Rebuild
+								<code>atlas.parquet</code> against the current sibling parquets.
+							</p>
+						{:else}
+							<strong
+								>Couldn't verify atlas data against {section.items.length === 1
+									? 'a sibling subsite'
+									: 'sibling subsites'}.</strong
+							>
+							<ul class="atlas-drift-list" data-testid="atlas-drift-list-cannot-verify">
+								{#each section.items as d (d.sibling)}
+									<li>
+										<code>{d.sibling}</code> ·
+										{#if d.reason === 'fetch-failed'}
+											fetch failed after retries{#if d.error_message}: <code>{d.error_message}</code>{/if}
+										{:else}
+											sibling parquet manifest has no state_key
+										{/if}
+									</li>
+								{/each}
+							</ul>
+							<p class="atlas-drift-explain">
+								Atlas may be fine, but we couldn't confirm. Check the
+								Network tab for the actual error; refresh to retry.
+							</p>
+						{/if}
+					</aside>
+				{/if}
+			{/each}
 		{/if}
 		<main class="atlas-root-main">
 			<div class="atlas-controls" data-testid="atlas-root-controls">
@@ -969,13 +1003,22 @@
 	   non-atlas-root builds (the markup branch is gone, so Svelte
 	   marks these selectors as unused and they don't ship). */
 	.atlas-drift-banner {
-		background: var(--warning-bg);
-		color: var(--warning-text);
-		border: 1px solid var(--warning-border);
 		border-radius: 4px;
 		padding: 0.75rem 1rem;
 		margin: 0.75rem clamp(1rem, 2vw, 2rem);
 		font-size: 0.92rem;
+	}
+	.atlas-drift-banner--mismatch {
+		/* Yellow — confirmed drift; user-actionable. */
+		background: var(--warning-bg);
+		color: var(--warning-text);
+		border: 1px solid var(--warning-border);
+	}
+	.atlas-drift-banner--cannot-verify {
+		/* Subtle — "couldn't check" is informational, not alarming. */
+		background: var(--bg-subtle);
+		color: var(--text-muted);
+		border: 1px solid var(--border);
 	}
 	.atlas-drift-list {
 		margin: 0.4rem 0 0.4rem 1.25rem;

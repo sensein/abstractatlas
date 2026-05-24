@@ -17,6 +17,9 @@ importers:
       katex:
         specifier: ^0.16.47
         version: 0.16.47
+      plotly.js-dist-min:
+        specifier: ^3.5.1
+        version: 3.5.1
       plotly.js-gl3d-dist-min:
         specifier: ^2.35.0
         version: 2.35.3
@@ -1460,6 +1463,9 @@ packages:
     resolution: {integrity: sha512-hheHdokM8cdqCb0lcE3s+zT4t4W+vvjpGxsZlDnikarzx8tSzMebh3UiFtgqwFwnTnjYQcsyMF8ei2mCO/tpeA==}
     engines: {node: '>=18'}
     hasBin: true
+
+  plotly.js-dist-min@3.5.1:
+    resolution: {integrity: sha512-N2R4RXKFSRTapdMc/+CDIbvcgFk3HNhs3tR6cKK499tNrSo7C3X7p20Wqi7qpf03s+3oH+DC/hDINYlsE8hxxA==}
 
   plotly.js-gl3d-dist-min@2.35.3:
     resolution: {integrity: sha512-rEGAn7M/0C9q6bEEdG1X4teI6WjXCfJsqKizBpS4QUD70UsoYlhKipTJPuYSKJfnxREV6XYRydP+C5Ns6fwvrQ==}
@@ -3064,6 +3070,8 @@ snapshots:
       playwright-core: 1.60.0
     optionalDependencies:
       fsevents: 2.3.2
+
+  plotly.js-dist-min@3.5.1: {}
 
   plotly.js-gl3d-dist-min@2.35.3: {}
 
