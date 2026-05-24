@@ -70,8 +70,8 @@
 		justify-content: space-between;
 		gap: 1.5rem;
 		padding: 0.75rem 1.25rem;
-		border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-		background: var(--color-surface, #ffffff);
+		border-bottom: 1px solid var(--border);
+		background: var(--bg-elevated);
 		min-height: 3rem;
 	}
 
@@ -79,7 +79,7 @@
 		font-weight: 600;
 		font-size: 1.1rem;
 		letter-spacing: -0.01em;
-		color: var(--color-text, #111);
+		color: var(--text);
 		text-decoration: none;
 	}
 
@@ -96,7 +96,7 @@
 	}
 
 	.nav-link {
-		color: var(--color-text, #111);
+		color: var(--text);
 		text-decoration: none;
 		font-size: 0.95rem;
 		padding: 0.35rem 0.6rem;
@@ -104,7 +104,7 @@
 	}
 
 	.nav-link:hover {
-		background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
+		background: var(--bg-subtle);
 	}
 
 	.arrow {

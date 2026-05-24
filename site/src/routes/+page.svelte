@@ -408,7 +408,7 @@
 	// (FR-013). Not persisted (defaults to 0.25 on every visit per
 	// contracts/atlas-root-ui.md). When SITE_MODE !== 'atlas-root' this
 	// variable is unused and tree-shaken.
-	let backdropDensity = 0.25;
+	let backdropDensity = 0.05;
 
 	// Stage 15 — atlas.parquet / neuroscape.parquet hydration state.
 	// Loaded lazily on mount when SITE_MODE !== 'ohbm2026'. The same
@@ -810,12 +810,12 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.75rem;
-		border: 1px dashed var(--color-border, rgba(0, 0, 0, 0.2));
+		border: 1px dashed var(--border);
 		border-radius: 6px;
 		min-height: 50vh;
 	}
 	.placeholder-text {
-		color: var(--color-text-muted, #666);
+		color: var(--text-muted);
 		margin: 0;
 	}
 	.atlas-progress {
@@ -823,7 +823,7 @@
 		height: 0.6rem;
 	}
 	.neuroscape-tag {
-		color: var(--color-text-muted, #666);
+		color: var(--text-muted);
 		font-size: 0.85rem;
 		margin-left: auto;
 	}

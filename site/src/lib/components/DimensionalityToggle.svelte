@@ -44,7 +44,7 @@
 <style>
 	.dim-toggle {
 		display: inline-flex;
-		border: 1px solid var(--color-border, rgba(0, 0, 0, 0.15));
+		border: 1px solid var(--border);
 		border-radius: 4px;
 		overflow: hidden;
 		font-size: 0.9rem;
@@ -56,13 +56,13 @@
 		min-width: 2.5em;
 		text-align: center;
 		font-variant-numeric: tabular-nums;
-		color: var(--color-text-muted, #555);
+		color: var(--text-muted);
 	}
 	.dim-toggle button:hover {
-		background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
+		background: var(--bg-subtle);
 	}
 	.dim-toggle button.active {
-		background: var(--color-accent, #1f77b4);
-		color: var(--color-on-accent, #ffffff);
+		background: var(--accent);
+		color: var(--accent-text);
 	}
 </style>

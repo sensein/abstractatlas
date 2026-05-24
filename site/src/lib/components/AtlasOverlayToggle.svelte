@@ -42,7 +42,7 @@
 	}
 
 	.atlas-overlay-toggle:hover {
-		background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
+		background: var(--bg-subtle);
 	}
 
 	.atlas-overlay-toggle input {
@@ -50,6 +50,6 @@
 	}
 
 	.visible-label {
-		color: var(--color-text, #111);
+		color: var(--text);
 	}
 </style>

@@ -441,8 +441,8 @@
 		display: flex;
 		gap: 0.4rem;
 		font-size: 0.85rem;
-		color: var(--color-text-muted, #666);
-		background: var(--color-surface, rgba(255, 255, 255, 0.75));
+		color: var(--text-muted);
+		background: var(--bg-elevated);
 		padding: 0.15rem 0.5rem;
 		border-radius: 4px;
 		font-variant-numeric: tabular-nums;
@@ -454,25 +454,25 @@
 		top: 0.5rem;
 		right: 0.75rem;
 		font-size: 0.85rem;
-		color: var(--color-text-muted, #555);
-		background: var(--color-surface, rgba(255, 255, 255, 0.85));
-		border: 1px solid var(--color-border, rgba(0, 0, 0, 0.15));
+		color: var(--text-muted);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		padding: 0.2rem 0.6rem;
 		border-radius: 4px;
 		cursor: pointer;
 	}
 	.rotate-toggle:hover {
-		background: var(--color-surface-hover, rgba(0, 0, 0, 0.06));
+		background: var(--bg-subtle);
 	}
 	.rotate-toggle[data-state='rotating'] {
-		color: var(--color-accent, #1f77b4);
+		color: var(--accent);
 	}
 
 	.error-banner {
 		padding: 1rem;
-		border: 1px solid var(--color-error, #c00);
+		border: 1px solid var(--danger);
 		border-radius: 4px;
-		background: var(--color-error-bg, rgba(192, 0, 0, 0.08));
-		color: var(--color-error, #c00);
+		background: var(--bg-subtle);
+		color: var(--danger);
 	}
 </style>

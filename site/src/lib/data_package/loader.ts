@@ -260,6 +260,14 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 	const isNeuroscape = schemaVersion === 'neuroscape.v1';
 
 	for (const row of outerRows) {
+		// Yield to the event loop before each blob decode. hyparquet's
+		// per-blob decode is largely synchronous once it starts; for
+		// large tables (e.g. the 461k-row neuroscape backdrop) that
+		// can block the main thread for hundreds of ms. Yielding here
+		// lets the browser repaint the "Parsing…" placeholder + animate
+		// the indeterminate progress bar between blobs, so the parse
+		// phase is visibly active instead of looking frozen.
+		await new Promise<void>((r) => setTimeout(r, 0));
 		const { table_name: name, table_bytes: blob } = row;
 		if (name === 'manifest') continue;
 		// Enrichment tables are joined into one envelope below.

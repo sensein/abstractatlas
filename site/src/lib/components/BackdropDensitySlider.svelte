@@ -4,9 +4,10 @@
   landing page. Controls the alpha of the NeuroScape backdrop
   points so the OHBM 2026 overlay stays readable at default zoom.
 
-  NOT persisted (re-defaults to 0.25 on each load) — visitors
+  NOT persisted (re-defaults to 0.05 on each load) — visitors
   rarely want a "remembered" density, and the slider is cheap to
-  re-adjust per visit.
+  re-adjust per visit. 0.05 gives the OHBM 2026 overlay maximum
+  contrast against the dense ~461k-point NeuroScape backdrop.
 -->
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
@@ -14,7 +15,7 @@
 	/** Current opacity in [0.05, 1.0]. The parent owns the value
 	 *  so the same slider can drive multiple consumers (UmapPanel
 	 *  WebGL layers, hover targeting). */
-	export let value: number = 0.25;
+	export let value: number = 0.05;
 
 	const dispatch = createEventDispatcher<{ change: number }>();
 
@@ -51,12 +52,12 @@
 	}
 
 	.label-text {
-		color: var(--color-text-muted, #555);
+		color: var(--text-muted);
 	}
 
 	.value {
 		font-variant-numeric: tabular-nums;
-		color: var(--color-text-muted, #555);
+		color: var(--text-muted);
 		min-width: 2.5em;
 		text-align: right;
 	}
