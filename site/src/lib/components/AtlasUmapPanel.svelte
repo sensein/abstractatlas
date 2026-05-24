@@ -1,34 +1,34 @@
 <!--
-  Stage 15 (spec 015-neuroscape-context, FR-010 + FR-011 + T045):
-  the bare-root cross-conference atlas scatter.
+  Stage 15 (spec 015-neuroscape-context, FR-010 + FR-011 + FR-012 + T045 + T056):
+  the bare-root cross-conference atlas scatter — and the same panel
+  is reused on the /neuroscape/ subsite home (overlayPoints empty).
 
-  Renders two plotly scatter3d traces from atlas.parquet:
-
+  Renders two traces:
     1. NeuroScape backdrop  — cluster-coloured, small, dim, dense.
-    2. OHBM 2026 overlay    — outlined, larger, distinct foreground.
+    2. OHBM 2026 overlay    — outlined, larger, distinct foreground
+                              (omitted when overlayPoints is empty).
 
-  The atlas-overlay binary toggle controls trace #2's visibility;
-  the backdrop density slider controls trace #1's per-point alpha.
+  Props:
+    - backdropPoints / overlayPoints / clusters: per-row data.
+    - showOverlay: visibility of trace 2 (atlas-overlay toggle).
+    - backdropOpacity: per-point alpha on trace 1 (density slider).
+    - dimensionality: '3d' (default; scatter3d trace) or '2d' (scattergl).
 
-  Click / lasso interactions are stubbed for now — T046 lands the
-  DetailPanel branch and T047 the grouped lasso result list.
-
-  Reuses the existing plotly.js-gl3d-dist-min import that
-  UmapPanel.svelte already pulls in; no new browser dependency.
-  Distinct file from UmapPanel.svelte so the OHBM-2026 build
-  (which doesn't import this component) is byte-identical (FR-022).
+  Performance: opacity + visibility changes are dispatched via
+  `Plotly.restyle` so a slider drag doesn't trigger a full
+  recompute of the 461K-point scatter. Only data-shape changes
+  (point list / cluster table / dimensionality) call `Plotly.react`.
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 
 	type PlotlyApi = typeof import('plotly.js-gl3d-dist-min');
 
-	// Local prop types — kept private to this component. The parent
-	// (+page.svelte) declares its own type aliases of the same shape.
 	type BackdropPoint = {
 		pubmed_id: number;
 		cluster_id: number;
 		umap_3d: [number, number, number];
+		umap_2d?: [number, number];
 		title: string;
 		year: number;
 	};
@@ -36,6 +36,7 @@
 		submission_id: number;
 		poster_id: number;
 		umap_3d: [number, number, number];
+		umap_2d?: [number, number];
 		title: string;
 		nearest_cluster_id: number;
 	};
@@ -49,17 +50,15 @@
 	export let backdropPoints: BackdropPoint[] = [];
 	export let overlayPoints: OverlayPoint[] = [];
 	export let clusters: ClusterRow[] = [];
-
-	/** Bound to the atlasOverlay store by the parent. */
 	export let showOverlay: boolean = true;
-
-	/** 0.05–1.0, bound to BackdropDensitySlider's value by the parent. */
 	export let backdropOpacity: number = 0.25;
+	export let dimensionality: '2d' | '3d' = '3d';
 
 	let plotEl: HTMLDivElement | null = null;
 	let plotly: PlotlyApi | null = null;
 	let plotError: string | null = null;
 	let plotInitialized = false;
+	let plotInitializedFor: '2d' | '3d' | null = null;
 
 	$: clusterColour = (() => {
 		const map = new Map<number, string>();
@@ -74,9 +73,14 @@
 	})();
 
 	function backdropTrace() {
-		const x = backdropPoints.map((p) => p.umap_3d[0]);
-		const y = backdropPoints.map((p) => p.umap_3d[1]);
-		const z = backdropPoints.map((p) => p.umap_3d[2]);
+		const is3d = dimensionality === '3d';
+		const x = backdropPoints.map((p) =>
+			is3d ? p.umap_3d[0] : (p.umap_2d ?? [0, 0])[0]
+		);
+		const y = backdropPoints.map((p) =>
+			is3d ? p.umap_3d[1] : (p.umap_2d ?? [0, 0])[1]
+		);
+		const z = is3d ? backdropPoints.map((p) => p.umap_3d[2]) : undefined;
 		const colours = backdropPoints.map(
 			(p) => clusterColour.get(p.cluster_id) ?? '#9c9c9c'
 		);
@@ -86,15 +90,13 @@
 					clusterTitle.get(p.cluster_id) ?? `Cluster ${p.cluster_id}`
 				)}`
 		);
-		return {
-			type: 'scatter3d' as const,
+		const base = {
 			mode: 'markers' as const,
 			x,
 			y,
-			z,
 			name: 'NeuroScape backdrop',
 			marker: {
-				size: 2,
+				size: is3d ? 2 : 3,
 				color: colours,
 				opacity: backdropOpacity,
 				line: { width: 0 }
@@ -107,12 +109,20 @@
 				id: p.pubmed_id
 			}))
 		};
+		return is3d
+			? { ...base, type: 'scatter3d' as const, z }
+			: { ...base, type: 'scattergl' as const };
 	}
 
 	function overlayTrace() {
-		const x = overlayPoints.map((p) => p.umap_3d[0]);
-		const y = overlayPoints.map((p) => p.umap_3d[1]);
-		const z = overlayPoints.map((p) => p.umap_3d[2]);
+		const is3d = dimensionality === '3d';
+		const x = overlayPoints.map((p) =>
+			is3d ? p.umap_3d[0] : (p.umap_2d ?? [0, 0])[0]
+		);
+		const y = overlayPoints.map((p) =>
+			is3d ? p.umap_3d[1] : (p.umap_2d ?? [0, 0])[1]
+		);
+		const z = is3d ? overlayPoints.map((p) => p.umap_3d[2]) : undefined;
 		const colours = overlayPoints.map(
 			(p) => clusterColour.get(p.nearest_cluster_id) ?? '#1f77b4'
 		);
@@ -122,16 +132,14 @@
 					clusterTitle.get(p.nearest_cluster_id) ?? `Cluster ${p.nearest_cluster_id}`
 				)}`
 		);
-		return {
-			type: 'scatter3d' as const,
+		const base = {
 			mode: 'markers' as const,
 			x,
 			y,
-			z,
 			name: 'OHBM 2026 overlay',
 			visible: showOverlay,
 			marker: {
-				size: 5,
+				size: is3d ? 5 : 6,
 				color: colours,
 				opacity: 1.0,
 				line: { color: '#111111', width: 1.5 }
@@ -144,6 +152,9 @@
 				id: p.poster_id
 			}))
 		};
+		return is3d
+			? { ...base, type: 'scatter3d' as const, z }
+			: { ...base, type: 'scattergl' as const };
 	}
 
 	function escape(s: string): string {
@@ -153,19 +164,32 @@
 			.replace(/>/g, '&gt;');
 	}
 
-	const layout = {
-		autosize: true,
-		margin: { l: 0, r: 0, t: 0, b: 0 },
-		hovermode: 'closest' as const,
-		scene: {
-			xaxis: { visible: false, showspikes: false },
-			yaxis: { visible: false, showspikes: false },
-			zaxis: { visible: false, showspikes: false },
-			bgcolor: 'rgba(0,0,0,0)'
-		},
-		paper_bgcolor: 'rgba(0,0,0,0)',
-		showlegend: false
-	};
+	function layoutFor(d: '2d' | '3d') {
+		const base = {
+			autosize: true,
+			margin: { l: 0, r: 0, t: 0, b: 0 },
+			hovermode: 'closest' as const,
+			paper_bgcolor: 'rgba(0,0,0,0)',
+			showlegend: false
+		};
+		if (d === '3d') {
+			return {
+				...base,
+				scene: {
+					xaxis: { visible: false, showspikes: false },
+					yaxis: { visible: false, showspikes: false },
+					zaxis: { visible: false, showspikes: false },
+					bgcolor: 'rgba(0,0,0,0)'
+				}
+			};
+		}
+		return {
+			...base,
+			xaxis: { visible: false, zeroline: false, showgrid: false },
+			yaxis: { visible: false, zeroline: false, showgrid: false, scaleanchor: 'x' },
+			plot_bgcolor: 'rgba(0,0,0,0)'
+		};
+	}
 
 	const plotConfig = {
 		responsive: true,
@@ -183,42 +207,78 @@
 		}
 	}
 
-	async function renderPlot() {
+	async function renderPlotFull() {
 		if (!plotEl || !plotly) return;
-		const data = [backdropTrace(), overlayTrace()];
-		if (!plotInitialized) {
+		const data = [backdropTrace()];
+		if (overlayPoints.length > 0) data.push(overlayTrace());
+		const layout = layoutFor(dimensionality);
+		const needsFullInit = !plotInitialized || plotInitializedFor !== dimensionality;
+		if (needsFullInit) {
+			// Switching dimensionality re-initialises (scatter3d ↔
+			// scattergl is a trace-type change). Calling newPlot makes
+			// the intent explicit + clears any prior scene state.
 			await plotly.newPlot(plotEl, data, layout, plotConfig);
 			plotInitialized = true;
+			plotInitializedFor = dimensionality;
 		} else {
 			await plotly.react(plotEl, data, layout, plotConfig);
 		}
 	}
 
+	async function restyleOpacityOnly() {
+		if (!plotEl || !plotly || !plotInitialized) return;
+		try {
+			await plotly.restyle(plotEl, { 'marker.opacity': backdropOpacity }, [0]);
+		} catch {
+			await renderPlotFull();
+		}
+	}
+
+	async function restyleOverlayVisibility() {
+		if (!plotEl || !plotly || !plotInitialized) return;
+		if (overlayPoints.length === 0) return;
+		try {
+			await plotly.restyle(plotEl, { visible: showOverlay }, [1]);
+		} catch {
+			await renderPlotFull();
+		}
+	}
+
 	onMount(async () => {
 		await ensurePlotly();
-		await renderPlot();
+		await renderPlotFull();
 	});
 
 	onDestroy(() => {
 		if (plotly && plotEl) plotly.purge(plotEl);
 	});
 
-	// Re-render whenever inputs change.
-	$: if (plotly && plotEl && (backdropPoints || overlayPoints || clusters)) {
-		void renderPlot();
+	// Reactive split: data + dimensionality changes do a full
+	// react/newPlot pass; opacity + visibility changes go through the
+	// cheap restyle path so a slider drag is fluid.
+	$: if (plotly && plotEl && backdropPoints.length >= 0) {
+		// Touch every data dep so Svelte tracks them.
+		void backdropPoints;
+		void overlayPoints;
+		void clusters;
+		void dimensionality;
+		void renderPlotFull();
 	}
 	$: if (plotly && plotEl) {
-		// showOverlay + backdropOpacity changes trigger a re-render
-		// via the reactive `backdropTrace()` / `overlayTrace()` calls
-		// above; we re-invoke renderPlot here so Plotly's React-style
-		// update path runs.
-		void renderPlot();
-		void showOverlay;
 		void backdropOpacity;
+		void restyleOpacityOnly();
+	}
+	$: if (plotly && plotEl) {
+		void showOverlay;
+		void restyleOverlayVisibility();
 	}
 </script>
 
-<div class="atlas-umap-panel" data-testid="atlas-umap-panel">
+<div
+	class="atlas-umap-panel"
+	data-testid="atlas-umap-panel"
+	data-dimensionality={dimensionality}
+>
 	{#if plotError}
 		<div class="error-banner" role="alert" data-testid="atlas-umap-error">
 			{plotError}
@@ -231,7 +291,7 @@
 		></div>
 		<div class="counts" data-testid="atlas-umap-counts" aria-live="polite">
 			<span>{backdropPoints.length.toLocaleString()} backdrop pts</span>
-			{#if showOverlay}
+			{#if showOverlay && overlayPoints.length > 0}
 				<span>·</span>
 				<span>{overlayPoints.length.toLocaleString()} OHBM 2026 pts</span>
 			{/if}

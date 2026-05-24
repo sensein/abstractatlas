@@ -74,8 +74,15 @@ export function getDataPackageUrl(): string | null {
 		.replace(/[?&]dl=0(\b|$)/, (m) => m.replace('dl=0', ''));
 }
 
+/** Progress callback fired during the parquet HTTP fetch. The
+ *  caller can render "Loading… X%" while bytes stream in. `total`
+ *  is null when the server doesn't send a Content-Length header
+ *  (the caller can show "Loading X MB…" instead). */
+export type LoadProgress = (loaded: number, total: number | null) => void;
+
 export function loadDataPackage(
-	fetcher: typeof fetch = fetch
+	fetcher: typeof fetch = fetch,
+	onProgress: LoadProgress | null = null
 ): Promise<Map<string, unknown> | null> {
 	if (packageCache !== null) return packageCache;
 	const url = getDataPackageUrl();
@@ -87,8 +94,39 @@ export function loadDataPackage(
 		try {
 			const response = await fetcher(url);
 			if (!response.ok || !response.body) return null;
-			const buffer = await response.arrayBuffer();
-			return await parseParquetSingle(new Uint8Array(buffer));
+			// When a progress callback is provided, stream the body via
+			// `getReader()` so we can report bytes-arrived as we go.
+			// Without a callback we still take the simpler `arrayBuffer()`
+			// path — no measurable overhead in the no-progress case.
+			let bytes: Uint8Array;
+			if (onProgress && response.body && typeof response.body.getReader === 'function') {
+				const contentLengthHeader = response.headers.get('content-length');
+				const total = contentLengthHeader ? Number(contentLengthHeader) : null;
+				const reader = response.body.getReader();
+				const chunks: Uint8Array[] = [];
+				let loaded = 0;
+				onProgress(0, total);
+				// eslint-disable-next-line no-constant-condition
+				while (true) {
+					const { value, done } = await reader.read();
+					if (done) break;
+					if (value) {
+						chunks.push(value);
+						loaded += value.byteLength;
+						onProgress(loaded, total);
+					}
+				}
+				bytes = new Uint8Array(loaded);
+				let offset = 0;
+				for (const c of chunks) {
+					bytes.set(c, offset);
+					offset += c.byteLength;
+				}
+			} else {
+				const buffer = await response.arrayBuffer();
+				bytes = new Uint8Array(buffer);
+			}
+			return await parseParquetSingle(bytes);
 		} catch (err) {
 			console.error('[ohbm2026] failed to load data package:', err);
 			return null;

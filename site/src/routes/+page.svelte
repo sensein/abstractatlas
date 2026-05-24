@@ -41,7 +41,9 @@
 	import AtlasOverlayToggle from '$lib/components/AtlasOverlayToggle.svelte';
 	import BackdropDensitySlider from '$lib/components/BackdropDensitySlider.svelte';
 	import AtlasUmapPanel from '$lib/components/AtlasUmapPanel.svelte';
+	import DimensionalityToggle from '$lib/components/DimensionalityToggle.svelte';
 	import { atlasOverlay } from '$lib/stores/atlas_overlay';
+	import { dimensionality } from '$lib/stores/dimensionality';
 	import { loadDataPackage } from '$lib/data_package/loader';
 
 	// Shapes the AtlasUmapPanel expects. Defined here (not imported
@@ -408,42 +410,70 @@
 	// variable is unused and tree-shaken.
 	let backdropDensity = 0.25;
 
-	// Stage 15 — atlas.parquet hydration state. Loaded lazily on mount
-	// when SITE_MODE === 'atlas-root'. Mobile detection (R-011) is
-	// deferred to the AtlasUmapPanel; for now the full backdrop loads
-	// unconditionally.
+	// Stage 15 — atlas.parquet / neuroscape.parquet hydration state.
+	// Loaded lazily on mount when SITE_MODE !== 'ohbm2026'. The same
+	// AtlasUmapPanel powers both modes; in neuroscape mode the
+	// overlayPoints list stays empty (the OHBM 2026 overlay only
+	// renders on the bare-root cross-conference page).
 	let atlasBackdrop: AtlasBackdropPoint[] = [];
 	let atlasOverlayPoints: AtlasOverlayPoint[] = [];
 	let atlasClusters: AtlasClusterRow[] = [];
 	let atlasLoading = false;
 	let atlasError: string | null = null;
+	let atlasProgressLoaded = 0;
+	let atlasProgressTotal: number | null = null;
 
 	async function loadAtlasData() {
-		if (SITE_MODE !== 'atlas-root') return;
+		if (SITE_MODE === 'ohbm2026') return;
 		if (atlasLoading || atlasBackdrop.length > 0) return;
 		atlasLoading = true;
+		atlasProgressLoaded = 0;
+		atlasProgressTotal = null;
 		try {
-			const pkg = await loadDataPackage();
+			const pkg = await loadDataPackage(fetch, (loaded, total) => {
+				atlasProgressLoaded = loaded;
+				atlasProgressTotal = total;
+			});
 			if (!pkg) {
-				atlasError = 'Atlas data package URL not configured.';
+				atlasError =
+					SITE_MODE === 'atlas-root'
+						? 'Atlas data package URL not configured.'
+						: 'NeuroScape data package URL not configured.';
 				return;
 			}
-			const backdropShard = pkg.get('data/atlas/backdrop_full.json') as
-				| { points: AtlasBackdropPoint[] }
-				| undefined;
-			const overlayShard = pkg.get('data/atlas/ohbm_overlay.json') as
-				| { points: AtlasOverlayPoint[] }
-				| undefined;
-			const clustersShard = pkg.get('data/atlas/clusters.json') as
-				| { clusters: AtlasClusterRow[] }
-				| undefined;
-			if (!backdropShard || !overlayShard || !clustersShard) {
-				atlasError = 'Atlas data package is missing one of the expected row groups.';
-				return;
+			if (SITE_MODE === 'atlas-root') {
+				const backdropShard = pkg.get('data/atlas/backdrop_full.json') as
+					| { points: AtlasBackdropPoint[] }
+					| undefined;
+				const overlayShard = pkg.get('data/atlas/ohbm_overlay.json') as
+					| { points: AtlasOverlayPoint[] }
+					| undefined;
+				const clustersShard = pkg.get('data/atlas/clusters.json') as
+					| { clusters: AtlasClusterRow[] }
+					| undefined;
+				if (!backdropShard || !overlayShard || !clustersShard) {
+					atlasError = 'Atlas data package is missing one of the expected row groups.';
+					return;
+				}
+				atlasBackdrop = backdropShard.points;
+				atlasOverlayPoints = overlayShard.points;
+				atlasClusters = clustersShard.clusters;
+			} else if (SITE_MODE === 'neuroscape') {
+				const articlesShard = pkg.get('data/neuroscape/articles.json') as
+					| { articles: AtlasBackdropPoint[] }
+					| undefined;
+				const clustersShard = pkg.get('data/neuroscape/clusters.json') as
+					| { clusters: AtlasClusterRow[] }
+					| undefined;
+				if (!articlesShard || !clustersShard) {
+					atlasError =
+						'NeuroScape data package is missing the articles or clusters row group.';
+					return;
+				}
+				atlasBackdrop = articlesShard.articles;
+				atlasOverlayPoints = [];
+				atlasClusters = clustersShard.clusters;
 			}
-			atlasBackdrop = backdropShard.points;
-			atlasOverlayPoints = overlayShard.points;
-			atlasClusters = clustersShard.clusters;
 		} catch (err) {
 			atlasError = `failed to load atlas data: ${(err as Error)?.message ?? String(err)}`;
 		} finally {
@@ -451,22 +481,38 @@
 		}
 	}
 
+	$: atlasProgressPercent =
+		atlasProgressTotal && atlasProgressTotal > 0
+			? Math.min(100, Math.round((atlasProgressLoaded / atlasProgressTotal) * 100))
+			: null;
+
+	function formatMb(bytes: number): string {
+		return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+	}
+
 	onMount(() => {
 		void loadAtlasData();
 	});
 </script>
 
-{#if SITE_MODE === 'atlas-root'}
-	<!-- Stage 15 bare-root cross-conference atlas landing page. The
-	     UmapPanel adapter (T045) lands the actual scatter; for now the
-	     route exists, the chrome renders, and the binary toggle +
-	     density slider are wired to their stores. -->
-	<div class="atlas-root-home" data-testid="atlas-root-home">
+{#if SITE_MODE === 'atlas-root' || SITE_MODE === 'neuroscape'}
+	<!-- Stage 15 atlas-root + neuroscape modes — both use the
+	     LandingPageHeader + AtlasUmapPanel. The atlas-root mode
+	     additionally shows the overlay toggle (OHBM 2026 layer). -->
+	<div class="atlas-root-home" data-testid="atlas-root-home" data-mode={SITE_MODE}>
 		<LandingPageHeader />
 		<main class="atlas-root-main">
 			<div class="atlas-controls" data-testid="atlas-root-controls">
-				<AtlasOverlayToggle />
+				{#if SITE_MODE === 'atlas-root'}
+					<AtlasOverlayToggle />
+				{/if}
+				<DimensionalityToggle />
 				<BackdropDensitySlider bind:value={backdropDensity} />
+				{#if SITE_MODE === 'neuroscape'}
+					<span class="neuroscape-tag" data-testid="neuroscape-mode-tag"
+						>NeuroScape PubMed atlas <em>· browse/search coming soon</em></span
+					>
+				{/if}
 			</div>
 			{#if atlasError}
 				<div class="atlas-scatter-placeholder" data-testid="atlas-scatter-error" role="alert">
@@ -474,15 +520,31 @@
 				</div>
 			{:else if atlasLoading && atlasBackdrop.length === 0}
 				<div class="atlas-scatter-placeholder" data-testid="atlas-scatter-loading">
-					<p class="placeholder-text">Loading cross-conference atlas…</p>
+					<p class="placeholder-text">
+						Loading {SITE_MODE === 'atlas-root' ? 'cross-conference atlas' : 'NeuroScape atlas'}…
+						{#if atlasProgressPercent !== null}
+							<strong data-testid="atlas-loading-percent">{atlasProgressPercent}%</strong>
+						{:else if atlasProgressLoaded > 0}
+							<strong data-testid="atlas-loading-bytes">{formatMb(atlasProgressLoaded)}</strong>
+						{/if}
+					</p>
+					{#if atlasProgressPercent !== null}
+						<progress
+							class="atlas-progress"
+							value={atlasProgressPercent}
+							max="100"
+							data-testid="atlas-loading-progressbar"
+						></progress>
+					{/if}
 				</div>
 			{:else}
 				<AtlasUmapPanel
 					backdropPoints={atlasBackdrop}
 					overlayPoints={atlasOverlayPoints}
 					clusters={atlasClusters}
-					showOverlay={$atlasOverlay}
+					showOverlay={SITE_MODE === 'atlas-root' ? $atlasOverlay : false}
 					backdropOpacity={backdropDensity}
+					dimensionality={$dimensionality}
 				/>
 			{/if}
 		</main>
@@ -696,8 +758,10 @@
 	.atlas-scatter-placeholder {
 		flex: 1;
 		display: flex;
+		flex-direction: column;
 		align-items: center;
 		justify-content: center;
+		gap: 0.75rem;
 		border: 1px dashed var(--color-border, rgba(0, 0, 0, 0.2));
 		border-radius: 6px;
 		min-height: 50vh;
@@ -705,6 +769,19 @@
 	.placeholder-text {
 		color: var(--color-text-muted, #666);
 		margin: 0;
+	}
+	.atlas-progress {
+		width: 16rem;
+		height: 0.6rem;
+	}
+	.neuroscape-tag {
+		color: var(--color-text-muted, #666);
+		font-size: 0.85rem;
+		margin-left: auto;
+	}
+	.neuroscape-tag em {
+		font-style: italic;
+		opacity: 0.7;
 	}
 
 	.home {

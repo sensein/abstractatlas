@@ -8,6 +8,8 @@
 -->
 <script lang="ts">
 	import { base } from '$app/paths';
+	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import { onMount } from 'svelte';
 
 	// The atlas-root build sets BASE_PATH='' so `base` resolves to ''.
 	// In production the gh-pages publish-tree puts ohbm2026/ and
@@ -17,6 +19,14 @@
 	// AND previews.
 	const OHBM2026_HREF = `${base}/ohbm2026/`;
 	const NEUROSCAPE_HREF = `${base}/neuroscape/`;
+
+	// Side-effect-initialise the theme store on first mount so the
+	// data-theme attribute reflects the user's chosen / system theme
+	// (the OHBM 2026 +layout.svelte does this; the atlas-root +
+	// neuroscape paths use this header instead of that layout).
+	onMount(async () => {
+		await import('$lib/stores/theme');
+	});
 </script>
 
 <header class="landing-header" data-testid="landing-page-header">
@@ -35,6 +45,9 @@
 			>Browse the NeuroScape PubMed atlas <span class="arrow">→</span></a
 		>
 	</nav>
+	<div class="header-controls" data-testid="atlas-root-header-controls">
+		<ThemeToggle />
+	</div>
 </header>
 
 <style>
@@ -60,6 +73,12 @@
 	.nav-links {
 		display: flex;
 		gap: 1.25rem;
+		align-items: center;
+	}
+
+	.header-controls {
+		display: flex;
+		gap: 0.5rem;
 		align-items: center;
 	}
 

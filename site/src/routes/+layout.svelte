@@ -148,17 +148,19 @@
 <svelte:head>
 	{#if SITE_MODE === 'atlas-root'}
 		<title>Abstract Atlas — OHBM 2026 in the NeuroScape neuroscience landscape</title>
+	{:else if SITE_MODE === 'neuroscape'}
+		<title>NeuroScape PubMed Atlas — neuroscience 1999–2023</title>
 	{:else}
 		<title>OHBM 2026 Atlas (beta)</title>
 	{/if}
 </svelte:head>
 
-{#if SITE_MODE === 'atlas-root'}
-	<!-- Stage 15 atlas-root build: the landing page renders its own
-	     header chrome via `LandingPageHeader` in `+page.svelte`'s
-	     atlas-root branch. The slot is the entire page; we wrap it
-	     only in the BuildInfo footer so the deploy SHA / data state-
-	     key stays visible. -->
+{#if SITE_MODE === 'atlas-root' || SITE_MODE === 'neuroscape'}
+	<!-- Stage 15 atlas-root + neuroscape builds: the landing page
+	     renders its own header chrome via `LandingPageHeader` in
+	     `+page.svelte`'s SITE_MODE branch. The slot is the entire
+	     page; we wrap it only in the BuildInfo footer so the deploy
+	     SHA / data state-key stays visible. -->
 	<div class="atlas-root-shell">
 		<main class="atlas-root-slot">
 			<slot />
