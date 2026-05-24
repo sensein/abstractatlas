@@ -252,7 +252,16 @@ def _read_ohbm_corpus_headers(
             actual=type(payload).__name__,
         )
 
+    # First-encountered-wins dedup by poster_id — matches the OHBM 2026
+    # site's `build_abstract_to_poster_map` rule
+    # (src/ohbm2026/ui_data/abstracts.py:438-440). Without this, the
+    # rare case of two Oxford submissions sharing one poster_id would
+    # produce N+1 overlay points on atlas.parquet vs N abstracts on
+    # /ohbm2026/, breaking the cross-site count invariant. Order of
+    # iteration matches the canonical JSON, so the winning submission
+    # is the same across both pipelines.
     out: dict[int, tuple[int, str]] = {}
+    seen_poster_ids: set[int] = set()
     for record in records:
         if not isinstance(record, dict):
             continue
@@ -264,9 +273,14 @@ def _read_ohbm_corpus_headers(
         if sub_id is None or poster_id is None:
             continue
         try:
-            out[int(sub_id)] = (int(poster_id), str(title))
+            pid_int = int(poster_id)
+            sub_int = int(sub_id)
         except (TypeError, ValueError):
             continue
+        if pid_int in seen_poster_ids:
+            continue
+        seen_poster_ids.add(pid_int)
+        out[sub_int] = (pid_int, str(title))
     return out
 
 
