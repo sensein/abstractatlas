@@ -185,6 +185,15 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 	}
 	if (manifest) out.set('data/manifest.json', manifest);
 	const buildInfo = (manifest as { build_info?: unknown } | null)?.build_info ?? {};
+	// Stage 15 (T042): the same single-file parquet shape carries
+	// three distinct schemas now — Stage-10 'abstracts.v2' (the
+	// OHBM 2026 corpus), 'atlas.v1' (the bare-root cross-conference
+	// scatter), and 'neuroscape.v1' (the new /neuroscape/ subsite).
+	// The manifest's schema_version selects the dispatch table.
+	const schemaVersion =
+		(manifest as { schema_version?: string } | null)?.schema_version ?? 'abstracts.v2';
+	const isAtlas = schemaVersion === 'atlas.v1';
+	const isNeuroscape = schemaVersion === 'neuroscape.v1';
 
 	for (const row of outerRows) {
 		const { table_name: name, table_bytes: blob } = row;
@@ -204,9 +213,107 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 			}
 			continue;
 		}
+		// Stage 15 — neuroscape.parquet's title-only search sidecar.
+		if (name === 'search:neuroscape_titles') {
+			out.set('data/neuroscape/titles_index.bin', blob);
+			continue;
+		}
+		if (name === 'search:neuroscape_titles_meta') {
+			try {
+				out.set(
+					'data/neuroscape/titles_index.meta.json',
+					JSON.parse(new TextDecoder().decode(blob))
+				);
+			} catch {
+				/* skip malformed sidecar */
+			}
+			continue;
+		}
 
 		const rows = await decodeBlob(blob);
 
+		// Stage 15 — atlas.parquet dispatch (schema_version === 'atlas.v1').
+		// Bare-root cross-conference landing page reads these row groups.
+		if (isAtlas) {
+			if (name === 'clusters') {
+				out.set('data/atlas/clusters.json', {
+					schema_version: 'atlas.clusters.v1',
+					build_info: buildInfo,
+					clusters: rows
+				});
+				continue;
+			}
+			if (name === 'neuroscape_backdrop_full') {
+				out.set('data/atlas/backdrop_full.json', {
+					schema_version: 'atlas.backdrop.v1',
+					build_info: buildInfo,
+					points: rows
+				});
+				continue;
+			}
+			if (name === 'neuroscape_backdrop_decimated') {
+				out.set('data/atlas/backdrop_decimated.json', {
+					schema_version: 'atlas.backdrop.v1',
+					build_info: buildInfo,
+					points: rows
+				});
+				continue;
+			}
+			if (name === 'ohbm_overlay') {
+				out.set('data/atlas/ohbm_overlay.json', {
+					schema_version: 'atlas.overlay.v1',
+					build_info: buildInfo,
+					points: rows
+				});
+				continue;
+			}
+			if (name === 'cross_pointers') {
+				out.set('data/atlas/cross_pointers.json', {
+					schema_version: 'atlas.cross_pointers.v1',
+					build_info: buildInfo,
+					pointers: rows
+				});
+				continue;
+			}
+			// Unknown atlas.v1 outer row — ignore silently (forwards
+			// compatible: future atlas.parquet versions can add tables
+			// without breaking this decoder).
+			continue;
+		}
+
+		// Stage 15 — neuroscape.parquet dispatch (schema_version === 'neuroscape.v1').
+		// The new /neuroscape/ subsite reads these row groups.
+		if (isNeuroscape) {
+			if (name === 'articles') {
+				out.set('data/neuroscape/articles.json', {
+					schema_version: 'neuroscape.articles.v1',
+					build_info: buildInfo,
+					articles: rows
+				});
+				continue;
+			}
+			if (name === 'clusters') {
+				out.set('data/neuroscape/clusters.json', {
+					schema_version: 'neuroscape.clusters.v1',
+					build_info: buildInfo,
+					clusters: rows
+				});
+				continue;
+			}
+			if (name === 'neighbors_neuroscape') {
+				out.set('data/neuroscape/neighbors.json', {
+					schema_version: 'neuroscape.neighbors.v1',
+					build_info: buildInfo,
+					rows
+				});
+				continue;
+			}
+			// Unknown neuroscape.v1 outer row — ignore (forwards
+			// compatible, same rationale as the atlas branch).
+			continue;
+		}
+
+		// Default dispatch path — Stage-10 'abstracts.v2' (OHBM 2026).
 		if (name === 'abstracts') {
 			out.set('data/abstracts.json', {
 				schema_version: 'abstracts.v2',
@@ -265,6 +372,15 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 				farthest_distances: parallel.map((r) => r.farthest_distances)
 			});
 		}
+	}
+
+	// Stage 15 — atlas.parquet and neuroscape.parquet don't carry the
+	// OHBM-2026-specific enrichment / standby tables; the post-loop
+	// hydration steps below are OHBM-2026-only. Return early so we
+	// don't emit empty `data/enrichment.json` / `data/standby_slots.json`
+	// shards into the envelope for non-ohbm2026 parquets.
+	if (isAtlas || isNeuroscape) {
+		return out;
 	}
 
 	// Combine the two flattened enrichment tables back into the
