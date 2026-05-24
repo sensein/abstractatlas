@@ -15,6 +15,7 @@ from ohbm2026.embed import neuroscape as embed_neuroscape
 from ohbm2026.enrich import stage as enrich_stage
 from ohbm2026.fetch import stage as fetch_stage
 from ohbm2026.embed import stage as embed_stage
+from ohbm2026.atlas_package import cli as atlas_cli
 
 
 def _copy_actions(target: argparse.ArgumentParser, source: argparse.ArgumentParser) -> None:
@@ -53,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Stage 2: enrich the accepted corpus (figures, claims, references)",
     )
     _copy_actions(enrich_abstracts_parser, enrich_stage._build_parser())
+
+    build_atlas_package_parser = subparsers.add_parser(
+        "build-atlas-package",
+        help="Stage 15: build neuroscape.parquet + atlas.parquet from the NeuroScape v1.0.1 release + voyage_stage2_published recipe",
+    )
+    _copy_actions(build_atlas_package_parser, atlas_cli.build_parser())
 
     embed_matrix_parser = subparsers.add_parser(
         "embed-matrix",
@@ -245,6 +252,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_refresh_assets(subcommand_argv)
     if command == "enrich-abstracts":
         return enrich_stage.main(subcommand_argv)
+    if command == "build-atlas-package":
+        return atlas_cli.main(subcommand_argv)
     if command == "embed-matrix":
         return embed_stage.main(subcommand_argv)
     if command == "analyze-matrix":
