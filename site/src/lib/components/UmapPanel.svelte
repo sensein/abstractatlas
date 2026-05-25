@@ -951,45 +951,26 @@
 			);
 			if (overlayTrace) traces.push(overlayTrace);
 		}
-		// When lassoed, recentre the camera on the SELECTION centroid
-		// (Plotly's `scene.center` is the look-at point) so the
-		// selection visually fills the view. We deliberately do NOT
-		// constrain the axis range — doing so clips the dim-unselected
-		// context trace against the scene volume edge, which renders
-		// as a visible cut-off plane in this Plotly bundle. Autorange
-		// across selected + unselected keeps every point on-screen and
-		// the opacity split (0.15 unselected vs 0.6 selected) is what
-		// makes the selection pop.
+		// On lasso, we DON'T touch the 3D camera — the previous
+		// attempt to zoom (explicit axis range) clipped unselected
+		// context points against the scene volume edge, and the
+		// follow-up attempt (camera.center in data coords) silently
+		// made the camera look at empty space because Plotly's
+		// `scene.camera.center` is in NORMALISED scene coords (-1..1),
+		// not data coords. The opacity split (0.6 selected vs 0.15
+		// unselected) is enough on its own to make the selection
+		// stand out — the user can orbit manually if they want to
+		// inspect it more closely.
 		const axisCfg = { visible: false, showbackground: false };
-		let sceneCenter: { x: number; y: number; z: number } | null = null;
-		if (lassoActive) {
-			let cx = 0, cy = 0, cz = 0, n = 0;
-			for (const p of backdrop) {
-				if (!neuroLassoSet.has(p.pubmed_id)) continue;
-				const [x, y, z] = p.umap_3d;
-				cx += x; cy += y; cz += z; n += 1;
-			}
-			for (const p of overlay) {
-				if (!ohbmLassoSet.has(p.poster_id)) continue;
-				const [x, y, z] = p.umap_3d;
-				cx += x; cy += y; cz += z; n += 1;
-			}
-			if (n > 0) sceneCenter = { x: cx / n, y: cy / n, z: cz / n };
-		}
-		// uirevision: bump when the lasso state changes so Plotly
-		// accepts the new scene.center (or releases it when the lasso
-		// clears). Without a lasso, restore the user's last camera.
-		const uirev = lassoActive ? `atlas-3d-lasso-${ohbmLassoSet.size}-${neuroLassoSet.size}` : 'atlas-3d';
+		const uirev = 'atlas-3d';
 		let cameraEye: { x: number; y: number; z: number } = { x: 1.6, y: 1.6, z: 0.9 };
-		if (!lassoActive && chart3dInitialized && currentEye3D) cameraEye = currentEye3D;
-		const cameraCfg: Record<string, unknown> = { eye: cameraEye };
-		if (sceneCenter) cameraCfg.center = sceneCenter;
+		if (chart3dInitialized && currentEye3D) cameraEye = currentEye3D;
 		const scene: Record<string, unknown> = {
 			xaxis: { ...axisCfg },
 			yaxis: { ...axisCfg },
 			zaxis: { ...axisCfg },
 			bgcolor: c.plot,
-			camera: cameraCfg
+			camera: { eye: cameraEye }
 		};
 		const layout = {
 			autosize: true,

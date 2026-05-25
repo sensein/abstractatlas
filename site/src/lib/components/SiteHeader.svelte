@@ -47,7 +47,7 @@
 
 	$: SUBTITLE =
 		SITE_MODE === 'atlas-root'
-			? 'OHBM 2026 abstracts overlaid on the NeuroScape PubMed neuroscience landscape'
+			? 'Browse, search, and explore the neuroscience landscape'
 			: SITE_MODE === 'neuroscape'
 				? 'Browse, search, and explore the NeuroScape PubMed 1999–2023 corpus'
 				: 'Browse, search, and explore the 2026 accepted abstracts';

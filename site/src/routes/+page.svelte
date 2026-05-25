@@ -1531,14 +1531,28 @@
 	.search-row {
 		flex: 1 1 22rem;
 		min-width: 0;
+		position: relative;
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: 0;
 	}
+	/* `g jump to poster id` is a discoverability hint that used to
+	   add ~1rem of vertical space below the SearchBar inside the
+	   search-row column. The extra height pushed the search input's
+	   centre off the baseline of the MODEL/INPUT/Semantic/Hide/Saved
+	   controls that the parent .top-row centre-aligns against — the
+	   SearchBar sat slightly above the controls instead of in line
+	   with them. Float the hint absolutely below the search-row so
+	   it carries zero layout height and the baseline lines up. */
 	.kbd-hint {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		margin-top: 0.2rem;
 		font-size: 0.75rem;
 		color: var(--text-muted);
-		padding-left: 0.2rem;
+		pointer-events: none;
+		white-space: nowrap;
 	}
 	.kbd-hint kbd {
 		display: inline-block;
