@@ -448,9 +448,50 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 
 	// Stage 15 — atlas.parquet and neuroscape.parquet don't carry the
 	// OHBM-2026-specific enrichment / standby tables; the post-loop
-	// hydration steps below are OHBM-2026-only. Return early so we
-	// don't emit empty `data/enrichment.json` / `data/standby_slots.json`
-	// shards into the envelope for non-ohbm2026 parquets.
+	// hydration steps below are OHBM-2026-only.
+	//
+	// Before returning, however, fold the neuroscape `neighbors_neuroscape`
+	// table back onto every article so the abstract detail page +
+	// inline detail panel can render the "Most similar" list without
+	// loading a second shard. The parquet stores them in parallel
+	// rows (one per pubmed_id) instead of inlined to keep the row
+	// group compressible; the in-browser join is O(N) and cheap.
+	if (isNeuroscape) {
+		const articlesShard = out.get('data/neuroscape/articles.json') as
+			| {
+					articles?: Array<{
+						pubmed_id: number;
+						nearest_pubmed_ids?: number[];
+						nearest_distances?: number[];
+					}>;
+			  }
+			| undefined;
+		const neighboursShard = out.get('data/neuroscape/neighbors.json') as
+			| {
+					rows?: Array<{
+						pubmed_id: number;
+						nearest_pubmed_ids: number[];
+						nearest_distances: number[];
+					}>;
+			  }
+			| undefined;
+		if (articlesShard?.articles && neighboursShard?.rows) {
+			const byId = new Map<number, { ids: number[]; dists: number[] }>();
+			for (const n of neighboursShard.rows) {
+				byId.set(n.pubmed_id, {
+					ids: n.nearest_pubmed_ids,
+					dists: n.nearest_distances
+				});
+			}
+			for (const a of articlesShard.articles) {
+				const hit = byId.get(a.pubmed_id);
+				if (hit) {
+					a.nearest_pubmed_ids = hit.ids;
+					a.nearest_distances = hit.dists;
+				}
+			}
+		}
+	}
 	if (isAtlas || isNeuroscape) {
 		return out;
 	}

@@ -58,6 +58,20 @@
 	 *    a deselect action.
 	 */
 	export let mode: 'modal' | 'inline' = 'modal';
+	/** Optional "Most similar" list. Each entry is one pre-computed
+	 *  nearest neighbour (cosine-distance kNN in the Stage-2 embedding
+	 *  space, baked into neuroscape.parquet's `neighbors_neuroscape`
+	 *  row group at build time). The parent decides whether to load +
+	 *  pass them — atlas-root currently leaves it empty because
+	 *  atlas.parquet doesn't carry neighbours (cross-conference points
+	 *  reach the full detail page via the CTA); the /neuroscape/
+	 *  subsite passes the top ~10 entries.
+	 */
+	export let neighbours: Array<{
+		id: number;
+		title: string;
+		href: string;
+	}> = [];
 
 	const dispatch = createEventDispatcher<{ close: void }>();
 
@@ -159,6 +173,24 @@
 						</div>
 					{/if}
 				</dl>
+				{#if neighbours.length > 0}
+					<section class="neighbours" data-testid="atlas-root-detail-neighbours">
+						<h3>Most similar</h3>
+						<ol>
+							{#each neighbours as n (n.id)}
+								<li>
+									<a
+										href={n.href}
+										data-testid="atlas-root-detail-neighbour-link"
+									>
+										<span class="nid">{n.id}</span>
+										<span class="ntitle">{n.title}</span>
+									</a>
+								</li>
+							{/each}
+						</ol>
+					</section>
+				{/if}
 				<a
 					class="cta"
 					href={selection.permalink}
@@ -220,6 +252,24 @@
 					</div>
 				{/if}
 			</dl>
+			{#if neighbours.length > 0}
+				<section class="neighbours" data-testid="atlas-root-detail-neighbours">
+					<h3>Most similar</h3>
+					<ol>
+						{#each neighbours as n (n.id)}
+							<li>
+								<a
+									href={n.href}
+									data-testid="atlas-root-detail-neighbour-link"
+								>
+									<span class="nid">{n.id}</span>
+									<span class="ntitle">{n.title}</span>
+								</a>
+							</li>
+						{/each}
+					</ol>
+				</section>
+			{/if}
 			<a
 				class="cta"
 				href={selection.permalink}
@@ -344,5 +394,46 @@
 	}
 	.cta:hover {
 		filter: brightness(1.05);
+	}
+	.neighbours h3 {
+		margin: 0 0 0.4rem;
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	.neighbours ol {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+	.neighbours li a {
+		display: flex;
+		gap: 0.5rem;
+		align-items: baseline;
+		padding: 0.3rem 0.4rem;
+		border-radius: 4px;
+		text-decoration: none;
+		color: var(--text);
+		font-size: 0.85rem;
+		line-height: 1.3;
+	}
+	.neighbours li a:hover {
+		background: var(--bg-sunken);
+		color: var(--accent);
+	}
+	.neighbours .nid {
+		flex-shrink: 0;
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.72rem;
+		color: var(--text-faint);
+	}
+	.neighbours .ntitle {
+		flex: 1;
+		word-break: break-word;
 	}
 </style>

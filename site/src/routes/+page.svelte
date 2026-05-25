@@ -78,6 +78,12 @@
 		umap_3d: [number, number, number];
 		title: string;
 		year: number;
+		// Populated by the loader's `neighbors_neuroscape` → articles
+		// join (loader.ts). Present only on the /neuroscape/ build;
+		// atlas-root's `backdrop` rows from atlas.parquet don't carry
+		// neighbours.
+		nearest_pubmed_ids?: number[];
+		nearest_distances?: number[];
 	};
 	type AtlasOverlayPoint = {
 		submission_id: number;
@@ -574,6 +580,30 @@
 			};
 		}
 	}
+
+	// Most-similar list for the inline detail panel. On /neuroscape/
+	// the backdrop articles carry `nearest_pubmed_ids` (10 ids per
+	// article), baked into neuroscape.parquet by the orchestrator and
+	// joined onto each article record in loader.ts. atlas-root's
+	// backdrop comes from atlas.parquet which has no neighbours table,
+	// so we surface an empty list there — the CTA "Open on /<sibling>/"
+	// is the user's path to the full detail page in that case.
+	$: detailNeighbours = (() => {
+		if (!atlasSelection || atlasSelection.kind !== 'neuroscape') return [];
+		const src = atlasBackdropById.get(atlasSelection.pubmed_id);
+		if (!src?.nearest_pubmed_ids) return [];
+		const out: Array<{ id: number; title: string; href: string }> = [];
+		for (const nid of src.nearest_pubmed_ids.slice(0, 10)) {
+			const hit = atlasBackdropById.get(nid);
+			if (!hit) continue;
+			out.push({
+				id: nid,
+				title: hit.title,
+				href: atlasPermalink('neuroscape', nid)
+			});
+		}
+		return out;
+	})();
 
 	function onAtlasLasso(
 		ev: CustomEvent<{ ohbm2026_ids: number[]; neuroscape_ids: number[] }>
@@ -1101,14 +1131,18 @@
 							clustersById={atlasClustersById}
 							bind:query={atlasSearchQuery}
 							on:focus={(ev) => {
+								// Update the URL so deep-link restore + back-button work,
+								// THEN open the detail panel so the inline third pane
+								// renders the article + its nearest-neighbours list.
 								const url = new URL(window.location.href);
 								url.searchParams.set('focus', String(ev.detail.pubmed_id));
 								url.searchParams.set('cluster', String(ev.detail.cluster_id));
 								window.history.pushState({}, '', url);
-								const el = document.querySelector(
-									'[data-testid="atlas-umap-panel"]'
+								onAtlasPointClick(
+									new CustomEvent('pointclick', {
+										detail: { kind: 'neuroscape', id: ev.detail.pubmed_id }
+									})
 								);
-								if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 							}}
 						/>
 					{:else}
@@ -1132,6 +1166,7 @@
 							selection={atlasSelection}
 							clustersById={atlasClustersById}
 							mode="inline"
+							neighbours={detailNeighbours}
 							on:close={() => (atlasSelection = null)}
 						/>
 					{:else}
