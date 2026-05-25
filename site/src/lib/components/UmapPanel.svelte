@@ -105,7 +105,7 @@
 		return atlasClusters.length > 0 && atlasClusters.length <= 7;
 	})();
 
-	type PlotlyApi = typeof import('plotly.js-gl3d-dist-min');
+	type PlotlyApi = typeof import('plotly.js-dist-min');
 
 	let plotly: PlotlyApi | null = null;
 	let plotlyLoading = false;
@@ -170,7 +170,7 @@
 		if (plotly || plotlyLoading) return;
 		plotlyLoading = true;
 		try {
-			plotly = (await import('plotly.js-gl3d-dist-min')).default as PlotlyApi;
+			plotly = (await import('plotly.js-dist-min')).default as PlotlyApi;
 		} catch (err) {
 			plotlyError = (err as Error).message;
 		} finally {
