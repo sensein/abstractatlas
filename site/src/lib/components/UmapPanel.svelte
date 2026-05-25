@@ -300,13 +300,12 @@
 			focusedAbstractId
 		);
 	} else {
-		// Atlas / neuroscape mode — different data shape, different
-		// trace structure (backdrop + overlay rather than per-community).
-		// The 2D pane carries the lasso interaction (scattergl has
-		// native lasso + selectedpoints). The 3D pane mirrors the
-		// lasso highlight via a dual-trace split (scatter3d ignores
-		// selectedpoints), but has no lasso tool of its own — its
-		// dragmode is the orbit default.
+		// Atlas / neuroscape mode — 2D render. Tracks lasso state so
+		// scattergl's native `selectedpoints` + selected/unselected
+		// marker opacity update on every lasso change. The 3D render
+		// is split into a SEPARATE reactive block below (intentionally
+		// not lasso-aware at this point-count). See that block for
+		// the rationale.
 		void renderToken;
 		void renderAtlasChart2D(
 			plotly,
@@ -323,6 +322,30 @@
 			atlasFocusId,
 			theme
 		);
+	}
+
+	// Atlas / neuroscape 3D render — INTENTIONALLY lasso-agnostic at
+	// this point-count (461k backdrop + 3,240 overlay). Mirroring the
+	// 2D lasso here would require a dual-trace selected/unselected
+	// split (scatter3d ignores `selectedpoints`) and the per-cycle
+	// `Plotly.react` rebuild leaks ~620 MB / cycle via plotly.js#6365
+	// (WebGL contexts not destroyed when trace count changes).
+	//
+	// Single-clicked points still get the magenta focus halo via
+	// `atlasFocusKind` + `atlasFocusId` — the per-single-point
+	// highlight stays cheap (one extra trace, one point). "See this
+	// lassoed point in 3D" works by clicking any result in the
+	// narrowed list → focus halo + detail panel.
+	//
+	// OHBM mode (renderChart3D, above) is unaffected — its per-
+	// community scatter is ~3k points total, well below where the
+	// leak matters, so its existing selection mirror keeps working.
+	//
+	// Separate reactive block so Svelte's dep tracker does NOT pick
+	// up `lassoOhbmSet` / `lassoNeuroSet` here. The 3D render fires
+	// only on data, theme, overlay-toggle, opacity, or focus changes.
+	$: if (mode !== 'ohbm') {
+		void renderToken;
 		void renderAtlasChart3D(
 			plotly,
 			chart3dEl,
@@ -332,8 +355,6 @@
 			showOverlay,
 			backdropOpacity,
 			useAtlasShapes,
-			lassoOhbmSet,
-			lassoNeuroSet,
 			atlasFocusKind,
 			atlasFocusId,
 			theme
@@ -944,91 +965,31 @@
 		showOverlayTrace: boolean,
 		opacity: number,
 		useShapes: boolean,
-		ohbmLassoSet: Set<number>,
-		neuroLassoSet: Set<number>,
 		focusKind: 'ohbm2026' | 'neuroscape' | null,
 		focusId: number | null,
 		t: 'light' | 'dark'
 	) {
 		if (!api || !el) return;
 		const c = themedColors(t);
-		// scatter3d ignores `selectedpoints` + selected/unselected
-		// marker styles (unlike scattergl). To get dim-unselected +
-		// pop-selected in 3D, we SPLIT each source into two traces
-		// with different scalar opacities — Plotly merges them on
-		// render. Unselected stays VISIBLE (slightly higher than
-		// the default backdrop opacity so the context shows through
-		// even with the new selection bbox zoom) and selected pops
-		// at medium opacity — NOT fully opaque, which was previously
-		// too contrastive against the empty zoomed scene.
-		//
-		// The 3D pane has NO lasso interaction of its own (scatter3d
-		// doesn't support lasso; dragmode stays at the orbit default).
-		// It just reflects the lasso state set by the 2D pane.
-		const lassoActive = ohbmLassoSet.size + neuroLassoSet.size > 0;
-		const traces: unknown[] = [];
-		if (lassoActive) {
-			const bdrSel: BackdropPoint[] = [];
-			const bdrUnsel: BackdropPoint[] = [];
-			for (const p of backdrop) {
-				(neuroLassoSet.has(p.pubmed_id) ? bdrSel : bdrUnsel).push(p);
-			}
-			// Backdrop unselected: bump to ~3× the default 0.05 (so 0.15)
-			// so the surrounding cluster carpet remains a faint context
-			// glow during zoom-to-bbox. Backdrop selected: 0.6 — a clear
-			// pop above the carpet, not the previous 0.9 retina-blast.
-			traces.push(
-				buildAtlasBackdropTrace(bdrUnsel, clusters, Math.max(opacity * 3, 0.15), useShapes, true, new Set())
-			);
-			traces.push(
-				buildAtlasBackdropTrace(bdrSel, clusters, 0.6, useShapes, true, new Set())
-			);
-			if (showOverlayTrace) {
-				const ovrSel: OverlayPoint[] = [];
-				const ovrUnsel: OverlayPoint[] = [];
-				for (const p of overlay) {
-					(ohbmLassoSet.has(p.poster_id) ? ovrSel : ovrUnsel).push(p);
-				}
-				// Overlay unselected: outlined OHBM markers stay at 0.35
-				// (dim but still readable above the backdrop). Selected:
-				// 1.0 (full opacity — the OHBM overlay is the main focus
-				// when it's been lassoed).
-				const ovrUnselTrace = buildAtlasOverlayTrace(
-					ovrUnsel,
-					clusters,
-					true,
-					useShapes,
-					true,
-					new Set()
-				);
-				if (ovrUnselTrace) {
-					(ovrUnselTrace as { marker: { opacity: number } }).marker.opacity = 0.35;
-					traces.push(ovrUnselTrace);
-				}
-				const ovrSelTrace = buildAtlasOverlayTrace(
-					ovrSel,
-					clusters,
-					true,
-					useShapes,
-					true,
-					new Set()
-				);
-				if (ovrSelTrace) traces.push(ovrSelTrace);
-			}
-		} else {
-			traces.push(
-				buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, true, new Set())
-			);
-			const overlayTrace = buildAtlasOverlayTrace(
-				overlay,
-				clusters,
-				showOverlayTrace,
-				useShapes,
-				true,
-				new Set()
-			);
-			if (overlayTrace) traces.push(overlayTrace);
-		}
+		// Plain scatter — single backdrop trace + single overlay trace,
+		// scalar opacity per trace. No lasso mirror, no dual-trace
+		// selected/unselected split. Lassoing on the 2D pane does NOT
+		// re-render this chart, which is the only way to keep the
+		// 461k-point scatter3d stable without triggering the documented
+		// plotly.js#6365 WebGL-context leak. The magenta focus halo
+		// below still highlights any single-clicked point.
+		const traces: unknown[] = [
+			buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, true, new Set())
+		];
+		const overlayTrace = buildAtlasOverlayTrace(
+			overlay,
+			clusters,
+			showOverlayTrace,
+			useShapes,
+			true,
+			new Set()
+		);
+		if (overlayTrace) traces.push(overlayTrace);
 		// Focus halo — magenta-ring marker at the focused point's
 		// 3D coordinates so "Show on atlas" gives an obvious visual
 		// anchor (without this the visitor lands on the home with
