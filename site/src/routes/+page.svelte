@@ -472,18 +472,42 @@
 		return atlasOverlayPoints.filter((p) => filterClusterIds.has(p.nearest_cluster_id));
 	})();
 
-	// Permalink construction. cross_pointers in atlas.parquet documents
-	// these URLs at build time; constructing them here is equivalent
-	// (the convention is part of the spec) and avoids round-tripping
-	// the table for every click. `base` is the deploy root in
-	// atlas-root mode (no per-mode suffix), so `${base}/ohbm2026/...`
-	// resolves to the OHBM 2026 sibling at any deploy depth
-	// (production `/`, PR preview `/pr-N/`).
-	function atlasPermalink(kind: 'ohbm2026' | 'neuroscape', id: number): string {
+	// Cross-subsite permalink construction.
+	//
+	// gh-pages serves a single ROOT /404.html for every unresolved
+	// path host-wide. Until the cross-conference root 404.html shim
+	// is on production, a direct navigation to
+	// `/pr-37/neuroscape/abstract/<n>/` 404s into the legacy redirect
+	// and bounces to /ohbm2026/ — the lasso-click bug.
+	//
+	// Workaround: route through the existing `?spa=<deep-link>`
+	// mechanism. The SvelteKit shell at `/pr-37/neuroscape/index.html`
+	// (which DOES exist, served HTTP 200) handles `?spa=` in its
+	// `+layout.svelte` onMount — it `goto`s the deep link with
+	// `replaceState: true` so the final URL bar shows the clean
+	// `/pr-37/neuroscape/abstract/<n>/` form. No root-404 update
+	// needed; no production risk.
+	//
+	// Two URL forms:
+	//   - `cleanPermalink(kind, id)` — the canonical deep link
+	//     `/pr-37/<mode>/abstract/<n>/`. Use for status display,
+	//     copy-link buttons, anything the visitor would expect to
+	//     paste into a browser. (These DO 404 until the root shim
+	//     update lands.)
+	//   - `atlasPermalink(kind, id)` — the SPA-shell+`?spa=` form
+	//     above. Used for href attributes on in-page anchors so the
+	//     navigation actually works.
+	function cleanPermalink(kind: 'ohbm2026' | 'neuroscape', id: number): string {
 		const root = base;
 		return kind === 'ohbm2026'
 			? `${root}/ohbm2026/abstract/${id}/`
 			: `${root}/neuroscape/abstract/${id}/`;
+	}
+	function atlasPermalink(kind: 'ohbm2026' | 'neuroscape', id: number): string {
+		const root = base;
+		const target = cleanPermalink(kind, id);
+		const shellPath = kind === 'ohbm2026' ? `${root}/ohbm2026/` : `${root}/neuroscape/`;
+		return `${shellPath}?spa=${encodeURIComponent(target)}`;
 	}
 
 	function onAtlasPointClick(
