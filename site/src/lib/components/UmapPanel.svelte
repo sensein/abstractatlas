@@ -81,15 +81,18 @@
 	export let backdropOpacity = 0.05;
 	/** Symbol cycling policy for the new atlas/neuroscape modes. */
 	export let shapeVariation: 'auto' | 'color-only' | 'color+shape' = 'auto';
-	/** Temporary debug knob — controls which of the two scatter panes
-	 *  actually renders its trace. Both <figure>s stay in the markup
-	 *  so the visitor sees the side-by-side layout regardless; only
-	 *  the named pane(s) get plotly.react'd. Used to bisect "is the
-	 *  slowdown from rendering BOTH panes vs ONE pane?" Default
-	 *  `'both'` preserves the side-by-side behaviour.
+	/**
+	 * Lasso highlight sets (atlas / neuroscape mode). When non-empty,
+	 * the 2D scattergl traces set `selectedpoints` + dim the
+	 * unselected via Plotly's selected/unselected marker styles, AND
+	 * the 3D scene zooms to the bounding box of the selected points.
 	 *
-	 *  Atlas / neuroscape mode only. OHBM mode always renders both. */
-	export let paneVisibility: '2d' | '3d' | 'both' = 'both';
+	 * The parent owns the sets (so the result list can filter to the
+	 * lasso simultaneously); the panel reads them and updates the
+	 * scatter visuals.
+	 */
+	export let lassoOhbmSet: Set<number> = new Set();
+	export let lassoNeuroSet: Set<number> = new Set();
 
 	const dispatch = createEventDispatcher<{
 		pointclick: { kind: 'ohbm2026' | 'neuroscape'; id: number };
@@ -240,34 +243,35 @@
 	} else {
 		// Atlas / neuroscape mode — different data shape, different
 		// trace structure (backdrop + overlay rather than per-community).
-		// `paneVisibility` gates which side actually paints; the markup
-		// keeps both <figure>s either way so the layout doesn't shift.
-		if (paneVisibility === '2d' || paneVisibility === 'both') {
-			void renderAtlasChart2D(
-				plotly,
-				chart2dEl,
-				backdropPoints,
-				overlayPoints,
-				clustersById,
-				showOverlay,
-				backdropOpacity,
-				useAtlasShapes,
-				theme
-			);
-		}
-		if (paneVisibility === '3d' || paneVisibility === 'both') {
-			void renderAtlasChart3D(
-				plotly,
-				chart3dEl,
-				backdropPoints,
-				overlayPoints,
-				clustersById,
-				showOverlay,
-				backdropOpacity,
-				useAtlasShapes,
-				theme
-			);
-		}
+		// Both panes always render; the 2D pane carries the lasso
+		// highlight via `selectedpoints`, the 3D pane zooms to the
+		// lassoed bounding box.
+		void renderAtlasChart2D(
+			plotly,
+			chart2dEl,
+			backdropPoints,
+			overlayPoints,
+			clustersById,
+			showOverlay,
+			backdropOpacity,
+			useAtlasShapes,
+			lassoOhbmSet,
+			lassoNeuroSet,
+			theme
+		);
+		void renderAtlasChart3D(
+			plotly,
+			chart3dEl,
+			backdropPoints,
+			overlayPoints,
+			clustersById,
+			showOverlay,
+			backdropOpacity,
+			useAtlasShapes,
+			lassoOhbmSet,
+			lassoNeuroSet,
+			theme
+		);
 	}
 
 	// Paul Tol's "bright" qualitative palette — high-contrast, deuteranopia /
@@ -554,10 +558,22 @@
 		clusters: Map<number, AtlasCluster>,
 		opacity: number,
 		useShapes: boolean,
-		is3d: boolean
+		is3d: boolean,
+		lassoSet: Set<number>
 	) {
 		const x = points.map((p) => (is3d ? p.umap_3d[0] : (p.umap_2d ?? [0, 0])[0]));
 		const y = points.map((p) => (is3d ? p.umap_3d[1] : (p.umap_2d ?? [0, 0])[1]));
+		// `selectedpoints` is the canonical Plotly mechanism for "these
+		// indices are selected" — combined with `selected.marker` +
+		// `unselected.marker` it dims the un-lassoed and pops the
+		// lassoed. Only set when the lasso is active; when empty,
+		// Plotly defaults to "everything at full opacity".
+		const selectedIdx: number[] = [];
+		if (lassoSet.size > 0) {
+			for (let i = 0; i < points.length; i++) {
+				if (lassoSet.has(points[i].pubmed_id)) selectedIdx.push(i);
+			}
+		}
 		const colours = points.map((p) => clusters.get(p.cluster_id)?.colour_hex ?? '#9c9c9c');
 		const hoverText = points.map(
 			(p) =>
@@ -567,6 +583,13 @@
 		);
 		const customdata = points.map((p) => ({ kind: 'neuroscape', id: p.pubmed_id }));
 		const symbol = useShapes ? points.map((p) => atlasShape2D(p.cluster_id)) : undefined;
+		const selectedConfig = selectedIdx.length
+			? {
+					selectedpoints: selectedIdx,
+					selected: { marker: { opacity: 1 } },
+					unselected: { marker: { opacity: Math.min(opacity, 0.02) } }
+			  }
+			: {};
 		if (is3d) {
 			return {
 				type: 'scatter3d' as const,
@@ -585,7 +608,8 @@
 				hovertemplate: '%{text}<extra></extra>',
 				text: hoverText,
 				showlegend: false,
-				customdata
+				customdata,
+				...selectedConfig
 			};
 		}
 		return {
@@ -598,7 +622,8 @@
 			hovertemplate: '%{text}<extra></extra>',
 			text: hoverText,
 			showlegend: false,
-			customdata
+			customdata,
+			...selectedConfig
 		};
 	}
 
@@ -607,11 +632,25 @@
 		clusters: Map<number, AtlasCluster>,
 		visible: boolean,
 		useShapes: boolean,
-		is3d: boolean
+		is3d: boolean,
+		lassoSet: Set<number>
 	) {
 		if (points.length === 0) return null;
 		const x = points.map((p) => (is3d ? p.umap_3d[0] : (p.umap_2d ?? [0, 0])[0]));
 		const y = points.map((p) => (is3d ? p.umap_3d[1] : (p.umap_2d ?? [0, 0])[1]));
+		const selectedIdx: number[] = [];
+		if (lassoSet.size > 0) {
+			for (let i = 0; i < points.length; i++) {
+				if (lassoSet.has(points[i].poster_id)) selectedIdx.push(i);
+			}
+		}
+		const selectedConfig = selectedIdx.length
+			? {
+					selectedpoints: selectedIdx,
+					selected: { marker: { opacity: 1 } },
+					unselected: { marker: { opacity: 0.1 } }
+			  }
+			: {};
 		const colours = points.map(
 			(p) => clusters.get(p.nearest_cluster_id)?.colour_hex ?? '#1f77b4'
 		);
@@ -641,7 +680,8 @@
 				hovertemplate: '%{text}<extra></extra>',
 				text: hoverText,
 				showlegend: false,
-				customdata
+				customdata,
+				...selectedConfig
 			};
 		}
 		return {
@@ -661,7 +701,8 @@
 			hovertemplate: '%{text}<extra></extra>',
 			text: hoverText,
 			showlegend: false,
-			customdata
+			customdata,
+			...selectedConfig
 		};
 	}
 
@@ -677,12 +718,23 @@
 		showOverlayTrace: boolean,
 		opacity: number,
 		useShapes: boolean,
+		ohbmLassoSet: Set<number>,
+		neuroLassoSet: Set<number>,
 		t: 'light' | 'dark'
 	) {
 		if (!api || !el) return;
 		const c = themedColors(t);
-		const traces: unknown[] = [buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, false)];
-		const overlayTrace = buildAtlasOverlayTrace(overlay, clusters, showOverlayTrace, useShapes, false);
+		const traces: unknown[] = [
+			buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, false, neuroLassoSet)
+		];
+		const overlayTrace = buildAtlasOverlayTrace(
+			overlay,
+			clusters,
+			showOverlayTrace,
+			useShapes,
+			false,
+			ohbmLassoSet
+		);
 		if (overlayTrace) traces.push(overlayTrace);
 		const layout = {
 			autosize: true,
@@ -752,20 +804,77 @@
 		showOverlayTrace: boolean,
 		opacity: number,
 		useShapes: boolean,
+		ohbmLassoSet: Set<number>,
+		neuroLassoSet: Set<number>,
 		t: 'light' | 'dark'
 	) {
 		if (!api || !el) return;
 		const c = themedColors(t);
-		const traces: unknown[] = [buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, true)];
-		const overlayTrace = buildAtlasOverlayTrace(overlay, clusters, showOverlayTrace, useShapes, true);
+		const traces: unknown[] = [
+			buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, true, neuroLassoSet)
+		];
+		const overlayTrace = buildAtlasOverlayTrace(
+			overlay,
+			clusters,
+			showOverlayTrace,
+			useShapes,
+			true,
+			ohbmLassoSet
+		);
 		if (overlayTrace) traces.push(overlayTrace);
 		const axisCfg = { visible: false, showbackground: false };
+		// When the lasso is active, zoom the 3D scene to the bounding
+		// box of the lassoed points so the user's selection "fills"
+		// the 3D view. Without a lasso, restore the user's last
+		// interactive camera (or default).
+		const lassoActive = ohbmLassoSet.size + neuroLassoSet.size > 0;
+		let xRange: [number, number] | null = null;
+		let yRange: [number, number] | null = null;
+		let zRange: [number, number] | null = null;
+		if (lassoActive) {
+			let xmin = Infinity, xmax = -Infinity;
+			let ymin = Infinity, ymax = -Infinity;
+			let zmin = Infinity, zmax = -Infinity;
+			let touched = false;
+			for (const p of backdrop) {
+				if (!neuroLassoSet.has(p.pubmed_id)) continue;
+				const [x, y, z] = p.umap_3d;
+				if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+				if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+				if (z < zmin) zmin = z; if (z > zmax) zmax = z;
+				touched = true;
+			}
+			for (const p of overlay) {
+				if (!ohbmLassoSet.has(p.poster_id)) continue;
+				const [x, y, z] = p.umap_3d;
+				if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+				if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+				if (z < zmin) zmin = z; if (z > zmax) zmax = z;
+				touched = true;
+			}
+			if (touched) {
+				// Pad ranges by 5% per axis so the points don't crash
+				// into the scene edges.
+				const pad = (lo: number, hi: number) => {
+					const span = hi - lo;
+					const m = Math.max(span * 0.05, 0.05);
+					return [lo - m, hi + m] as [number, number];
+				};
+				xRange = pad(xmin, xmax);
+				yRange = pad(ymin, ymax);
+				zRange = pad(zmin, zmax);
+			}
+		}
+		// uirevision: when the lasso state changes, BUMP the revision
+		// so Plotly accepts the new axis ranges. Otherwise Plotly
+		// preserves the user's camera across react() calls.
+		const uirev = lassoActive ? `atlas-3d-lasso-${ohbmLassoSet.size}-${neuroLassoSet.size}` : 'atlas-3d';
 		let cameraEye: { x: number; y: number; z: number } = { x: 1.6, y: 1.6, z: 0.9 };
-		if (chart3dInitialized && currentEye3D) cameraEye = currentEye3D;
+		if (!lassoActive && chart3dInitialized && currentEye3D) cameraEye = currentEye3D;
 		const scene: Record<string, unknown> = {
-			xaxis: axisCfg,
-			yaxis: axisCfg,
-			zaxis: axisCfg,
+			xaxis: xRange ? { ...axisCfg, range: xRange, autorange: false } : axisCfg,
+			yaxis: yRange ? { ...axisCfg, range: yRange, autorange: false } : axisCfg,
+			zaxis: zRange ? { ...axisCfg, range: zRange, autorange: false } : axisCfg,
 			bgcolor: c.plot,
 			camera: { eye: cameraEye }
 		};
@@ -777,7 +886,7 @@
 			plot_bgcolor: c.plot,
 			font: { color: c.font },
 			scene,
-			uirevision: 'atlas-3d'
+			uirevision: uirev
 		};
 		const config = { responsive: true, displaylogo: false };
 		(api as unknown as { react: (...args: unknown[]) => Promise<unknown> })

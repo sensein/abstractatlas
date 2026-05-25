@@ -49,7 +49,8 @@
 	// all three subsites use `UmapPanel` with mode='ohbm' | 'atlas' |
 	// 'neuroscape'.
 	import AtlasRootDetailPanel from '$lib/components/AtlasRootDetailPanel.svelte';
-	import AtlasRootLassoResults from '$lib/components/AtlasRootLassoResults.svelte';
+	// AtlasRootLassoResults retired (slice E) — lasso filters the
+	// result list inline now, no modal needed.
 	import AtlasRootBrowsePanel from '$lib/components/AtlasRootBrowsePanel.svelte';
 	import AtlasRootFacets from '$lib/components/AtlasRootFacets.svelte';
 	import NeuroscapeBrowsePanel from '$lib/components/NeuroscapeBrowsePanel.svelte';
@@ -455,8 +456,10 @@
 				permalink: string;
 		  }
 		| null = null;
-	let atlasLassoOhbmIds: number[] = [];
-	let atlasLassoNeuroIds: number[] = [];
+	// Lasso state now lives in `atlasLassoOhbmSet` / `atlasLassoNeuroSet`
+	// declared further down — Sets are the right shape since the
+	// browse panel needs O(1) lookup, and the scatter highlight needs
+	// a "selected indices" mask too.
 
 	// O(1) lookup maps built whenever the atlas data lands.
 	$: atlasOverlayById = new Map(atlasOverlayPoints.map((p) => [p.poster_id, p]));
@@ -470,7 +473,10 @@
 	// set means "all clusters". For neuroscape mode, filterShowOhbm
 	// is irrelevant (overlay is always empty) and filterShowNeuro is
 	// always true (we never want to hide ALL backdrop points there).
-	$: filteredBackdrop = (() => {
+	// Facet-only filters — these are what the SCATTER sees. The lasso
+	// HIGHLIGHTS within these (via the dim-unselected mechanism in
+	// UmapPanel) but does NOT remove points from the map.
+	$: scatterBackdrop = (() => {
 		if (SITE_MODE === 'atlas-root' && !filterShowNeuro) return [];
 		const yLo = filterMinYear ?? yearBounds.lo;
 		const yHi = filterMaxYear ?? yearBounds.hi;
@@ -483,16 +489,20 @@
 			return true;
 		});
 	})();
-	// Decimation removed per user request — pass full data to the
-	// scatter. The temporary `paneVisibility` toggle below lets us
-	// test single-pane (2D OR 3D, not both) rendering to bisect the
-	// "two panes hanging the browser" hypothesis. View-based
-	// decimation is the planned follow-up.
-	$: scatterBackdrop = filteredBackdrop;
-	$: filteredOverlay = (() => {
+	$: scatterOverlay = (() => {
 		if (SITE_MODE !== 'atlas-root' || !filterShowOhbm) return [] as AtlasOverlayPoint[];
 		if (filterClusterIds.size === 0) return atlasOverlayPoints;
 		return atlasOverlayPoints.filter((p) => filterClusterIds.has(p.nearest_cluster_id));
+	})();
+	// Result-list filters — the same facets plus the lasso. Browse
+	// panel narrows to lassoed ids when the lasso is active.
+	$: filteredBackdrop = (() => {
+		if (atlasLassoNeuroSet.size === 0) return scatterBackdrop;
+		return scatterBackdrop.filter((p) => atlasLassoNeuroSet.has(p.pubmed_id));
+	})();
+	$: filteredOverlay = (() => {
+		if (atlasLassoOhbmSet.size === 0) return scatterOverlay;
+		return scatterOverlay.filter((p) => atlasLassoOhbmSet.has(p.poster_id));
 	})();
 
 	// Cross-subsite permalink construction.
@@ -564,13 +574,13 @@
 	function onAtlasLasso(
 		ev: CustomEvent<{ ohbm2026_ids: number[]; neuroscape_ids: number[] }>
 	) {
-		atlasLassoOhbmIds = ev.detail.ohbm2026_ids;
-		atlasLassoNeuroIds = ev.detail.neuroscape_ids;
+		atlasLassoOhbmSet = new Set(ev.detail.ohbm2026_ids);
+		atlasLassoNeuroSet = new Set(ev.detail.neuroscape_ids);
 	}
 
 	function clearAtlasLasso() {
-		atlasLassoOhbmIds = [];
-		atlasLassoNeuroIds = [];
+		atlasLassoOhbmSet = new Set();
+		atlasLassoNeuroSet = new Set();
 	}
 	// T043 — drift banner state. Populated by the sibling-state-key
 	// check that fires in the background after atlas.parquet loads.
@@ -623,17 +633,12 @@
 	// atlas-root and neuroscape modes share these.
 	let atlasSearchQuery = '';
 	let atlasShowMap = true;
-	// Temporary debug toggle (Stage 15 diagnostic) — cycles which
-	// scatter pane actually paints. Default '2d' so the page loads
-	// responsively with full data; the user can step through to
-	// confirm whether the slowdown was solely from rendering both
-	// panes simultaneously. Will be removed once view-based
-	// decimation lands.
-	let atlasPaneVisibility: '2d' | '3d' | 'both' = '2d';
-	function cycleAtlasPane() {
-		atlasPaneVisibility =
-			atlasPaneVisibility === '2d' ? '3d' : atlasPaneVisibility === '3d' ? 'both' : '2d';
-	}
+	// Lasso selection. When non-null, the result list filters to these
+	// ids and the 2D scatter dims unselected points + zooms the 3D
+	// camera to the lassoed bounding box.
+	let atlasLassoOhbmSet: Set<number> = new Set();
+	let atlasLassoNeuroSet: Set<number> = new Set();
+	$: atlasLassoActive = atlasLassoOhbmSet.size + atlasLassoNeuroSet.size > 0;
 	let atlasLoading = false;
 	let atlasError: string | null = null;
 	let atlasProgressLoaded = 0;
@@ -853,21 +858,17 @@
 				</label>
 			</div>
 			<div class="controls" data-testid="atlas-root-controls">
-				<!-- TEMP DIAGNOSTIC: cycle which scatter pane actually
-				     paints. Two panes side-by-side ALWAYS in the layout
-				     so the visual stays stable; only the named pane(s)
-				     run plotly.react. Use to confirm that the slowdown
-				     is from rendering BOTH panes simultaneously and not
-				     something else. -->
-				<button
-					type="button"
-					class="control-toggle"
-					on:click={cycleAtlasPane}
-					data-testid="atlas-pane-cycle"
-					title="Diagnostic: which scatter pane to paint"
-				>
-					🧪 Pane: {atlasPaneVisibility.toUpperCase()}
-				</button>
+				{#if atlasLassoActive}
+					<button
+						type="button"
+						class="control-toggle"
+						on:click={clearAtlasLasso}
+						data-testid="atlas-clear-lasso"
+						title="Clear lasso selection"
+					>
+						✕ Clear lasso ({atlasLassoOhbmSet.size + atlasLassoNeuroSet.size})
+					</button>
+				{/if}
 				<button
 					type="button"
 					class="control-toggle"
@@ -1003,11 +1004,12 @@
 				<UmapPanel
 					mode={SITE_MODE === 'atlas-root' ? 'atlas' : 'neuroscape'}
 					backdropPoints={scatterBackdrop}
-					overlayPoints={filteredOverlay}
+					overlayPoints={scatterOverlay}
 					atlasClusters={atlasClusters}
 					showOverlay={SITE_MODE === 'atlas-root' ? filterShowOhbm : false}
 					backdropOpacity={0.05}
-					paneVisibility={atlasPaneVisibility}
+					lassoOhbmSet={atlasLassoOhbmSet}
+					lassoNeuroSet={atlasLassoNeuroSet}
 					on:pointclick={onAtlasPointClick}
 					on:lassoselect={onAtlasLasso}
 					on:lassoclear={clearAtlasLasso}
@@ -1106,16 +1108,10 @@
 			</div>
 		{/if}
 
-		{#if SITE_MODE === 'atlas-root'}
-			<AtlasRootLassoResults
-				ohbm2026_ids={atlasLassoOhbmIds}
-				neuroscape_ids={atlasLassoNeuroIds}
-				overlayById={atlasOverlayById}
-				backdropById={atlasBackdropById}
-				permalinkFor={atlasPermalink}
-				on:close={clearAtlasLasso}
-			/>
-		{/if}
+		<!-- AtlasRootLassoResults modal removed in slice E: lassoed
+		     ids now filter the result-list inline (see
+		     `filteredBackdrop` / `filteredOverlay` reactives). The
+		     "Clear lasso (n)" button in the top-row resets state. -->
 	</div>
 {:else}
 <div class="home" class:has-focus={focused !== null}>
