@@ -795,6 +795,15 @@
 			ohbmLassoSet
 		);
 		if (overlayTrace) traces.push(overlayTrace);
+		// Bump `selectionrevision` whenever the lasso state changes so
+		// Plotly drops its preserved selection internals instead of
+		// trying to merge them into the new selectedpoints state — the
+		// merge attempt emits a `unrecognized GUI edit: selections[0]
+		// .yref` console warning when the trace structure has shifted.
+		const lassoActive2d = ohbmLassoSet.size + neuroLassoSet.size > 0;
+		const selrev = lassoActive2d
+			? `atlas-2d-sel-${ohbmLassoSet.size}-${neuroLassoSet.size}`
+			: 'atlas-2d-sel-none';
 		const layout = {
 			autosize: true,
 			margin: { l: 0, r: 0, t: 0, b: 0 },
@@ -807,7 +816,7 @@
 			xaxis: { visible: false, scaleanchor: 'y' },
 			yaxis: { visible: false },
 			uirevision: 'atlas-2d',
-			selectionrevision: 'atlas-2d-sel'
+			selectionrevision: selrev
 		};
 		const config = {
 			responsive: true,
@@ -942,70 +951,45 @@
 			);
 			if (overlayTrace) traces.push(overlayTrace);
 		}
-		// `renderBackdrop` / `renderOverlay` referenced by the bbox
-		// computation below — alias to the SELECTED subsets when
-		// lassoed (the camera zooms to selection, not to unselected).
-		const renderBackdrop = lassoActive
-			? backdrop.filter((p) => neuroLassoSet.has(p.pubmed_id))
-			: backdrop;
-		const renderOverlay = lassoActive
-			? overlay.filter((p) => ohbmLassoSet.has(p.poster_id))
-			: overlay;
+		// When lassoed, recentre the camera on the SELECTION centroid
+		// (Plotly's `scene.center` is the look-at point) so the
+		// selection visually fills the view. We deliberately do NOT
+		// constrain the axis range — doing so clips the dim-unselected
+		// context trace against the scene volume edge, which renders
+		// as a visible cut-off plane in this Plotly bundle. Autorange
+		// across selected + unselected keeps every point on-screen and
+		// the opacity split (0.15 unselected vs 0.6 selected) is what
+		// makes the selection pop.
 		const axisCfg = { visible: false, showbackground: false };
-		// When the lasso is active, zoom the 3D scene to the bounding
-		// box of the lassoed points so the user's selection "fills"
-		// the 3D view. Without a lasso, restore the user's last
-		// interactive camera (or default).
-		let xRange: [number, number] | null = null;
-		let yRange: [number, number] | null = null;
-		let zRange: [number, number] | null = null;
+		let sceneCenter: { x: number; y: number; z: number } | null = null;
 		if (lassoActive) {
-			// Bbox spans the lassoed points; `renderBackdrop` +
-			// `renderOverlay` are already pre-filtered above to just
-			// the lassoed ids, so iterate them directly.
-			let xmin = Infinity, xmax = -Infinity;
-			let ymin = Infinity, ymax = -Infinity;
-			let zmin = Infinity, zmax = -Infinity;
-			let touched = false;
-			for (const p of renderBackdrop) {
+			let cx = 0, cy = 0, cz = 0, n = 0;
+			for (const p of backdrop) {
+				if (!neuroLassoSet.has(p.pubmed_id)) continue;
 				const [x, y, z] = p.umap_3d;
-				if (x < xmin) xmin = x; if (x > xmax) xmax = x;
-				if (y < ymin) ymin = y; if (y > ymax) ymax = y;
-				if (z < zmin) zmin = z; if (z > zmax) zmax = z;
-				touched = true;
+				cx += x; cy += y; cz += z; n += 1;
 			}
-			for (const p of renderOverlay) {
+			for (const p of overlay) {
+				if (!ohbmLassoSet.has(p.poster_id)) continue;
 				const [x, y, z] = p.umap_3d;
-				if (x < xmin) xmin = x; if (x > xmax) xmax = x;
-				if (y < ymin) ymin = y; if (y > ymax) ymax = y;
-				if (z < zmin) zmin = z; if (z > zmax) zmax = z;
-				touched = true;
+				cx += x; cy += y; cz += z; n += 1;
 			}
-			if (touched) {
-				// Pad ranges by 5% per axis so the points don't crash
-				// into the scene edges.
-				const pad = (lo: number, hi: number) => {
-					const span = hi - lo;
-					const m = Math.max(span * 0.05, 0.05);
-					return [lo - m, hi + m] as [number, number];
-				};
-				xRange = pad(xmin, xmax);
-				yRange = pad(ymin, ymax);
-				zRange = pad(zmin, zmax);
-			}
+			if (n > 0) sceneCenter = { x: cx / n, y: cy / n, z: cz / n };
 		}
-		// uirevision: when the lasso state changes, BUMP the revision
-		// so Plotly accepts the new axis ranges. Otherwise Plotly
-		// preserves the user's camera across react() calls.
+		// uirevision: bump when the lasso state changes so Plotly
+		// accepts the new scene.center (or releases it when the lasso
+		// clears). Without a lasso, restore the user's last camera.
 		const uirev = lassoActive ? `atlas-3d-lasso-${ohbmLassoSet.size}-${neuroLassoSet.size}` : 'atlas-3d';
 		let cameraEye: { x: number; y: number; z: number } = { x: 1.6, y: 1.6, z: 0.9 };
 		if (!lassoActive && chart3dInitialized && currentEye3D) cameraEye = currentEye3D;
+		const cameraCfg: Record<string, unknown> = { eye: cameraEye };
+		if (sceneCenter) cameraCfg.center = sceneCenter;
 		const scene: Record<string, unknown> = {
-			xaxis: xRange ? { ...axisCfg, range: xRange, autorange: false } : axisCfg,
-			yaxis: yRange ? { ...axisCfg, range: yRange, autorange: false } : axisCfg,
-			zaxis: zRange ? { ...axisCfg, range: zRange, autorange: false } : axisCfg,
+			xaxis: { ...axisCfg },
+			yaxis: { ...axisCfg },
+			zaxis: { ...axisCfg },
 			bgcolor: c.plot,
-			camera: { eye: cameraEye }
+			camera: cameraCfg
 		};
 		const layout = {
 			autosize: true,
@@ -1359,6 +1343,15 @@
 					data-testid="umap-clear-lasso"
 				>
 					Clear selection ({$lassoSelection.size})
+				</button>
+			{:else if mode !== 'ohbm' && (lassoOhbmSet.size + lassoNeuroSet.size > 0)}
+				<button
+					type="button"
+					class="clear-lasso"
+					on:click={() => dispatch('lassoclear')}
+					data-testid="umap-clear-lasso"
+				>
+					Clear selection ({lassoOhbmSet.size + lassoNeuroSet.size})
 				</button>
 			{/if}
 		</div>

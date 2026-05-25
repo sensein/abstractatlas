@@ -675,7 +675,11 @@
 	// camera to the lassoed bounding box.
 	let atlasLassoOhbmSet: Set<number> = new Set();
 	let atlasLassoNeuroSet: Set<number> = new Set();
+	// Lasso "active" reactive — currently unused after the clear-
+	// selection button moved into UmapPanel's header, but kept as a
+	// stable selector if any future top-row chrome needs it.
 	$: atlasLassoActive = atlasLassoOhbmSet.size + atlasLassoNeuroSet.size > 0;
+	void atlasLassoActive;
 	let atlasLoading = false;
 	let atlasError: string | null = null;
 	let atlasProgressLoaded = 0;
@@ -895,17 +899,9 @@
 				</label>
 			</div>
 			<div class="controls" data-testid="atlas-root-controls">
-				{#if atlasLassoActive}
-					<button
-						type="button"
-						class="control-toggle"
-						on:click={clearAtlasLasso}
-						data-testid="atlas-clear-lasso"
-						title="Clear lasso selection"
-					>
-						✕ Clear lasso ({atlasLassoOhbmSet.size + atlasLassoNeuroSet.size})
-					</button>
-				{/if}
+				<!-- Clear-selection button lives inside the UmapPanel header
+				     for atlas/neuroscape modes, mirroring how OHBM 2026
+				     does it. The top-row only holds the map toggle. -->
 				<button
 					type="button"
 					class="control-toggle"
