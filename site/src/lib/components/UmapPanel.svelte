@@ -153,14 +153,37 @@
 		}
 	}
 
+	// Pause/resume rotation tied to tab visibility + page hide. The
+	// browser bfcache can leave the page suspended for a long time —
+	// when it returns, any rAF callbacks scheduled before suspension
+	// fire immediately + can pile onto a fresh ensureRotate from the
+	// remount. These listeners stop the loop deterministically.
+	function onVisibilityChange() {
+		if (typeof document === 'undefined') return;
+		if (document.visibilityState === 'hidden') {
+			stopRotate();
+		} else if (autoRotate) {
+			ensureRotate();
+		}
+	}
+	function onPageHide() {
+		stopRotate();
+	}
+
 	onMount(async () => {
 		window.addEventListener('resize', onResize);
+		document.addEventListener('visibilitychange', onVisibilityChange);
+		window.addEventListener('pagehide', onPageHide);
 		await ensurePlotly();
 	});
 
 	onDestroy(() => {
 		if (typeof window !== 'undefined') {
 			window.removeEventListener('resize', onResize);
+			window.removeEventListener('pagehide', onPageHide);
+		}
+		if (typeof document !== 'undefined') {
+			document.removeEventListener('visibilitychange', onVisibilityChange);
 		}
 		stopRotate();
 		if (plotly) {
@@ -1142,9 +1165,28 @@
 			});
 	}
 
+	// Rotation generation counter — every `ensureRotate` bumps this
+	// and captures the current value in its local `step`. When
+	// stopRotate is called (or a fresh ensureRotate starts a new
+	// generation), the old step's `myGen !== rotateGen` guard makes
+	// it bail before scheduling its next rAF.
+	//
+	// Without this, a race window exists: an in-flight `step()`
+	// callback (already past the early-return guard) can unconditionally
+	// overwrite `rotateFrame` with its own next-frame id, EVEN AFTER
+	// stopRotate cancelled the previous frame. Result: two rotation
+	// loops compete, both calling plotly.relayout at 60fps, doubling
+	// CPU. Symptom: navigating back to /atlas-root/ after visiting
+	// /neuroscape/ leaves the previous rotation chain alive and the
+	// new one piles on top.
+	let rotateGen = 0;
+
 	function ensureRotate() {
 		stopRotate();
 		if (!autoRotate || !plotly || !chart3dEl) return;
+		// Don't spin the camera while the tab is hidden — wastes CPU
+		// for no benefit, and bfcache restores can resume stale loops.
+		if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
 		// Seed the orbit from `currentEye3D` (kept in sync via the
 		// `plotly_relayout` listener) so pause → user zoom/orbit → unpause
 		// continues from where the user left off instead of snapping back to
@@ -1159,7 +1201,10 @@
 				rotateAngle = Math.atan2(currentEye3D.y, currentEye3D.x);
 			}
 		}
+		rotateGen += 1;
+		const myGen = rotateGen;
 		const step = () => {
+			if (myGen !== rotateGen) return; // a newer ensureRotate / stopRotate replaced us
 			if (!autoRotate || !plotly || !chart3dEl) return;
 			rotateAngle += 0.004;
 			const eye = {
@@ -1176,12 +1221,14 @@
 			} catch {
 				/* no-op */
 			}
+			if (myGen !== rotateGen) return;
 			rotateFrame = requestAnimationFrame(step);
 		};
 		rotateFrame = requestAnimationFrame(step);
 	}
 
 	function stopRotate() {
+		rotateGen += 1; // invalidate any in-flight step()s
 		if (rotateFrame !== null) {
 			cancelAnimationFrame(rotateFrame);
 			rotateFrame = null;
