@@ -73,9 +73,14 @@
 		{#each visible as a (a.pubmed_id)}
 			{@const cluster = clustersById.get(a.cluster_id)}
 			<li class="ns-row">
-				<a
+				<!-- Click opens the inline detail panel (third column) to
+				     match the OHBM home: the row is a <button>, not a
+				     <a href>. The "Full details" link inside the detail
+				     panel is the path to the dedicated permalink page. -->
+				<button
+					type="button"
 					class="ns-row-link"
-					href={gotoDetail(a.pubmed_id)}
+					on:click={() => onShowOnAtlas(a)}
 					data-testid="neuroscape-result-row"
 				>
 					<div class="ns-row-head">
@@ -92,16 +97,15 @@
 						{/if}
 					</div>
 					<div class="ns-title">{a.title}</div>
-				</a>
-				<button
-					type="button"
-					class="ns-show-atlas"
-					title="Focus this article on the atlas"
-					on:click={() => onShowOnAtlas(a)}
-					data-testid="neuroscape-row-show-atlas"
-				>
-					On atlas
 				</button>
+				<a
+					class="ns-detail-link"
+					href={gotoDetail(a.pubmed_id)}
+					title="Open full detail page"
+					data-testid="neuroscape-row-detail-link"
+				>
+					Full details ↗
+				</a>
 			</li>
 		{/each}
 	</ul>
@@ -152,11 +156,13 @@
 		background: var(--bg-subtle);
 	}
 	.ns-row-link {
+		all: unset;
+		cursor: pointer;
 		flex: 1 1 auto;
 		display: flex;
 		flex-direction: column;
 		gap: 0.2rem;
-		text-decoration: none;
+		text-align: left;
 		color: var(--text);
 		min-width: 0;
 	}
@@ -189,19 +195,17 @@
 		min-width: 0;
 		overflow-wrap: anywhere;
 	}
-	.ns-show-atlas {
-		all: unset;
-		cursor: pointer;
-		padding: 0.35rem 0.6rem;
-		border-radius: 3px;
-		font-size: 0.78rem;
-		color: var(--accent);
-		border: 1px solid var(--accent);
-		background: transparent;
+	.ns-detail-link {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		text-decoration: none;
 		align-self: flex-start;
 		white-space: nowrap;
+		padding: 0.25rem 0.4rem;
+		border-radius: 3px;
 	}
-	.ns-show-atlas:hover {
+	.ns-detail-link:hover {
+		color: var(--accent);
 		background: var(--accent-soft-bg);
 	}
 	.ns-more {

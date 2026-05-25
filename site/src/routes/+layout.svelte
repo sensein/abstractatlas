@@ -187,7 +187,15 @@
 		</div>
 	{/if}
 
-	<main class:atlas-main={SITE_MODE !== 'ohbm2026'}>
+	<!-- Atlas-mode `main` only drops the side padding on the HOME route
+	     where the UMAP + facets sidebar needs full-bleed width. Detail
+	     pages (e.g. /neuroscape/abstract/<pmid>/) keep the normal
+	     padding so the article reads with the same breathing room
+	     OHBM 2026's permalink page has. -->
+	<main
+		class:atlas-main={SITE_MODE !== 'ohbm2026' &&
+			!$page.url.pathname.includes('/abstract/')}
+	>
 		<slot />
 	</main>
 

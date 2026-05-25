@@ -311,40 +311,59 @@
 	}
 
 	/* === NeuroScape detail page styles === */
+	/* Match OHBM 2026's permalink feel: max-width container, generous
+	   header padding around the title + meta, the body region pads
+	   itself, and the neighbours list sits in a softly-divided block
+	   below. */
 	.ns-article {
 		display: flex;
 		flex-direction: column;
-		gap: 1.25rem;
-		max-width: 50rem;
+		gap: 1.5rem;
+		max-width: 56rem;
 		width: 100%;
+		margin: 0 auto;
+		padding: 0.5rem 0;
+	}
+	.ns-head {
+		display: flex;
+		flex-direction: column;
+		gap: 0.9rem;
+		padding-bottom: 1rem;
+		border-bottom: 1px solid var(--border);
 	}
 	.ns-title {
 		margin: 0;
-		font-size: 1.4rem;
-		line-height: 1.35;
+		font-size: 1.65rem;
+		line-height: 1.3;
 		font-weight: 600;
+		color: var(--text);
+		word-break: break-word;
 	}
 	.ns-meta {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-		gap: 0.75rem 1.5rem;
-		margin: 0.6rem 0 0;
+		grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+		gap: 0.6rem 1.5rem;
+		margin: 0;
 	}
 	.ns-meta > div {
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: 0.15rem;
+		min-width: 0;
 	}
 	.ns-meta dt {
 		color: var(--text-muted);
-		font-size: 0.78rem;
+		font-size: 0.72rem;
+		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
+		letter-spacing: 0.06em;
 		margin: 0;
 	}
 	.ns-meta dd {
 		margin: 0;
 		font-size: 0.95rem;
+		line-height: 1.35;
+		color: var(--text);
 	}
 	.cluster-swatch {
 		display: inline-block;
@@ -356,11 +375,11 @@
 		border: 1px solid var(--border);
 	}
 	.ns-actions {
-		margin-top: 0.6rem;
+		margin: 0;
 	}
 	.show-on-atlas {
 		display: inline-block;
-		padding: 0.4rem 0.85rem;
+		padding: 0.45rem 0.95rem;
 		border-radius: 4px;
 		background: var(--accent);
 		color: var(--accent-text);
@@ -373,36 +392,53 @@
 	}
 	.neighbours {
 		margin-top: 0.5rem;
+		padding: 1rem 0 0;
 		border-top: 1px solid var(--border);
-		padding-top: 0.8rem;
 	}
 	.neighbours h2 {
-		margin: 0 0 0.5rem;
-		font-size: 0.95rem;
+		margin: 0 0 0.7rem;
+		font-size: 1rem;
 		font-weight: 600;
+		color: var(--text);
 	}
 	.neighbours ol {
+		list-style: none;
 		margin: 0;
-		padding-left: 1.25rem;
+		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: 0.2rem;
+	}
+	.neighbours li {
+		min-width: 0;
 	}
 	.neighbours a {
-		display: inline-flex;
-		gap: 0.5rem;
+		display: flex;
+		gap: 0.7rem;
 		align-items: baseline;
+		padding: 0.35rem 0.5rem;
+		border-radius: 3px;
 		text-decoration: none;
 		color: var(--text);
-		font-size: 0.9rem;
+		font-size: 0.92rem;
+		line-height: 1.35;
 	}
-	.neighbours .nid {
-		color: var(--text-muted);
-		font-variant-numeric: tabular-nums;
-		font-size: 0.82rem;
-		min-width: 5.5rem;
+	.neighbours a:hover {
+		background: var(--bg-sunken);
 	}
 	.neighbours a:hover .ntitle {
-		text-decoration: underline;
+		color: var(--accent);
+	}
+	.neighbours .nid {
+		flex-shrink: 0;
+		color: var(--text-faint);
+		font-variant-numeric: tabular-nums;
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.78rem;
+		min-width: 6rem;
+	}
+	.neighbours .ntitle {
+		min-width: 0;
+		word-break: break-word;
 	}
 </style>
