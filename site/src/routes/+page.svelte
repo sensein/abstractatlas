@@ -614,15 +614,29 @@
 	// counts include BOTH backdrop and overlay; for neuroscape, only
 	// backdrop. SITE_MODE-conditional so we don't pay the iteration
 	// cost on the wrong mode.
+	// Lasso-aware count bases for the facet sidebar. When the lasso
+	// is active the sidebar should show "what's in my selection",
+	// ignoring the sidebar's own facet checkboxes (so unchecking a
+	// cluster doesn't make its count vanish — the user needs the
+	// count to decide whether to re-check it). When no lasso is
+	// active these fall back to the raw totals.
+	$: lassoBackdropPoints = (() => {
+		if (atlasLassoNeuroSet.size === 0) return atlasBackdrop;
+		return atlasBackdrop.filter((p) => atlasLassoNeuroSet.has(p.pubmed_id));
+	})();
+	$: lassoOverlayPoints = (() => {
+		if (atlasLassoOhbmSet.size === 0) return atlasOverlayPoints;
+		return atlasOverlayPoints.filter((p) => atlasLassoOhbmSet.has(p.poster_id));
+	})();
 	$: clusterCounts = (() => {
 		const counts = new Map<number, number>();
 		if (SITE_MODE === 'atlas-root') {
-			for (const a of atlasBackdrop)
+			for (const a of lassoBackdropPoints)
 				counts.set(a.cluster_id, (counts.get(a.cluster_id) ?? 0) + 1);
-			for (const o of atlasOverlayPoints)
+			for (const o of lassoOverlayPoints)
 				counts.set(o.nearest_cluster_id, (counts.get(o.nearest_cluster_id) ?? 0) + 1);
 		} else if (SITE_MODE === 'neuroscape') {
-			for (const a of atlasBackdrop)
+			for (const a of lassoBackdropPoints)
 				counts.set(a.cluster_id, (counts.get(a.cluster_id) ?? 0) + 1);
 		}
 		return counts;
@@ -1028,8 +1042,8 @@
 						<AtlasRootFacets
 							clustersById={atlasClustersById}
 							{clusterCounts}
-							ohbmCount={atlasOverlayPoints.length}
-							neuroCount={atlasBackdrop.length}
+							ohbmCount={lassoOverlayPoints.length}
+							neuroCount={lassoBackdropPoints.length}
 							selectedClusterIds={filterClusterIds}
 							showOhbm={filterShowOhbm}
 							showNeuro={filterShowNeuro}
