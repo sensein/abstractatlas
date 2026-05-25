@@ -81,6 +81,15 @@
 	export let backdropOpacity = 0.05;
 	/** Symbol cycling policy for the new atlas/neuroscape modes. */
 	export let shapeVariation: 'auto' | 'color-only' | 'color+shape' = 'auto';
+	/** Temporary debug knob — controls which of the two scatter panes
+	 *  actually renders its trace. Both <figure>s stay in the markup
+	 *  so the visitor sees the side-by-side layout regardless; only
+	 *  the named pane(s) get plotly.react'd. Used to bisect "is the
+	 *  slowdown from rendering BOTH panes vs ONE pane?" Default
+	 *  `'both'` preserves the side-by-side behaviour.
+	 *
+	 *  Atlas / neuroscape mode only. OHBM mode always renders both. */
+	export let paneVisibility: '2d' | '3d' | 'both' = 'both';
 
 	const dispatch = createEventDispatcher<{
 		pointclick: { kind: 'ohbm2026' | 'neuroscape'; id: number };
@@ -231,28 +240,34 @@
 	} else {
 		// Atlas / neuroscape mode — different data shape, different
 		// trace structure (backdrop + overlay rather than per-community).
-		void renderAtlasChart2D(
-			plotly,
-			chart2dEl,
-			backdropPoints,
-			overlayPoints,
-			clustersById,
-			showOverlay,
-			backdropOpacity,
-			useAtlasShapes,
-			theme
-		);
-		void renderAtlasChart3D(
-			plotly,
-			chart3dEl,
-			backdropPoints,
-			overlayPoints,
-			clustersById,
-			showOverlay,
-			backdropOpacity,
-			useAtlasShapes,
-			theme
-		);
+		// `paneVisibility` gates which side actually paints; the markup
+		// keeps both <figure>s either way so the layout doesn't shift.
+		if (paneVisibility === '2d' || paneVisibility === 'both') {
+			void renderAtlasChart2D(
+				plotly,
+				chart2dEl,
+				backdropPoints,
+				overlayPoints,
+				clustersById,
+				showOverlay,
+				backdropOpacity,
+				useAtlasShapes,
+				theme
+			);
+		}
+		if (paneVisibility === '3d' || paneVisibility === 'both') {
+			void renderAtlasChart3D(
+				plotly,
+				chart3dEl,
+				backdropPoints,
+				overlayPoints,
+				clustersById,
+				showOverlay,
+				backdropOpacity,
+				useAtlasShapes,
+				theme
+			);
+		}
 	}
 
 	// Paul Tol's "bright" qualitative palette — high-contrast, deuteranopia /

@@ -483,19 +483,12 @@
 			return true;
 		});
 	})();
-	// Scatter-only decimation. Rendering 461k WebGL points across BOTH
-	// 2D scattergl + 3D scatter3d panes simultaneously freezes the
-	// browser. The full list stays available for search + the result
-	// list; the scatter only needs enough points to convey density.
-	// 50k per pane is the empirical ceiling where the side-by-side
-	// view still feels responsive. Modulo sampling preserves cluster
-	// distribution since the rows aren't pre-sorted by cluster.
-	$: scatterBackdrop = (() => {
-		const TARGET = 50_000;
-		if (filteredBackdrop.length <= TARGET) return filteredBackdrop;
-		const stride = Math.ceil(filteredBackdrop.length / TARGET);
-		return filteredBackdrop.filter((_, i) => i % stride === 0);
-	})();
+	// Decimation removed per user request — pass full data to the
+	// scatter. The temporary `paneVisibility` toggle below lets us
+	// test single-pane (2D OR 3D, not both) rendering to bisect the
+	// "two panes hanging the browser" hypothesis. View-based
+	// decimation is the planned follow-up.
+	$: scatterBackdrop = filteredBackdrop;
 	$: filteredOverlay = (() => {
 		if (SITE_MODE !== 'atlas-root' || !filterShowOhbm) return [] as AtlasOverlayPoint[];
 		if (filterClusterIds.size === 0) return atlasOverlayPoints;
@@ -630,6 +623,17 @@
 	// atlas-root and neuroscape modes share these.
 	let atlasSearchQuery = '';
 	let atlasShowMap = true;
+	// Temporary debug toggle (Stage 15 diagnostic) — cycles which
+	// scatter pane actually paints. Default '2d' so the page loads
+	// responsively with full data; the user can step through to
+	// confirm whether the slowdown was solely from rendering both
+	// panes simultaneously. Will be removed once view-based
+	// decimation lands.
+	let atlasPaneVisibility: '2d' | '3d' | 'both' = '2d';
+	function cycleAtlasPane() {
+		atlasPaneVisibility =
+			atlasPaneVisibility === '2d' ? '3d' : atlasPaneVisibility === '3d' ? 'both' : '2d';
+	}
 	let atlasLoading = false;
 	let atlasError: string | null = null;
 	let atlasProgressLoaded = 0;
@@ -664,14 +668,7 @@
 				return;
 			}
 			if (SITE_MODE === 'atlas-root') {
-				// Default to the DECIMATED backdrop (50k points) — the
-				// full 461k-point variant freezes browsers when rendered
-				// across both 2D scattergl + 3D scatter3d panes. The
-				// decimated variant is per-cluster stratified so visual
-				// density still reflects the full corpus. A future
-				// "Show full atlas" toggle can swap to backdrop_full.json
-				// on demand (per R-011 mobile detection in the plan).
-				const backdropShard = pkg.get('data/atlas/backdrop_decimated.json') as
+				const backdropShard = pkg.get('data/atlas/backdrop_full.json') as
 					| { points: AtlasBackdropPoint[] }
 					| undefined;
 				const overlayShard = pkg.get('data/atlas/ohbm_overlay.json') as
@@ -856,6 +853,21 @@
 				</label>
 			</div>
 			<div class="controls" data-testid="atlas-root-controls">
+				<!-- TEMP DIAGNOSTIC: cycle which scatter pane actually
+				     paints. Two panes side-by-side ALWAYS in the layout
+				     so the visual stays stable; only the named pane(s)
+				     run plotly.react. Use to confirm that the slowdown
+				     is from rendering BOTH panes simultaneously and not
+				     something else. -->
+				<button
+					type="button"
+					class="control-toggle"
+					on:click={cycleAtlasPane}
+					data-testid="atlas-pane-cycle"
+					title="Diagnostic: which scatter pane to paint"
+				>
+					🧪 Pane: {atlasPaneVisibility.toUpperCase()}
+				</button>
 				<button
 					type="button"
 					class="control-toggle"
@@ -995,6 +1007,7 @@
 					atlasClusters={atlasClusters}
 					showOverlay={SITE_MODE === 'atlas-root' ? filterShowOhbm : false}
 					backdropOpacity={0.05}
+					paneVisibility={atlasPaneVisibility}
 					on:pointclick={onAtlasPointClick}
 					on:lassoselect={onAtlasLasso}
 					on:lassoclear={clearAtlasLasso}
