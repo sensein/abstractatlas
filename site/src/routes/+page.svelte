@@ -614,12 +614,13 @@
 	// counts include BOTH backdrop and overlay; for neuroscape, only
 	// backdrop. SITE_MODE-conditional so we don't pay the iteration
 	// cost on the wrong mode.
-	// Lasso-aware count bases for the facet sidebar. When the lasso
-	// is active the sidebar should show "what's in my selection",
-	// ignoring the sidebar's own facet checkboxes (so unchecking a
-	// cluster doesn't make its count vanish — the user needs the
-	// count to decide whether to re-check it). When no lasso is
-	// active these fall back to the raw totals.
+	// Facet counts mirror OHBM 2026's pattern: each facet shows the
+	// counts that WOULD result if you added one of its options,
+	// computed from the intersection of (lasso ∩ every OTHER active
+	// facet). The facet's own selection is excluded from its own
+	// counts so unchecking an option doesn't make its count vanish.
+	// Base sources after lasso (the lasso is global — affects every
+	// facet).
 	$: lassoBackdropPoints = (() => {
 		if (atlasLassoNeuroSet.size === 0) return atlasBackdrop;
 		return atlasBackdrop.filter((p) => atlasLassoNeuroSet.has(p.pubmed_id));
@@ -628,16 +629,38 @@
 		if (atlasLassoOhbmSet.size === 0) return atlasOverlayPoints;
 		return atlasOverlayPoints.filter((p) => atlasLassoOhbmSet.has(p.poster_id));
 	})();
+	// Sites counts (atlas-root) — apply cluster filter, exclude self.
+	$: siteCounts = (() => {
+		if (SITE_MODE !== 'atlas-root') return { ohbm: 0, neuro: 0 };
+		const useC = filterClusterIds.size > 0;
+		const ohbm = useC
+			? lassoOverlayPoints.filter((p) => filterClusterIds.has(p.nearest_cluster_id)).length
+			: lassoOverlayPoints.length;
+		const neuro = useC
+			? lassoBackdropPoints.filter((p) => filterClusterIds.has(p.cluster_id)).length
+			: lassoBackdropPoints.length;
+		return { ohbm, neuro };
+	})();
+	// Cluster counts — apply every OTHER active facet (Sites on atlas-
+	// root; Years on neuroscape), exclude self.
 	$: clusterCounts = (() => {
 		const counts = new Map<number, number>();
 		if (SITE_MODE === 'atlas-root') {
-			for (const a of lassoBackdropPoints)
-				counts.set(a.cluster_id, (counts.get(a.cluster_id) ?? 0) + 1);
-			for (const o of lassoOverlayPoints)
-				counts.set(o.nearest_cluster_id, (counts.get(o.nearest_cluster_id) ?? 0) + 1);
+			if (filterShowNeuro) {
+				for (const a of lassoBackdropPoints)
+					counts.set(a.cluster_id, (counts.get(a.cluster_id) ?? 0) + 1);
+			}
+			if (filterShowOhbm) {
+				for (const o of lassoOverlayPoints)
+					counts.set(o.nearest_cluster_id, (counts.get(o.nearest_cluster_id) ?? 0) + 1);
+			}
 		} else if (SITE_MODE === 'neuroscape') {
-			for (const a of lassoBackdropPoints)
+			const yLo = filterMinYear ?? yearBounds.lo;
+			const yHi = filterMaxYear ?? yearBounds.hi;
+			for (const a of lassoBackdropPoints) {
+				if (a.year < yLo || a.year > yHi) continue;
 				counts.set(a.cluster_id, (counts.get(a.cluster_id) ?? 0) + 1);
+			}
 		}
 		return counts;
 	})();
@@ -1042,8 +1065,8 @@
 						<AtlasRootFacets
 							clustersById={atlasClustersById}
 							{clusterCounts}
-							ohbmCount={lassoOverlayPoints.length}
-							neuroCount={lassoBackdropPoints.length}
+							ohbmCount={siteCounts.ohbm}
+							neuroCount={siteCounts.neuro}
 							selectedClusterIds={filterClusterIds}
 							showOhbm={filterShowOhbm}
 							showNeuro={filterShowNeuro}

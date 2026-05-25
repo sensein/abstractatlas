@@ -158,6 +158,25 @@
 	// when it returns, any rAF callbacks scheduled before suspension
 	// fire immediately + can pile onto a fresh ensureRotate from the
 	// remount. These listeners stop the loop deterministically.
+	//
+	// pagehide additionally purges the Plotly charts so their WebGL
+	// contexts release the GPU. Why: cross-deployment sibling
+	// navigation (e.g. /neuroscape/ → /ohbm2026/) bfcaches the prior
+	// page; without purge the suspended page keeps its WebGL contexts
+	// allocated, contending with the new page's charts (browsers cap
+	// at ~16 contexts/origin) and producing visible lag on the new
+	// page. We re-render on pageshow if the page is bfcache-restored.
+	let renderToken = 0;
+	function purgeCharts() {
+		if (!plotly) return;
+		if (chart2dEl) plotly.purge(chart2dEl);
+		if (chart3dEl) plotly.purge(chart3dEl);
+		handlers2dAttached = false;
+		handlers3dAttached = false;
+		atlas2dHandlersAttached = false;
+		atlas3dHandlersAttached = false;
+		chart3dInitialized = false;
+	}
 	function onVisibilityChange() {
 		if (typeof document === 'undefined') return;
 		if (document.visibilityState === 'hidden') {
@@ -168,12 +187,19 @@
 	}
 	function onPageHide() {
 		stopRotate();
+		purgeCharts();
+	}
+	function onPageShow(ev: PageTransitionEvent) {
+		if (!ev.persisted) return;
+		// bfcache restore — charts were purged in pagehide, re-render.
+		renderToken += 1;
 	}
 
 	onMount(async () => {
 		window.addEventListener('resize', onResize);
 		document.addEventListener('visibilitychange', onVisibilityChange);
 		window.addEventListener('pagehide', onPageHide);
+		window.addEventListener('pageshow', onPageShow);
 		await ensurePlotly();
 	});
 
@@ -181,15 +207,13 @@
 		if (typeof window !== 'undefined') {
 			window.removeEventListener('resize', onResize);
 			window.removeEventListener('pagehide', onPageHide);
+			window.removeEventListener('pageshow', onPageShow);
 		}
 		if (typeof document !== 'undefined') {
 			document.removeEventListener('visibilitychange', onVisibilityChange);
 		}
 		stopRotate();
-		if (plotly) {
-			if (chart2dEl) plotly.purge(chart2dEl);
-			if (chart3dEl) plotly.purge(chart3dEl);
-		}
+		purgeCharts();
 	});
 
 	async function ensurePlotly() {
@@ -242,6 +266,9 @@
 		return rec ? rec.poster_id : null;
 	})();
 	$: if (mode === 'ohbm') {
+		// renderToken is a tracked dep so bfcache-restore (which purges
+		// the charts) re-fires this block from onPageShow.
+		void renderToken;
 		void renderChart2D(
 			plotly,
 			chart2dEl,
@@ -269,6 +296,7 @@
 		// Both panes always render; the 2D pane carries the lasso
 		// highlight via `selectedpoints`, the 3D pane zooms to the
 		// lassoed bounding box.
+		void renderToken;
 		void renderAtlasChart2D(
 			plotly,
 			chart2dEl,
