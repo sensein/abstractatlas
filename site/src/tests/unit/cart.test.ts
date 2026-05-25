@@ -46,7 +46,15 @@ describe('cartStore', () => {
 		const raw = window.localStorage.getItem(CART_STORAGE_KEY);
 		expect(raw).not.toBeNull();
 		const parsed = JSON.parse(raw!);
-		expect(new Set(parsed)).toEqual(new Set([101, 102]));
+		// Stage 15 unifying cart — payload is `[{kind, id}, ...]`.
+		// Legacy `cartStore.add(posterId)` defaults to ohbm2026.
+		expect(parsed).toEqual(
+			expect.arrayContaining([
+				{ kind: 'ohbm2026', id: 101 },
+				{ kind: 'ohbm2026', id: 102 }
+			])
+		);
+		expect(parsed).toHaveLength(2);
 	});
 
 	it('clear wipes the persisted payload', () => {
