@@ -559,6 +559,12 @@
 	let filterClusterIds: Set<number> = new Set();
 	let filterShowOhbm = true;
 	let filterShowNeuro = true;
+	// UX-unification: search query + show-map state at the page level,
+	// matching the OHBM 2026 home's pattern (search lives in the
+	// top-row, map toggles in/out via a control-toggle button). Both
+	// atlas-root and neuroscape modes share these.
+	let atlasSearchQuery = '';
+	let atlasShowMap = true;
 	let atlasLoading = false;
 	let atlasError: string | null = null;
 	let atlasProgressLoaded = 0;
@@ -664,10 +670,20 @@
 </script>
 
 {#if SITE_MODE === 'atlas-root' || SITE_MODE === 'neuroscape'}
-	<!-- Stage 15 atlas-root + neuroscape modes — both use the
-	     LandingPageHeader + AtlasUmapPanel. The atlas-root mode
-	     additionally shows the overlay toggle (OHBM 2026 layer). -->
-	<div class="atlas-root-home" data-testid="atlas-root-home" data-mode={SITE_MODE}>
+	<!-- UX unification: reuse OHBM 2026's `.home` / `.top-row` /
+	     `.layout` structure so the atlas-root and neuroscape pages
+	     have the same shape as `/ohbm2026/` — search at the top,
+	     toggleable map below, then a results pane with an inline
+	     detail panel on the right. SITE_MODE branches inside the
+	     structure pick the appropriate browse-panel + control set;
+	     the OHBM 2026 build still hits the `{:else}` branch lower
+	     down (unchanged). -->
+	<div
+		class="home atlas-home"
+		class:has-focus={atlasSelection !== null}
+		data-testid="atlas-root-home"
+		data-mode={SITE_MODE}
+	>
 		<LandingPageHeader />
 		{#if SITE_MODE === 'atlas-root' && atlasDrift.length > 0}
 			<!-- T043 / R-012 — surface BOTH drift signals loudly.
@@ -733,77 +749,115 @@
 				{/if}
 			{/each}
 		{/if}
-		<main class="atlas-root-main">
-			<div class="atlas-controls" data-testid="atlas-root-controls">
+		<!-- Top row — search + controls, matches OHBM's `.top-row` shape -->
+		<div class="top-row">
+			<div class="search-row">
+				<label class="atlas-search" data-testid="atlas-search-label">
+					<span class="visually-hidden">Search</span>
+					<input
+						type="search"
+						bind:value={atlasSearchQuery}
+						placeholder={SITE_MODE === 'atlas-root'
+							? 'Search OHBM 2026 + NeuroScape titles or ids…'
+							: 'Search 461,316 NeuroScape titles…'}
+						data-testid={SITE_MODE === 'atlas-root'
+							? 'atlas-root-search-input'
+							: 'neuroscape-search-input'}
+					/>
+					{#if atlasSearchQuery}
+						<button
+							type="button"
+							class="atlas-search-clear"
+							on:click={() => (atlasSearchQuery = '')}
+							aria-label="Clear search"
+							data-testid="atlas-search-clear"
+						>×</button>
+					{/if}
+				</label>
+			</div>
+			<div class="controls" data-testid="atlas-root-controls">
 				{#if SITE_MODE === 'atlas-root'}
 					<AtlasOverlayToggle />
 				{/if}
 				<DimensionalityToggle />
 				<BackdropDensitySlider bind:value={backdropDensity} />
-				{#if SITE_MODE === 'neuroscape'}
-					<span class="neuroscape-tag" data-testid="neuroscape-mode-tag"
-						>NeuroScape PubMed atlas · 1999–2023</span
-					>
-				{/if}
+				<button
+					type="button"
+					class="control-toggle"
+					class:active={atlasShowMap}
+					on:click={() => (atlasShowMap = !atlasShowMap)}
+					aria-pressed={atlasShowMap}
+					data-testid="toggle-map"
+				>
+					{atlasShowMap ? '✕ Hide map' : '🗺  Show map'}
+				</button>
 			</div>
-			{#if SITE_MODE === 'neuroscape' && atlasBackdrop.length > 0}
-				<!-- T067 — NeuroScape browse panel. Title search + paginated
-				     result list bound to neuroscape.parquet's articles +
-				     clusters. Cluster facet wired to filterClusterIds so
-				     the scatter visibly reflects the filter. -->
-				<NeuroscapeBrowsePanel
-					articles={atlasBackdrop}
-					clustersById={atlasClustersById}
-					on:filter={(ev) => {
-						filterClusterIds = ev.detail.cluster_ids;
-					}}
-					on:focus={(ev) => {
-						const url = new URL(window.location.href);
-						url.searchParams.set('focus', String(ev.detail.pubmed_id));
-						url.searchParams.set('cluster', String(ev.detail.cluster_id));
-						window.history.pushState({}, '', url);
-						const el = document.querySelector('[data-testid="atlas-umap-panel"]');
-						if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-					}}
-				/>
-			{/if}
-			{#if SITE_MODE === 'atlas-root' && atlasBackdrop.length > 0}
-				<!-- Cross-conference browse panel: search across both
-				     corpora + Clusters facet + Sites facet (toggle OHBM
-				     2026 / NeuroScape PubMed visibility). Facet state
-				     drives `filteredBackdrop` / `filteredOverlay` which
-				     in turn feed AtlasUmapPanel — so the scatter
-				     visibly reflects the filter. -->
-				<AtlasRootBrowsePanel
-					backdropPoints={atlasBackdrop}
-					overlayPoints={atlasOverlayPoints}
-					clustersById={atlasClustersById}
-					permalinkFor={atlasPermalink}
-					on:filter={(ev) => {
-						filterClusterIds = ev.detail.cluster_ids;
-						filterShowOhbm = ev.detail.show_ohbm;
-						filterShowNeuro = ev.detail.show_neuro;
-					}}
-					on:select={(ev) => {
-						// Open the detail panel (slide-in) without leaving
-						// the atlas page. Same handler as a scatter point-click.
-						onAtlasPointClick(
-							new CustomEvent('pointclick', { detail: ev.detail })
-						);
-					}}
-				/>
-			{/if}
+		</div>
+
+		<!-- Drift banners — surface before the scatter so the visitor
+		     sees them above the fold. Only fires in atlas-root mode. -->
+		{#if SITE_MODE === 'atlas-root' && atlasDrift.length > 0}
+			{#each [{ kind: 'mismatch', items: atlasDrift.filter((d) => d.reason === 'mismatch') }, { kind: 'cannot-verify', items: atlasDrift.filter((d) => d.reason !== 'mismatch') }] as section (section.kind)}
+				{#if section.items.length > 0}
+					<aside
+						class="atlas-drift-banner"
+						class:atlas-drift-banner--mismatch={section.kind === 'mismatch'}
+						class:atlas-drift-banner--cannot-verify={section.kind === 'cannot-verify'}
+						role="alert"
+						data-testid={`atlas-drift-banner-${section.kind}`}
+					>
+						{#if section.kind === 'mismatch'}
+							<strong>Atlas data is out of sync with a sibling subsite.</strong>
+							<ul class="atlas-drift-list" data-testid="atlas-drift-list">
+								{#each section.items as d (d.sibling)}
+									<li>
+										<code>{d.sibling}</code> expected
+										<code>{d.expected.slice(0, 8)}…</code> but found
+										<code>{d.actual ? d.actual.slice(0, 8) + '…' : '(unknown)'}</code>
+									</li>
+								{/each}
+							</ul>
+							<p class="atlas-drift-explain">
+								Cross-conference links may point at stale ids. Rebuild
+								<code>atlas.parquet</code> against the current sibling parquets.
+							</p>
+						{:else}
+							<strong
+								>Couldn't verify atlas data against {section.items.length === 1
+									? 'a sibling subsite'
+									: 'sibling subsites'}.</strong
+							>
+							<ul class="atlas-drift-list" data-testid="atlas-drift-list-cannot-verify">
+								{#each section.items as d (d.sibling)}
+									<li>
+										<code>{d.sibling}</code> ·
+										{#if d.reason === 'fetch-failed'}
+											fetch failed after retries{#if d.error_message}: <code
+													>{d.error_message}</code
+												>{/if}
+										{:else}
+											sibling parquet manifest has no state_key
+										{/if}
+									</li>
+								{/each}
+							</ul>
+							<p class="atlas-drift-explain">
+								Atlas may be fine, but we couldn't confirm. Check the
+								Network tab for the actual error; refresh to retry.
+							</p>
+						{/if}
+					</aside>
+				{/if}
+			{/each}
+		{/if}
+
+		<!-- Map panel — toggleable above the layout grid, OHBM-style. -->
+		{#if atlasShowMap}
 			{#if atlasError}
 				<div class="atlas-scatter-placeholder" data-testid="atlas-scatter-error" role="alert">
 					<p class="placeholder-text">{atlasError}</p>
 				</div>
 			{:else if atlasBackdrop.length === 0}
-				<!-- Render the loading placeholder whenever data hasn't
-				     populated yet — covers SSR (atlasLoading=false), the
-				     client-hydration window (atlasLoading=true,
-				     atlasBackdrop=[]), AND any future case where the
-				     load is retried. The user always sees a visible
-				     "Loading…" state instead of a blank/empty panel. -->
 				<div class="atlas-scatter-placeholder" data-testid="atlas-scatter-loading">
 					<p class="placeholder-text">
 						{#if atlasPhase === 'connecting'}
@@ -843,15 +897,7 @@
 							data-testid="atlas-loading-progressbar"
 						></progress>
 					{:else}
-						<!-- Always show an indeterminate bar when no determinate
-						     value is available — covers SSR (no progress yet),
-						     connecting (no bytes), parsing (no byte counter),
-						     and the no-Content-Length fallback. Without this,
-						     fast connections that finish the byte stream before
-						     the user can perceive the bar see only a blank
-						     "Loading…" text. -->
-						<progress class="atlas-progress" data-testid="atlas-loading-indeterminate"
-						></progress>
+						<progress class="atlas-progress" data-testid="atlas-loading-indeterminate"></progress>
 					{/if}
 				</div>
 			{:else}
@@ -867,13 +913,76 @@
 					on:lassoclear={clearAtlasLasso}
 				/>
 			{/if}
-		</main>
+		{/if}
+
+		<!-- Layout grid — list pane (browse panel) + detail pane,
+		     mirroring OHBM's home. The browse panel's internal facet
+		     row sits at the top of the list pane (its search input
+		     was hoisted to the top-row above). -->
+		{#if atlasBackdrop.length > 0}
+			<div class="layout atlas-layout">
+				<div class="list-pane">
+					{#if SITE_MODE === 'neuroscape'}
+						<NeuroscapeBrowsePanel
+							articles={atlasBackdrop}
+							clustersById={atlasClustersById}
+							bind:query={atlasSearchQuery}
+							on:filter={(ev) => {
+								filterClusterIds = ev.detail.cluster_ids;
+							}}
+							on:focus={(ev) => {
+								const url = new URL(window.location.href);
+								url.searchParams.set('focus', String(ev.detail.pubmed_id));
+								url.searchParams.set('cluster', String(ev.detail.cluster_id));
+								window.history.pushState({}, '', url);
+								const el = document.querySelector(
+									'[data-testid="atlas-umap-panel"]'
+								);
+								if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+							}}
+						/>
+					{:else}
+						<AtlasRootBrowsePanel
+							backdropPoints={atlasBackdrop}
+							overlayPoints={atlasOverlayPoints}
+							clustersById={atlasClustersById}
+							permalinkFor={atlasPermalink}
+							bind:query={atlasSearchQuery}
+							on:filter={(ev) => {
+								filterClusterIds = ev.detail.cluster_ids;
+								filterShowOhbm = ev.detail.show_ohbm;
+								filterShowNeuro = ev.detail.show_neuro;
+							}}
+							on:select={(ev) => {
+								onAtlasPointClick(
+									new CustomEvent('pointclick', { detail: ev.detail })
+								);
+							}}
+						/>
+					{/if}
+				</div>
+				<div class="detail-pane" class:active={atlasSelection !== null}>
+					{#if atlasSelection}
+						<AtlasRootDetailPanel
+							selection={atlasSelection}
+							clustersById={atlasClustersById}
+							mode="inline"
+							on:close={() => (atlasSelection = null)}
+						/>
+					{:else}
+						<aside class="detail-empty">
+							<p>
+								{SITE_MODE === 'atlas-root'
+									? 'Click a result or a point on the map to see details here.'
+									: 'Click a result or a point on the map to see article details here.'}
+							</p>
+						</aside>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
 		{#if SITE_MODE === 'atlas-root'}
-			<AtlasRootDetailPanel
-				selection={atlasSelection}
-				clustersById={atlasClustersById}
-				on:close={() => (atlasSelection = null)}
-			/>
 			<AtlasRootLassoResults
 				ohbm2026_ids={atlasLassoOhbmIds}
 				neuroscape_ids={atlasLassoNeuroIds}
@@ -1106,23 +1215,88 @@
 		border-radius: 2px;
 	}
 
-	.atlas-root-home {
-		display: flex;
-		flex-direction: column;
+	/* UX-unification — atlas-home reuses OHBM's `.home` shape with
+	   a few overrides: the page-wide padding now lives here (since
+	   atlas-root uses a minimal-shell layout instead of OHBM's
+	   `.shell` wrapper) and `min-height: 100vh` so the LandingPage
+	   Header sticks to the top. */
+	.atlas-home {
 		min-height: 100vh;
+		padding: 0 0 1rem;
 	}
-	.atlas-root-main {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		padding: 1rem 1.25rem;
-		gap: 1rem;
+	.atlas-home > .top-row,
+	.atlas-home > .layout,
+	.atlas-home > .atlas-drift-banner,
+	.atlas-home > .atlas-scatter-placeholder {
+		margin: 0 clamp(1rem, 2vw, 2rem);
 	}
-	.atlas-controls {
-		display: flex;
+	.atlas-home > .top-row {
+		margin-top: 1rem;
+	}
+	/* Atlas-home's grid is 2-column (list + detail). OHBM 2026's
+	   `.layout` is overridden via @media + cart/facet panes; we
+	   stay simpler here. */
+	.atlas-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: 1rem;
+		width: 100%;
+	}
+	.atlas-home.has-focus .atlas-layout {
+		grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+	}
+	@media (max-width: 720px) {
+		.atlas-home.has-focus .atlas-layout {
+			grid-template-columns: minmax(0, 1fr);
+		}
+	}
+	.atlas-home .detail-pane:not(.active) {
+		display: none;
+	}
+	/* Atlas-home search input — same visual weight as OHBM's
+	   SearchBar (large, full-width-ish, prominent). */
+	.atlas-search {
+		position: relative;
+		display: flex;
 		align-items: center;
-		flex-wrap: wrap;
+		width: 100%;
+	}
+	.atlas-search input[type='search'] {
+		width: 100%;
+		padding: 0.6rem 2.25rem 0.6rem 0.85rem;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: var(--bg-elevated);
+		color: var(--text);
+		font-size: 1rem;
+	}
+	.atlas-search input[type='search']:focus {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+	.atlas-search-clear {
+		all: unset;
+		cursor: pointer;
+		position: absolute;
+		right: 0.6rem;
+		font-size: 1.2rem;
+		color: var(--text-muted);
+		padding: 0.1rem 0.4rem;
+		border-radius: 3px;
+	}
+	.atlas-search-clear:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		border: 0;
 	}
 	.atlas-scatter-placeholder {
 		flex: 1;

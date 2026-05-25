@@ -44,7 +44,10 @@
 		filter: { cluster_ids: Set<number> };
 	}>();
 
-	let query = '';
+	// UX-unification: search input lives in `+page.svelte`'s `.top-row`.
+	// Query state is bound via prop, not owned internally.
+	export let query: string = '';
+
 	let limit = 100;
 
 	// Year facet — typical visitor wants to narrow to "recent" articles.
@@ -145,27 +148,10 @@
 </script>
 
 <section class="ns-browse" data-testid="neuroscape-browse-panel">
+	<!-- Search input hoisted out into `+page.svelte`'s `.top-row` so
+	     the neuroscape home matches the OHBM 2026 layout. Query state
+	     is bound via the `query` prop. -->
 	<div class="ns-search-row">
-		<label class="ns-search">
-			<span class="visually-hidden">Search NeuroScape titles</span>
-			<input
-				type="search"
-				placeholder="Search 461,316 NeuroScape titles…"
-				bind:value={query}
-				data-testid="neuroscape-search-input"
-			/>
-			{#if query}
-				<button
-					type="button"
-					class="ns-clear"
-					on:click={clearQuery}
-					aria-label="Clear search"
-					data-testid="neuroscape-search-clear"
-				>
-					×
-				</button>
-			{/if}
-		</label>
 
 		<div class="ns-facets">
 			<label class="ns-year">

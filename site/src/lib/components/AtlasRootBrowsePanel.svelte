@@ -44,13 +44,18 @@
 	export let clustersById: Map<number, Cluster> = new Map();
 	export let permalinkFor: (kind: 'ohbm2026' | 'neuroscape', id: number) => string;
 
+	// UX-unification: hosted by the OHBM-style `.home` layout in
+	// `+page.svelte`. The search input lives in the `.top-row` (so it
+	// occupies the same visual real estate as OHBM's SearchBar);
+	// query state is bound via a prop, NOT owned internally.
+	export let query: string = '';
+
 	const dispatch = createEventDispatcher<{
 		select: { kind: 'ohbm2026' | 'neuroscape'; id: number };
 		focus: { kind: 'ohbm2026' | 'neuroscape'; id: number; cluster_id: number };
 		filter: { cluster_ids: Set<number>; show_ohbm: boolean; show_neuro: boolean };
 	}>();
 
-	let query = '';
 	let limit = 100;
 
 	// Site filter — both visible by default.
@@ -205,28 +210,11 @@
 </script>
 
 <section class="ar-browse" data-testid="atlas-root-browse-panel">
+	<!-- The search input was hoisted out into `+page.svelte`'s `.top-row`
+	     so the atlas-root home matches OHBM's layout (single search bar
+	     at the top, facets in the left pane, results in the middle).
+	     Query state is bound via the `query` prop. -->
 	<div class="ar-search-row">
-		<label class="ar-search">
-			<span class="visually-hidden">Search across both corpora</span>
-			<input
-				type="search"
-				placeholder="Search OHBM 2026 + NeuroScape titles or ids…"
-				bind:value={query}
-				data-testid="atlas-root-search-input"
-			/>
-			{#if query}
-				<button
-					type="button"
-					class="ar-clear"
-					on:click={() => (query = '')}
-					aria-label="Clear search"
-					data-testid="atlas-root-search-clear"
-				>
-					×
-				</button>
-			{/if}
-		</label>
-
 		<div class="ar-facets">
 			<!-- Site facet — show OHBM 2026 / NeuroScape / both. -->
 			<div class="ar-site-facet" data-testid="atlas-root-site-facet">

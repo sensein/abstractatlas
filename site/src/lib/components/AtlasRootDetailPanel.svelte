@@ -49,6 +49,15 @@
 
 	export let selection: OhbmSelection | NeuroscapeSelection | null = null;
 	export let clustersById: Map<number, ClusterRow> = new Map();
+	/** Rendering mode.
+	 *  - `'modal'` (default) — fixed-position slide-in with backdrop;
+	 *    Escape + backdrop click close.
+	 *  - `'inline'` — render the card content only, no backdrop, no
+	 *    fixed positioning. Hosted by the OHBM-style `.detail-pane`
+	 *    grid column. Caller controls close via clicking elsewhere or
+	 *    a deselect action.
+	 */
+	export let mode: 'modal' | 'inline' = 'modal';
 
 	const dispatch = createEventDispatcher<{ close: void }>();
 
@@ -92,18 +101,84 @@
 </script>
 
 {#if selection}
-	<!-- The outer is the dim backdrop; the inner card is the panel. -->
-	<div
-		class="atlas-detail-backdrop"
-		data-testid="atlas-root-detail-panel"
-		role="dialog"
-		aria-modal="true"
-		aria-label="Point detail"
-		on:click={onBackdropClick}
-		on:keydown={onKeyDown}
-		tabindex="-1"
-	>
-		<aside class="atlas-detail-card" data-testid="atlas-root-detail-card" data-kind={selection.kind}>
+	{#if mode === 'modal'}
+		<!-- Modal: dim backdrop + fixed-position slide-in card. -->
+		<div
+			class="atlas-detail-backdrop"
+			data-testid="atlas-root-detail-panel"
+			role="dialog"
+			aria-modal="true"
+			aria-label="Point detail"
+			on:click={onBackdropClick}
+			on:keydown={onKeyDown}
+			tabindex="-1"
+		>
+			<aside
+				class="atlas-detail-card atlas-detail-card--modal"
+				data-testid="atlas-root-detail-card"
+				data-kind={selection.kind}
+			>
+				<header class="card-head">
+					<span class="kind-tag" data-testid="atlas-root-kind-tag">
+						{selection.kind === 'ohbm2026' ? 'OHBM 2026' : 'NeuroScape PubMed'}
+					</span>
+					<button
+						type="button"
+						class="close"
+						on:click={close}
+						aria-label="Close detail panel"
+						data-testid="atlas-root-detail-close"
+					>
+						×
+					</button>
+				</header>
+				<h2 class="title" data-testid="atlas-root-detail-title">{selection.title}</h2>
+				<dl class="meta">
+					{#if selection.kind === 'ohbm2026'}
+						<div class="meta-row">
+							<dt>Poster id</dt>
+							<dd data-testid="atlas-root-detail-poster-id">{selection.poster_id}</dd>
+						</div>
+					{:else}
+						<div class="meta-row">
+							<dt>PubMed id</dt>
+							<dd data-testid="atlas-root-detail-pubmed-id">{selection.pubmed_id}</dd>
+						</div>
+						<div class="meta-row">
+							<dt>Year</dt>
+							<dd data-testid="atlas-root-detail-year">{selection.year}</dd>
+						</div>
+					{/if}
+					{#if cluster}
+						<div class="meta-row">
+							<dt>{selection.kind === 'ohbm2026' ? 'Nearest cluster' : 'Cluster'}</dt>
+							<dd data-testid="atlas-root-detail-cluster">
+								<span class="cluster-swatch" style="background:{cluster.colour_hex}"></span>
+								{cluster.title}
+							</dd>
+						</div>
+					{/if}
+				</dl>
+				<a
+					class="cta"
+					href={selection.permalink}
+					rel="external"
+					data-testid="atlas-root-detail-cta"
+				>
+					{ctaLabel} <span aria-hidden="true">→</span>
+				</a>
+			</aside>
+		</div>
+	{:else}
+		<!-- Inline: hosted by the parent's `.detail-pane` grid column.
+		     No backdrop, no fixed positioning. The close button is
+		     still present so the user can clear the selection without
+		     having to click elsewhere. -->
+		<aside
+			class="atlas-detail-card atlas-detail-card--inline"
+			data-testid="atlas-root-detail-card"
+			data-kind={selection.kind}
+		>
 			<header class="card-head">
 				<span class="kind-tag" data-testid="atlas-root-kind-tag">
 					{selection.kind === 'ohbm2026' ? 'OHBM 2026' : 'NeuroScape PubMed'}
@@ -118,9 +193,7 @@
 					×
 				</button>
 			</header>
-
 			<h2 class="title" data-testid="atlas-root-detail-title">{selection.title}</h2>
-
 			<dl class="meta">
 				{#if selection.kind === 'ohbm2026'}
 					<div class="meta-row">
@@ -147,7 +220,6 @@
 					</div>
 				{/if}
 			</dl>
-
 			<a
 				class="cta"
 				href={selection.permalink}
@@ -157,7 +229,7 @@
 				{ctaLabel} <span aria-hidden="true">→</span>
 			</a>
 		</aside>
-	</div>
+	{/if}
 {/if}
 
 <style>
@@ -170,16 +242,26 @@
 		z-index: 100;
 	}
 	.atlas-detail-card {
-		width: min(420px, 100%);
 		background: var(--bg-elevated);
 		color: var(--text);
-		border-left: 1px solid var(--border);
 		padding: 1rem 1.25rem;
 		display: flex;
 		flex-direction: column;
 		gap: 0.85rem;
-		box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
 		overflow-y: auto;
+	}
+	.atlas-detail-card--modal {
+		/* Slide-in panel hugging the right edge inside the backdrop. */
+		width: min(420px, 100%);
+		border-left: 1px solid var(--border);
+		box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
+	}
+	.atlas-detail-card--inline {
+		/* Hosted by the parent's `.detail-pane` grid column. */
+		width: 100%;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		max-height: 80vh;
 	}
 	.card-head {
 		display: flex;
