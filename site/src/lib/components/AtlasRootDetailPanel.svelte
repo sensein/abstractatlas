@@ -23,6 +23,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { onMount, onDestroy } from 'svelte';
+	import { cartStore, cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
 
 	type ClusterRow = {
 		cluster_id: number;
@@ -112,6 +113,18 @@
 		: selection?.kind === 'neuroscape'
 		? 'Open on /neuroscape/'
 		: '';
+	$: inCart =
+		selection?.kind === 'ohbm2026'
+			? $cartOhbmPosterIds.has(selection.poster_id)
+			: selection?.kind === 'neuroscape'
+				? $cartNeuroPubmedIds.has(selection.pubmed_id)
+				: false;
+	function toggleCart() {
+		if (!selection) return;
+		const id = selection.kind === 'ohbm2026' ? selection.poster_id : selection.pubmed_id;
+		if (inCart) cartStore.removeItem(selection.kind, id);
+		else cartStore.addItem(selection.kind, id);
+	}
 </script>
 
 {#if selection}
@@ -136,15 +149,28 @@
 					<span class="kind-tag" data-testid="atlas-root-kind-tag">
 						{selection.kind === 'ohbm2026' ? 'OHBM 2026' : 'NeuroScape PubMed'}
 					</span>
-					<button
-						type="button"
-						class="close"
-						on:click={close}
-						aria-label="Close detail panel"
-						data-testid="atlas-root-detail-close"
-					>
-						×
-					</button>
+					<div class="head-actions">
+						<button
+							type="button"
+							class="cart-toggle"
+							class:active={inCart}
+							on:click={toggleCart}
+							title={inCart ? 'Remove from saved list' : 'Save to list'}
+							aria-label={inCart ? 'Remove from saved list' : 'Save to list'}
+							data-testid="atlas-root-detail-cart"
+						>
+							{inCart ? '🛒✓' : '🛒'}
+						</button>
+						<button
+							type="button"
+							class="close"
+							on:click={close}
+							aria-label="Close detail panel"
+							data-testid="atlas-root-detail-close"
+						>
+							×
+						</button>
+					</div>
 				</header>
 				<h2 class="title" data-testid="atlas-root-detail-title">{selection.title}</h2>
 				<dl class="meta">
@@ -327,6 +353,27 @@
 		border-radius: 3px;
 		background: var(--accent-soft-bg);
 		color: var(--accent-soft-text);
+	}
+	.head-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+	}
+	.cart-toggle {
+		all: unset;
+		cursor: pointer;
+		font-size: 1rem;
+		line-height: 1;
+		color: var(--text-muted);
+		padding: 0.25rem 0.45rem;
+		border-radius: 4px;
+	}
+	.cart-toggle:hover {
+		background: var(--bg-subtle);
+		color: var(--accent);
+	}
+	.cart-toggle.active {
+		color: var(--accent);
 	}
 	.close {
 		all: unset;

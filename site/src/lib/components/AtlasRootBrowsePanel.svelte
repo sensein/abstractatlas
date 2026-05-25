@@ -15,6 +15,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { normalize } from '$lib/filter';
+	import { cartStore, cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
 
 	type BackdropPoint = {
 		pubmed_id: number;
@@ -148,6 +149,10 @@
 	<ul class="ar-results" data-testid="atlas-root-result-list">
 		{#each visible as r (r.kind + ':' + r.id)}
 			{@const cluster = clustersById.get(r.cluster_id)}
+			{@const inCart =
+				r.kind === 'ohbm2026'
+					? $cartOhbmPosterIds.has(r.id)
+					: $cartNeuroPubmedIds.has(r.id)}
 			<li class="ar-row">
 				<a
 					class="ar-row-link"
@@ -172,15 +177,31 @@
 					</div>
 					<div class="ar-title">{r.title}</div>
 				</a>
-				<button
-					type="button"
-					class="ar-show-atlas"
-					title="Show details inline"
-					on:click={() => dispatch('select', { kind: r.kind, id: r.id })}
-					data-testid="atlas-root-row-select"
-				>
-					Details
-				</button>
+				<div class="ar-row-actions">
+					<button
+						type="button"
+						class="ar-cart-toggle"
+						class:active={inCart}
+						title={inCart ? 'Remove from saved list' : 'Save to list'}
+						aria-label={inCart ? 'Remove from saved list' : 'Save to list'}
+						on:click={() =>
+							inCart
+								? cartStore.removeItem(r.kind, r.id)
+								: cartStore.addItem(r.kind, r.id)}
+						data-testid="atlas-root-row-cart"
+					>
+						{inCart ? '🛒✓' : '🛒'}
+					</button>
+					<button
+						type="button"
+						class="ar-show-atlas"
+						title="Show details inline"
+						on:click={() => dispatch('select', { kind: r.kind, id: r.id })}
+						data-testid="atlas-root-row-select"
+					>
+						Details
+					</button>
+				</div>
 			</li>
 		{/each}
 	</ul>
@@ -279,6 +300,29 @@
 		min-width: 0;
 		overflow-wrap: anywhere;
 	}
+	.ar-row-actions {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		align-items: flex-end;
+		flex-shrink: 0;
+	}
+	.ar-cart-toggle {
+		all: unset;
+		cursor: pointer;
+		font-size: 1rem;
+		padding: 0.2rem 0.4rem;
+		border-radius: 3px;
+		line-height: 1;
+		color: var(--text-muted);
+	}
+	.ar-cart-toggle:hover {
+		background: var(--bg-sunken);
+		color: var(--accent);
+	}
+	.ar-cart-toggle.active {
+		color: var(--accent);
+	}
 	.ar-show-atlas {
 		all: unset;
 		cursor: pointer;
@@ -288,7 +332,6 @@
 		color: var(--accent);
 		border: 1px solid var(--accent);
 		background: transparent;
-		align-self: flex-start;
 		white-space: nowrap;
 	}
 	.ar-show-atlas:hover {
