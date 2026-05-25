@@ -38,19 +38,23 @@
 	// builds — FR-022 byte-identity is preserved.
 	import { SITE_MODE } from '$lib/site_mode';
 	import LandingPageHeader from '$lib/components/LandingPageHeader.svelte';
-	import AtlasOverlayToggle from '$lib/components/AtlasOverlayToggle.svelte';
-	import BackdropDensitySlider from '$lib/components/BackdropDensitySlider.svelte';
+	// AtlasOverlayToggle + BackdropDensitySlider + DimensionalityToggle
+	// were removed from the atlas-root/neuroscape top-row to match the
+	// OHBM 2026 UI shape. Overlay visibility is now driven by the
+	// Sites facet (filterShowOhbm); opacity defaults to 0.05; both
+	// 2D and 3D scatters are rendered side-by-side so no
+	// dimensionality toggle is needed.
 	import AtlasUmapPanel from '$lib/components/AtlasUmapPanel.svelte';
 	import AtlasRootDetailPanel from '$lib/components/AtlasRootDetailPanel.svelte';
 	import AtlasRootLassoResults from '$lib/components/AtlasRootLassoResults.svelte';
 	import AtlasRootBrowsePanel from '$lib/components/AtlasRootBrowsePanel.svelte';
 	import AtlasRootFacets from '$lib/components/AtlasRootFacets.svelte';
-	import DimensionalityToggle from '$lib/components/DimensionalityToggle.svelte';
 	import NeuroscapeBrowsePanel from '$lib/components/NeuroscapeBrowsePanel.svelte';
 	import NeuroscapeFacets from '$lib/components/NeuroscapeFacets.svelte';
 	import { base } from '$app/paths';
-	import { atlasOverlay } from '$lib/stores/atlas_overlay';
-	import { dimensionality } from '$lib/stores/dimensionality';
+	// atlasOverlay + dimensionality stores no longer driven from this
+	// page (removed top-row toggles). Stores still exist for any
+	// external consumer; tree-shaken from this bundle if unused.
 	import {
 		loadDataPackage,
 		verifyAtlasSiblingDrift,
@@ -794,7 +798,12 @@
 				{/if}
 			{/each}
 		{/if}
-		<!-- Top row — search + controls, matches OHBM's `.top-row` shape -->
+		<!-- Top row — minimal control set matching OHBM 2026's pattern:
+		     search input + Show/Hide Map toggle. The overlay-visibility
+		     toggle (atlas-root) is now driven by the Sites facet; the
+		     dimensionality toggle + backdrop-opacity slider are gone
+		     (sensible defaults instead, exposed later via a Settings
+		     panel if needed). -->
 		<div class="top-row">
 			<div class="search-row">
 				<label class="atlas-search" data-testid="atlas-search-label">
@@ -821,11 +830,6 @@
 				</label>
 			</div>
 			<div class="controls" data-testid="atlas-root-controls">
-				{#if SITE_MODE === 'atlas-root'}
-					<AtlasOverlayToggle />
-				{/if}
-				<DimensionalityToggle />
-				<BackdropDensitySlider bind:value={backdropDensity} />
 				<button
 					type="button"
 					class="control-toggle"
@@ -946,17 +950,34 @@
 					{/if}
 				</div>
 			{:else}
-				<AtlasUmapPanel
-					backdropPoints={filteredBackdrop}
-					overlayPoints={filteredOverlay}
-					clusters={atlasClusters}
-					showOverlay={SITE_MODE === 'atlas-root' ? $atlasOverlay : false}
-					backdropOpacity={backdropDensity}
-					dimensionality={$dimensionality}
-					on:pointclick={onAtlasPointClick}
-					on:lassoselect={onAtlasLasso}
-					on:lassoclear={clearAtlasLasso}
-				/>
+				<!-- Side-by-side 2D + 3D, matching OHBM 2026's UmapPanel
+				     pattern. Lasso fires on the 2D pane (Plotly limitation —
+				     plotly_selected only fires on scattergl traces, not
+				     scatter3d). Both panes share the same filter state +
+				     dispatch the same pointclick events. Stacks vertically
+				     on mobile (≤1024px). -->
+				<div class="atlas-umap-row" data-testid="atlas-umap-row">
+					<AtlasUmapPanel
+						backdropPoints={filteredBackdrop}
+						overlayPoints={filteredOverlay}
+						clusters={atlasClusters}
+						showOverlay={SITE_MODE === 'atlas-root' ? filterShowOhbm : false}
+						backdropOpacity={0.05}
+						dimensionality={'2d'}
+						on:pointclick={onAtlasPointClick}
+						on:lassoselect={onAtlasLasso}
+						on:lassoclear={clearAtlasLasso}
+					/>
+					<AtlasUmapPanel
+						backdropPoints={filteredBackdrop}
+						overlayPoints={filteredOverlay}
+						clusters={atlasClusters}
+						showOverlay={SITE_MODE === 'atlas-root' ? filterShowOhbm : false}
+						backdropOpacity={0.05}
+						dimensionality={'3d'}
+						on:pointclick={onAtlasPointClick}
+					/>
+				</div>
 			{/if}
 		{/if}
 
@@ -1302,6 +1323,21 @@
 	.atlas-home > .top-row {
 		margin-top: 1rem;
 	}
+	/* Side-by-side 2D + 3D scatter row, matching OHBM 2026's
+	   UmapPanel layout (2D + 3D side-by-side on desktop, stacked
+	   on mobile). Each pane gets equal width on desktop. */
+	.atlas-umap-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+		min-height: 24rem;
+	}
+	@media (max-width: 1024px) {
+		.atlas-umap-row {
+			grid-template-columns: 1fr;
+		}
+	}
+
 	/* 3-column atlas-home layout — facets | list | detail. Matches
 	   OHBM 2026's `.layout` shape (which is also 3-column with
 	   `.facet-pane` / `.list-pane` / `.detail-pane` on wide screens).
