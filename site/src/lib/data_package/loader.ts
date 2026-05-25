@@ -662,15 +662,15 @@ export async function verifyAtlasSiblingDrift(
 						});
 					}
 				})
-				.catch((err) =>
+				.catch((err) => {
 					drift.push({
 						sibling: 'ohbm2026',
 						expected: expectedOhbm,
 						actual: null,
 						reason: 'fetch-failed',
 						error_message: err instanceof Error ? err.message : String(err)
-					})
-				)
+					});
+				})
 		);
 	}
 
@@ -696,15 +696,15 @@ export async function verifyAtlasSiblingDrift(
 						});
 					}
 				})
-				.catch((err) =>
+				.catch((err) => {
 					drift.push({
 						sibling: 'neuroscape',
 						expected: expectedNeuro,
 						actual: null,
 						reason: 'fetch-failed',
 						error_message: err instanceof Error ? err.message : String(err)
-					})
-				)
+					});
+				})
 		);
 	}
 

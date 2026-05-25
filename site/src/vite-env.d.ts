@@ -15,3 +15,9 @@ interface ImportMetaEnv {
 interface ImportMeta {
 	readonly env: ImportMetaEnv;
 }
+
+// `plotly.js-dist-min` ships as a minified bundle with no `.d.ts`
+// alongside it (and no published `@types/plotly.js-dist-min`). Cast
+// through `unknown` at call sites; this ambient declaration just
+// lets `import 'plotly.js-dist-min'` compile.
+declare module 'plotly.js-dist-min';
