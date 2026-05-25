@@ -795,15 +795,17 @@
 			ohbmLassoSet
 		);
 		if (overlayTrace) traces.push(overlayTrace);
-		// Bump `selectionrevision` whenever the lasso state changes so
-		// Plotly drops its preserved selection internals instead of
-		// trying to merge them into the new selectedpoints state — the
-		// merge attempt emits a `unrecognized GUI edit: selections[0]
-		// .yref` console warning when the trace structure has shifted.
-		const lassoActive2d = ohbmLassoSet.size + neuroLassoSet.size > 0;
-		const selrev = lassoActive2d
-			? `atlas-2d-sel-${ohbmLassoSet.size}-${neuroLassoSet.size}`
-			: 'atlas-2d-sel-none';
+		// We DON'T set `selectionrevision`. The earlier attempt to
+		// pin it to a fingerprint string (e.g. lasso-size combos)
+		// still emitted `unrecognized GUI edit: selections[0].yref`
+		// when Plotly tried to merge its preserved internal
+		// `selections` polygon into a chart whose trace structure had
+		// shifted (the dual-trace lasso split). Letting Plotly default
+		// to "no preservation" drops the polygon outline on re-render
+		// — acceptable since the lassoed points are still highlighted
+		// via `selectedpoints` + the dim-unselected opacity, and the
+		// "Clear selection" button in the panel header is the
+		// authoritative deselect.
 		const layout = {
 			autosize: true,
 			margin: { l: 0, r: 0, t: 0, b: 0 },
@@ -815,8 +817,7 @@
 			showlegend: false,
 			xaxis: { visible: false, scaleanchor: 'y' },
 			yaxis: { visible: false },
-			uirevision: 'atlas-2d',
-			selectionrevision: selrev
+			uirevision: 'atlas-2d'
 		};
 		const config = {
 			responsive: true,
