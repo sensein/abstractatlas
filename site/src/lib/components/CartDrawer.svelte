@@ -96,6 +96,81 @@
 			setTimeout(() => (clipboardStatus = 'idle'), 2000);
 		}
 	}
+	// JSON export/import — the canonical mechanism for sharing carts
+	// larger than what fits in a URL or email body. ?cart=… URL
+	// restore tops out at ~200 items before URL length caps trip
+	// (Outlook 2KB, Gmail ~8KB). Email-body item lists are likewise
+	// truncated to MAX_EMAIL_ITEMS=100. The JSON file has no length
+	// budget — works for any size cart, persists across devices, and
+	// the import handler validates the shape before resetting state.
+	let importInput: HTMLInputElement | null = null;
+	let importStatus: 'idle' | 'success' | 'error' = 'idle';
+	function exportJson() {
+		if ($cartItems.length === 0) return;
+		const payload = {
+			schema: 'ohbm2026.cart.v2',
+			generated_at: new Date().toISOString(),
+			site_root: siteRoot,
+			item_count: $cartItems.length,
+			items: $cartItems
+		};
+		const blob = new Blob([JSON.stringify(payload, null, 2)], {
+			type: 'application/json'
+		});
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+		a.download = `abstract-atlas-cart-${stamp}.json`;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+	}
+	function pickImport() {
+		importInput?.click();
+	}
+	async function onImportFile(ev: Event) {
+		const file = (ev.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		try {
+			const text = await file.text();
+			const parsed = JSON.parse(text);
+			let items: Array<{ kind: 'ohbm2026' | 'neuroscape'; id: number }> = [];
+			if (Array.isArray(parsed)) {
+				// Bare array form — accept for forward-compat with hand-edited files.
+				items = parsed.filter(
+					(it) =>
+						it &&
+						typeof it === 'object' &&
+						(it.kind === 'ohbm2026' || it.kind === 'neuroscape') &&
+						typeof it.id === 'number' &&
+						Number.isFinite(it.id)
+				);
+			} else if (parsed && Array.isArray(parsed.items)) {
+				items = parsed.items.filter(
+					(it: unknown): it is { kind: 'ohbm2026' | 'neuroscape'; id: number } =>
+						!!it &&
+						typeof it === 'object' &&
+						((it as { kind: unknown }).kind === 'ohbm2026' ||
+							(it as { kind: unknown }).kind === 'neuroscape') &&
+						typeof (it as { id: unknown }).id === 'number' &&
+						Number.isFinite((it as { id: number }).id)
+				);
+			} else {
+				throw new Error('unrecognised cart-export format');
+			}
+			cartStore.resetAll(items);
+			importStatus = 'success';
+			setTimeout(() => (importStatus = 'idle'), 2500);
+		} catch (err) {
+			console.error('[cart] import failed:', err);
+			importStatus = 'error';
+			setTimeout(() => (importStatus = 'idle'), 3000);
+		} finally {
+			if (importInput) importInput.value = '';
+		}
+	}
 	function openOhbmDetail(posterId: number) {
 		// Only meaningful on the OHBM home; for other sites the cart
 		// row carries the cross-deploy permalink already.
@@ -171,34 +246,75 @@
 			</ul>
 
 			<footer class="cart-footer">
-				<a
-					class="cart-action primary"
-					href={mailtoHref}
-					aria-disabled={rows.length === 0}
-					data-testid="cart-email"
-				>
-					✉ Email my list
-				</a>
-				<button
-					type="button"
-					class="cart-action secondary"
-					on:click={copyList}
-					data-testid="cart-copy"
-				>
-					{clipboardStatus === 'copied'
-						? '✓ Copied'
-						: clipboardStatus === 'error'
-							? 'Copy failed'
-							: '📋 Copy'}
-				</button>
-				<button
-					type="button"
-					class="cart-action danger"
-					on:click={() => cartStore.clearAll()}
-					data-testid="cart-clear"
-				>
-					Clear
-				</button>
+				<div class="footer-row">
+					<a
+						class="cart-action primary"
+						href={mailtoHref}
+						aria-disabled={rows.length === 0}
+						data-testid="cart-email"
+					>
+						✉ Email
+					</a>
+					<button
+						type="button"
+						class="cart-action secondary"
+						on:click={copyList}
+						data-testid="cart-copy"
+					>
+						{clipboardStatus === 'copied'
+							? '✓ Copied'
+							: clipboardStatus === 'error'
+								? 'Copy failed'
+								: '📋 Copy'}
+					</button>
+					<button
+						type="button"
+						class="cart-action secondary"
+						on:click={exportJson}
+						title="Download a JSON file of your saved list — works for any size cart, restorable via the Import button"
+						data-testid="cart-export-json"
+					>
+						⬇ Export
+					</button>
+					<button
+						type="button"
+						class="cart-action secondary"
+						on:click={pickImport}
+						title="Load a previously exported cart JSON. Replaces the current list."
+						data-testid="cart-import-json"
+					>
+						{importStatus === 'success'
+							? '✓ Imported'
+							: importStatus === 'error'
+								? 'Import failed'
+								: '⬆ Import'}
+					</button>
+					<input
+						bind:this={importInput}
+						type="file"
+						accept="application/json,.json"
+						on:change={onImportFile}
+						class="import-input"
+						aria-hidden="true"
+						tabindex="-1"
+					/>
+				</div>
+				<div class="footer-row">
+					<button
+						type="button"
+						class="cart-action danger"
+						on:click={() => cartStore.clearAll()}
+						data-testid="cart-clear"
+					>
+						Clear list
+					</button>
+					{#if rows.length > 100}
+						<p class="cart-large-note">
+							Email + Copy truncate at 100 items. Use Export to share
+							the full list of {rows.length}.
+						</p>
+					{/if}
+				</div>
 			</footer>
 		{/if}
 	</aside>
@@ -337,10 +453,31 @@
 	}
 	.cart-footer {
 		display: flex;
-		gap: 0.4rem;
+		flex-direction: column;
+		gap: 0.5rem;
 		padding: 0.7rem 0.85rem;
 		border-top: 1px solid var(--border);
+	}
+	.footer-row {
+		display: flex;
+		gap: 0.4rem;
 		flex-wrap: wrap;
+		align-items: center;
+	}
+	.import-input {
+		position: absolute;
+		opacity: 0;
+		pointer-events: none;
+		width: 0;
+		height: 0;
+	}
+	.cart-large-note {
+		flex: 1;
+		min-width: 0;
+		margin: 0;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		line-height: 1.35;
 	}
 	.cart-action {
 		all: unset;

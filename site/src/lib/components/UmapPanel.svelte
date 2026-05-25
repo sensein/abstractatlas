@@ -93,6 +93,15 @@
 	 */
 	export let lassoOhbmSet: Set<number> = new Set();
 	export let lassoNeuroSet: Set<number> = new Set();
+	/** Focus halo — when the inline detail panel is open on atlas-root
+	 *  / neuroscape, the parent passes the selected point's kind + id
+	 *  so the chart can render a bigger outlined marker at the
+	 *  matching point's coordinates. Without this, "Show on atlas"
+	 *  navigates from the abstract permalink to the home but the
+	 *  visitor has no visual hint of WHICH dot they were looking at.
+	 */
+	export let atlasFocusKind: 'ohbm2026' | 'neuroscape' | null = null;
+	export let atlasFocusId: number | null = null;
 
 	const dispatch = createEventDispatcher<{
 		pointclick: { kind: 'ohbm2026' | 'neuroscape'; id: number };
@@ -310,6 +319,8 @@
 			useAtlasShapes,
 			lassoOhbmSet,
 			lassoNeuroSet,
+			atlasFocusKind,
+			atlasFocusId,
 			theme
 		);
 		void renderAtlasChart3D(
@@ -323,6 +334,8 @@
 			useAtlasShapes,
 			lassoOhbmSet,
 			lassoNeuroSet,
+			atlasFocusKind,
+			atlasFocusId,
 			theme
 		);
 	}
@@ -770,6 +783,39 @@
 	let atlas2dHandlersAttached = false;
 	let atlas3dHandlersAttached = false;
 
+	/**
+	 * Find a focused point's coordinates so the chart can render a
+	 * halo trace at its position. Searches the overlay first (OHBM
+	 * markers are larger + the more likely focus target on
+	 * atlas-root), then the backdrop. Returns null if the id isn't
+	 * in either set or the focus is unset.
+	 */
+	function atlasFocusCoords(
+		focusKind: 'ohbm2026' | 'neuroscape' | null,
+		focusId: number | null,
+		backdrop: BackdropPoint[],
+		overlay: OverlayPoint[],
+		is3d: boolean
+	): { x: number; y: number; z?: number } | null {
+		if (!focusKind || focusId === null) return null;
+		if (focusKind === 'ohbm2026') {
+			for (const p of overlay) {
+				if (p.poster_id !== focusId) continue;
+				return is3d
+					? { x: p.umap_3d[0], y: p.umap_3d[1], z: p.umap_3d[2] }
+					: { x: (p.umap_2d ?? [0, 0])[0], y: (p.umap_2d ?? [0, 0])[1] };
+			}
+		} else {
+			for (const p of backdrop) {
+				if (p.pubmed_id !== focusId) continue;
+				return is3d
+					? { x: p.umap_3d[0], y: p.umap_3d[1], z: p.umap_3d[2] }
+					: { x: (p.umap_2d ?? [0, 0])[0], y: (p.umap_2d ?? [0, 0])[1] };
+			}
+		}
+		return null;
+	}
+
 	function renderAtlasChart2D(
 		api: PlotlyApi | null,
 		el: HTMLDivElement | null,
@@ -781,6 +827,8 @@
 		useShapes: boolean,
 		ohbmLassoSet: Set<number>,
 		neuroLassoSet: Set<number>,
+		focusKind: 'ohbm2026' | 'neuroscape' | null,
+		focusId: number | null,
 		t: 'light' | 'dark'
 	) {
 		if (!api || !el) return;
@@ -797,6 +845,27 @@
 			ohbmLassoSet
 		);
 		if (overlayTrace) traces.push(overlayTrace);
+		// Focus halo — a single magenta-ring marker at the focused
+		// point's coordinates. Sits ON TOP of everything else so it's
+		// the obvious visual signal of "you asked to focus this dot".
+		const focus2d = atlasFocusCoords(focusKind, focusId, backdrop, overlay, false);
+		if (focus2d) {
+			traces.push({
+				type: 'scattergl' as const,
+				mode: 'markers' as const,
+				x: [focus2d.x],
+				y: [focus2d.y],
+				name: 'focus',
+				marker: {
+					size: 18,
+					color: 'rgba(0,0,0,0)',
+					line: { color: '#ff00ff', width: 2.5 },
+					symbol: 'circle'
+				},
+				hoverinfo: 'skip' as const,
+				showlegend: false
+			});
+		}
 		// We DON'T set `selectionrevision`. The earlier attempt to
 		// pin it to a fingerprint string (e.g. lasso-size combos)
 		// still emitted `unrecognized GUI edit: selections[0].yref`
@@ -877,6 +946,8 @@
 		useShapes: boolean,
 		ohbmLassoSet: Set<number>,
 		neuroLassoSet: Set<number>,
+		focusKind: 'ohbm2026' | 'neuroscape' | null,
+		focusId: number | null,
 		t: 'light' | 'dark'
 	) {
 		if (!api || !el) return;
@@ -957,6 +1028,29 @@
 				new Set()
 			);
 			if (overlayTrace) traces.push(overlayTrace);
+		}
+		// Focus halo — magenta-ring marker at the focused point's
+		// 3D coordinates so "Show on atlas" gives an obvious visual
+		// anchor (without this the visitor lands on the home with
+		// only the inline detail panel as the signal).
+		const focus3d = atlasFocusCoords(focusKind, focusId, backdrop, overlay, true);
+		if (focus3d) {
+			traces.push({
+				type: 'scatter3d' as const,
+				mode: 'markers' as const,
+				x: [focus3d.x],
+				y: [focus3d.y],
+				z: [focus3d.z ?? 0],
+				name: 'focus',
+				marker: {
+					size: 12,
+					color: 'rgba(255,0,255,0.25)',
+					line: { color: '#ff00ff', width: 4 },
+					symbol: 'circle'
+				},
+				hoverinfo: 'skip' as const,
+				showlegend: false
+			});
 		}
 		// On lasso, we DON'T touch the 3D camera — the previous
 		// attempt to zoom (explicit axis range) clipped unselected

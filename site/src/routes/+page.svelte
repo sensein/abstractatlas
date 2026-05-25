@@ -881,6 +881,46 @@
 	onMount(() => {
 		void loadAtlasData();
 	});
+
+	// Auto-open the inline detail panel when the URL carries
+	// `?focus=<id>&cluster=<id>`. The "Show on atlas" buttons on the
+	// /neuroscape/abstract/<pmid>/ permalink page navigate to
+	// `/neuroscape/?focus=<pmid>&cluster=<cid>`; without this hook the
+	// visitor arrives at the home with no visible signal that they
+	// asked to focus a specific point. Reactively watching
+	// `atlasBackdrop` so the focus applies after the parquet finishes
+	// loading (race: the URL is set before data is ready on cold load).
+	$: if (
+		typeof window !== 'undefined' &&
+		(SITE_MODE === 'atlas-root' || SITE_MODE === 'neuroscape') &&
+		atlasBackdrop.length > 0 &&
+		atlasSelection === null
+	) {
+		const params = new URLSearchParams(window.location.search);
+		const focusStr = params.get('focus');
+		if (focusStr) {
+			const focusId = Number(focusStr);
+			if (Number.isFinite(focusId)) {
+				// Try OHBM overlay first (atlas-root), then NeuroScape
+				// backdrop (atlas-root + neuroscape). Whichever matches
+				// opens the inline detail panel.
+				const overlayHit = atlasOverlayById.get(focusId);
+				if (overlayHit) {
+					onAtlasPointClick(
+						new CustomEvent('pointclick', {
+							detail: { kind: 'ohbm2026', id: focusId }
+						})
+					);
+				} else if (atlasBackdropById.get(focusId)) {
+					onAtlasPointClick(
+						new CustomEvent('pointclick', {
+							detail: { kind: 'neuroscape', id: focusId }
+						})
+					);
+				}
+			}
+		}
+	}
 </script>
 
 {#if SITE_MODE === 'atlas-root' || SITE_MODE === 'neuroscape'}
@@ -1141,6 +1181,12 @@
 					backdropOpacity={0.05}
 					lassoOhbmSet={atlasLassoOhbmSet}
 					lassoNeuroSet={atlasLassoNeuroSet}
+					atlasFocusKind={atlasSelection?.kind ?? null}
+					atlasFocusId={atlasSelection
+						? atlasSelection.kind === 'ohbm2026'
+							? atlasSelection.poster_id
+							: atlasSelection.pubmed_id
+						: null}
 					on:pointclick={onAtlasPointClick}
 					on:lassoselect={onAtlasLasso}
 					on:lassoclear={clearAtlasLasso}
@@ -1356,19 +1402,11 @@
 				>
 					{$cartOnly ? '✓ Saved' : 'Saved only'}
 				</button>
-				<button
-					type="button"
-					class="control-toggle cart-toggle"
-					class:active={$cartStore.size > 0}
-					on:click={() => ($cartDrawerOpen = true)}
-					aria-label={`Open your list (${$cartStore.size} saved)`}
-					title={$cartStore.size > 0
-						? `${$cartStore.size} abstract${$cartStore.size === 1 ? '' : 's'} saved — click to open`
-						: 'Your list is empty — save abstracts via the cart icon on each result'}
-					data-testid="toggle-cart"
-				>
-					🛒 {$cartStore.size}
-				</button>
+				<!-- The 🛒 N "open cart drawer" button is now in the
+				     unifying SiteHeader so it's the single source on
+				     every subsite. The "Saved only" filter stays here
+				     because it's OHBM-home-specific (no equivalent on
+				     atlas-root / neuroscape). -->
 			</div>
 		{/if}
 	</div>
