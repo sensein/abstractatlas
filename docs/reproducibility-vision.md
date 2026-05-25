@@ -150,6 +150,46 @@ The defaults that future users should treat as current project reality are:
   `cluster_topics` table with the per-cluster keyword/title/description
   metadata.
 - the final delivery artifact is the static site under `export/ui-site/`
+- as of Stage 15 (`specs/015-neuroscape-context`) the deploy is
+  **three sibling SvelteKit builds** on the same gh-pages host —
+  `/` (cross-conference atlas), `/ohbm2026/` (the OHBM 2026 site,
+  unchanged), and `/neuroscape/` (the new PubMed subsite). The
+  three are backed by three parquets:
+  - `ohbm2026.parquet` — renamed from `data.parquet`; content
+    identical to the prior Stage-10 single-parquet export. Lives
+    under `data/outputs/parquets/<state-key>/`. Loaded by the
+    `/ohbm2026/` SvelteKit build.
+  - `neuroscape.parquet` — full NeuroScape 1999–2023 PubMed
+    corpus + cluster table + k=20 neighbours + title-only
+    search index. Bodies are NOT stored; they're fetched at
+    view time via NCBI E-utilities EFetch (R-015 boundary).
+  - `atlas.parquet` — scatter rows pointing into the two
+    siblings by stable id (NOT duplicating bodies). Manifest
+    embeds the sibling state-keys for runtime drift detection.
+  
+  The new `ohbmcli build-atlas-package` orchestrator emits
+  `neuroscape.parquet` + `atlas.parquet` from the NeuroScape
+  v1.0.1 release inputs + the existing voyage_stage2_published
+  recipe. UMAP is fit deterministically (seed=0, n_neighbors=30,
+  min_dist=0.10, metric=cosine) on the NeuroScape Stage-2
+  vectors; OHBM 2026 is projected via `umap.transform`. A
+  same-input rerun is byte-identical (SC-004 / R-005 guarantee).
+- the **runtime NCBI EFetch** boundary is a deliberate exception
+  to "all external state in the build artifacts." Per-PubMed-record
+  bodies are not pre-checked (600K HEAD requests is infeasible
+  against NCBI's rate limits per FR-024); they are fetched at view
+  time with in-memory caching + rate limiting + retry + a visible
+  body-offline error state. Provenance for the runtime fetch is
+  the PubMed id itself; cross-conference correlation hinges on
+  that id staying stable.
+- the **deferred semantic-search note**: spec 015 ships
+  title-only typo-tolerant lexical search for `/neuroscape/`. A
+  MiniLM→NeuroScape projector for semantic search across the
+  461k corpus is feasible but expensive (~700 MB of vectors to
+  ship) and is left for a future stage. The infrastructure is
+  in place to wire it in: the `search:neuroscape_titles` sidecar
+  pattern in `neuroscape.parquet` is the right hook for a future
+  `search:neuroscape_vectors` row group.
 
 The local pre-publish exported-site root now lives under
 `data/outputs/exported-sites/ui-site__<state-key>/`.
