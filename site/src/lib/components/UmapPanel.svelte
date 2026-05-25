@@ -632,7 +632,7 @@
 				name: 'OHBM 2026 overlay',
 				visible,
 				marker: {
-					size: 5,
+					size: 3,
 					color: colours,
 					opacity: 1.0,
 					line: { color: '#111111', width: 1.5 },
@@ -652,7 +652,7 @@
 			name: 'OHBM 2026 overlay',
 			visible,
 			marker: {
-				size: 6,
+				size: 3,
 				color: colours,
 				opacity: 1.0,
 				line: { color: '#111111', width: 1.5 },
