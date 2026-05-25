@@ -176,6 +176,11 @@
 		atlas2dHandlersAttached = false;
 		atlas3dHandlersAttached = false;
 		chart3dInitialized = false;
+		// Reset structural fingerprints so the next render goes
+		// through the full Plotly.react path, not the restyle fast
+		// path (which assumes the chart still exists).
+		atlasChart2dFingerprint = '';
+		atlasChart3dFingerprint = '';
 	}
 	function onVisibilityChange() {
 		if (typeof document === 'undefined') return;
@@ -604,6 +609,22 @@
 		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	}
 
+	/**
+	 * scatter3d's `marker.opacity` is scalar-only — to get per-point
+	 * opacity (the lasso highlight in 3D) we have to bake the alpha
+	 * into the colour string itself. `#aabbcc` → `rgba(r, g, b, a)`.
+	 * Falls back to grey if the hex doesn't parse.
+	 */
+	function atlasHexToRgba(hex: string, alpha: number): string {
+		const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+		if (!m) return `rgba(156, 156, 156, ${alpha})`;
+		const n = parseInt(m[1], 16);
+		const r = (n >> 16) & 0xff;
+		const g = (n >> 8) & 0xff;
+		const b = n & 0xff;
+		return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+	}
+
 	function buildAtlasBackdropTrace(
 		points: BackdropPoint[],
 		clusters: Map<number, AtlasCluster>,
@@ -768,6 +789,27 @@
 	let atlas2dHandlersAttached = false;
 	let atlas3dHandlersAttached = false;
 
+	// Structural-fingerprint cache: when only the lasso state changed
+	// between renders (same data, theme, mode, opacity), we skip
+	// Plotly.react entirely and just `Plotly.restyle` the colour /
+	// selectedpoints arrays. Plotly.react was responsible for the
+	// ~620 MB heap growth per lasso → clear cycle measured in
+	// `probe-lasso-warning.mjs` — internal listeners + cached layout
+	// objects don't get freed between react() calls. Restyle only
+	// rewrites the trace arrays without rebuilding the rest.
+	let atlasChart2dFingerprint = '';
+	let atlasChart3dFingerprint = '';
+	function structuralFingerprint(
+		backdrop: unknown[],
+		overlay: unknown[],
+		opacity: number,
+		showOverlayTrace: boolean,
+		useShapes: boolean,
+		theme: string
+	): string {
+		return `${backdrop.length}|${overlay.length}|${opacity}|${showOverlayTrace}|${useShapes}|${theme}`;
+	}
+
 	function renderAtlasChart2D(
 		api: PlotlyApi | null,
 		el: HTMLDivElement | null,
@@ -783,6 +825,33 @@
 	) {
 		if (!api || !el) return;
 		const c = themedColors(t);
+		const fp = structuralFingerprint(backdrop, overlay, opacity, showOverlayTrace, useShapes, t);
+		// Fast path — when only the lasso changed since the previous
+		// render, swap `selectedpoints` in-place via restyle. Plotly's
+		// scattergl handles `selectedpoints` natively; restyle here is
+		// O(n) writes against an existing chart, no trace rebuild.
+		if (atlas2dHandlersAttached && fp === atlasChart2dFingerprint) {
+			const backdropSel: number[] = [];
+			for (let i = 0; i < backdrop.length; i++) {
+				if (neuroLassoSet.has(backdrop[i].pubmed_id)) backdropSel.push(i);
+			}
+			const overlaySel: number[] = [];
+			for (let i = 0; i < overlay.length; i++) {
+				if (ohbmLassoSet.has(overlay[i].poster_id)) overlaySel.push(i);
+			}
+			const hasOverlay = showOverlayTrace && overlay.length > 0;
+			const traceIdx: number[] = hasOverlay ? [0, 1] : [0];
+			const update: Record<string, unknown[]> = {
+				selectedpoints: hasOverlay
+					? [backdropSel.length ? backdropSel : null, overlaySel.length ? overlaySel : null]
+					: [backdropSel.length ? backdropSel : null]
+			};
+			void (api as unknown as {
+				restyle: (el: HTMLDivElement, u: Record<string, unknown[]>, idx: number[]) => Promise<unknown>;
+			}).restyle(el, update, traceIdx);
+			return;
+		}
+		atlasChart2dFingerprint = fp;
 		const traces: unknown[] = [
 			buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, false, neuroLassoSet)
 		];
@@ -864,6 +933,49 @@
 			});
 	}
 
+	/**
+	 * Build the backdrop colour array for a 3D render — per-point
+	 * RGBA strings so we get per-point opacity without splitting the
+	 * trace. scatter3d's `marker.opacity` is scalar-only; baking
+	 * alpha into the RGB colour is the only way to fake it.
+	 *
+	 * When the lasso is empty: every point gets the default opacity.
+	 * When the lasso is active: lassoed points get 0.6 (a clear pop
+	 * above the carpet), un-lassoed get max(opacity * 3, 0.15) (a
+	 * faint context glow).
+	 */
+	function atlasBackdropColours3D(
+		points: BackdropPoint[],
+		clusters: Map<number, AtlasCluster>,
+		opacity: number,
+		lassoSet: Set<number>
+	): string[] {
+		const active = lassoSet.size > 0;
+		const aSel = 0.6;
+		const aUnsel = Math.max(opacity * 3, 0.15);
+		return points.map((p) => {
+			const hex = clusters.get(p.cluster_id)?.colour_hex ?? '#9c9c9c';
+			const a = !active ? opacity : lassoSet.has(p.pubmed_id) ? aSel : aUnsel;
+			return atlasHexToRgba(hex, a);
+		});
+	}
+
+	function atlasOverlayColours3D(
+		points: OverlayPoint[],
+		clusters: Map<number, AtlasCluster>,
+		lassoSet: Set<number>
+	): string[] {
+		const active = lassoSet.size > 0;
+		return points.map((p) => {
+			const hex = clusters.get(p.nearest_cluster_id)?.colour_hex ?? '#1f77b4';
+			// Default = 1.0 (overlay is the focal layer). With lasso:
+			// lassoed pops at 1.0, un-lassoed dims to 0.35 (still
+			// readable above the backdrop).
+			const a = !active ? 1.0 : lassoSet.has(p.poster_id) ? 1.0 : 0.35;
+			return atlasHexToRgba(hex, a);
+		});
+	}
+
 	function renderAtlasChart3D(
 		api: PlotlyApi | null,
 		el: HTMLDivElement | null,
@@ -879,78 +991,96 @@
 	) {
 		if (!api || !el) return;
 		const c = themedColors(t);
-		// scatter3d ignores `selectedpoints` + selected/unselected
-		// marker styles (unlike scattergl). To get dim-unselected +
-		// pop-selected in 3D, we SPLIT each source into two traces
-		// with different scalar opacities — Plotly merges them on
-		// render. Unselected stays VISIBLE (slightly higher than
-		// the default backdrop opacity so the context shows through
-		// even with the new selection bbox zoom) and selected pops
-		// at medium opacity — NOT fully opaque, which was previously
-		// too contrastive against the empty zoomed scene.
-		const lassoActive = ohbmLassoSet.size + neuroLassoSet.size > 0;
-		const traces: unknown[] = [];
-		if (lassoActive) {
-			const bdrSel: BackdropPoint[] = [];
-			const bdrUnsel: BackdropPoint[] = [];
-			for (const p of backdrop) {
-				(neuroLassoSet.has(p.pubmed_id) ? bdrSel : bdrUnsel).push(p);
-			}
-			// Backdrop unselected: bump to ~3× the default 0.05 (so 0.15)
-			// so the surrounding cluster carpet remains a faint context
-			// glow during zoom-to-bbox. Backdrop selected: 0.6 — a clear
-			// pop above the carpet, not the previous 0.9 retina-blast.
-			traces.push(
-				buildAtlasBackdropTrace(bdrUnsel, clusters, Math.max(opacity * 3, 0.15), useShapes, true, new Set())
-			);
-			traces.push(
-				buildAtlasBackdropTrace(bdrSel, clusters, 0.6, useShapes, true, new Set())
-			);
-			if (showOverlayTrace) {
-				const ovrSel: OverlayPoint[] = [];
-				const ovrUnsel: OverlayPoint[] = [];
-				for (const p of overlay) {
-					(ohbmLassoSet.has(p.poster_id) ? ovrSel : ovrUnsel).push(p);
-				}
-				// Overlay unselected: outlined OHBM markers stay at 0.35
-				// (dim but still readable above the backdrop). Selected:
-				// 1.0 (full opacity — the OHBM overlay is the main focus
-				// when it's been lassoed).
-				const ovrUnselTrace = buildAtlasOverlayTrace(
-					ovrUnsel,
-					clusters,
-					true,
-					useShapes,
-					true,
-					new Set()
-				);
-				if (ovrUnselTrace) {
-					(ovrUnselTrace as { marker: { opacity: number } }).marker.opacity = 0.35;
-					traces.push(ovrUnselTrace);
-				}
-				const ovrSelTrace = buildAtlasOverlayTrace(
-					ovrSel,
-					clusters,
-					true,
-					useShapes,
-					true,
-					new Set()
-				);
-				if (ovrSelTrace) traces.push(ovrSelTrace);
-			}
-		} else {
-			traces.push(
-				buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, true, new Set())
-			);
-			const overlayTrace = buildAtlasOverlayTrace(
-				overlay,
+		const fp = structuralFingerprint(backdrop, overlay, opacity, showOverlayTrace, useShapes, t);
+		// Fast path — same structural inputs, only the lasso changed.
+		// scatter3d can't use `selectedpoints`, but we baked the alpha
+		// into `marker.color`, so a `Plotly.restyle({ 'marker.color':
+		// [newColours] })` against the existing trace is the cheap
+		// equivalent. No full react, no listener re-attach, no scene
+		// rebuild — just an array write.
+		if (atlas3dHandlersAttached && fp === atlasChart3dFingerprint) {
+			const backdropColoursFast = atlasBackdropColours3D(
+				backdrop,
 				clusters,
-				showOverlayTrace,
-				useShapes,
-				true,
-				new Set()
+				opacity,
+				neuroLassoSet
 			);
-			if (overlayTrace) traces.push(overlayTrace);
+			const hasOverlay = showOverlayTrace && overlay.length > 0;
+			const traceIdx: number[] = hasOverlay ? [0, 1] : [0];
+			const update: Record<string, unknown[]> = {
+				'marker.color': hasOverlay
+					? [backdropColoursFast, atlasOverlayColours3D(overlay, clusters, ohbmLassoSet)]
+					: [backdropColoursFast]
+			};
+			void (api as unknown as {
+				restyle: (el: HTMLDivElement, u: Record<string, unknown[]>, idx: number[]) => Promise<unknown>;
+			}).restyle(el, update, traceIdx);
+			return;
+		}
+		atlasChart3dFingerprint = fp;
+		// SINGLE backdrop trace + SINGLE overlay trace (was: split
+		// into selected/unselected sub-traces). The dual-trace split
+		// existed to fake per-point opacity in scatter3d (which only
+		// accepts scalar `marker.opacity`); we now bake the alpha
+		// into the colour string as `rgba(r, g, b, a)`, so one trace
+		// per source is enough. This both:
+		//   - cuts the per-frame trace count in half (less work for
+		//     Plotly's internal validation + listener-attach loops)
+		//   - lets us update the lasso highlight via `Plotly.restyle
+		//     ({ 'marker.color': [newRgba] })` (see fast path above),
+		//     without going through a full Plotly.react and the heap
+		//     growth that accompanied it (probe-lasso-warning.mjs
+		//     measured ~620 MB growth across one lasso → clear cycle).
+		const backdropColours = atlasBackdropColours3D(backdrop, clusters, opacity, neuroLassoSet);
+		const backdropTrace = {
+			type: 'scatter3d' as const,
+			mode: 'markers' as const,
+			x: backdrop.map((p) => p.umap_3d[0]),
+			y: backdrop.map((p) => p.umap_3d[1]),
+			z: backdrop.map((p) => p.umap_3d[2]),
+			name: 'NeuroScape backdrop',
+			marker: {
+				size: 2,
+				color: backdropColours,
+				line: { width: 0 },
+				...(useShapes ? { symbol: backdrop.map((p) => atlasShape3D(p.cluster_id)) } : {})
+			},
+			hovertemplate: '%{text}<extra></extra>',
+			text: backdrop.map(
+				(p) =>
+					`<b>${atlasEscape(p.title)}</b><br>${p.year} · ${atlasEscape(
+						clusters.get(p.cluster_id)?.title ?? `Cluster ${p.cluster_id}`
+					)}`
+			),
+			showlegend: false,
+			customdata: backdrop.map((p) => ({ kind: 'neuroscape', id: p.pubmed_id }))
+		};
+		const traces: unknown[] = [backdropTrace];
+		if (showOverlayTrace && overlay.length > 0) {
+			const overlayColours = atlasOverlayColours3D(overlay, clusters, ohbmLassoSet);
+			traces.push({
+				type: 'scatter3d' as const,
+				mode: 'markers' as const,
+				x: overlay.map((p) => p.umap_3d[0]),
+				y: overlay.map((p) => p.umap_3d[1]),
+				z: overlay.map((p) => p.umap_3d[2]),
+				name: 'OHBM 2026 overlay',
+				marker: {
+					size: 3,
+					color: overlayColours,
+					line: { color: '#111111', width: 1.5 },
+					...(useShapes ? { symbol: overlay.map((p) => atlasShape3D(p.nearest_cluster_id)) } : {})
+				},
+				hovertemplate: '%{text}<extra></extra>',
+				text: overlay.map(
+					(p) =>
+						`<b>${atlasEscape(p.title)}</b><br>OHBM 2026 poster #${p.poster_id} · near ${atlasEscape(
+							clusters.get(p.nearest_cluster_id)?.title ?? `Cluster ${p.nearest_cluster_id}`
+						)}`
+				),
+				showlegend: false,
+				customdata: overlay.map((p) => ({ kind: 'ohbm2026', id: p.poster_id }))
+			});
 		}
 		// On lasso, we DON'T touch the 3D camera — the previous
 		// attempt to zoom (explicit axis range) clipped unselected
