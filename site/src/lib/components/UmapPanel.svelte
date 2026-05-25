@@ -692,7 +692,7 @@
 			name: 'OHBM 2026 overlay',
 			visible,
 			marker: {
-				size: 3,
+				size: 5,
 				color: colours,
 				opacity: 1.0,
 				line: { color: '#111111', width: 1.5 },
@@ -810,16 +810,39 @@
 	) {
 		if (!api || !el) return;
 		const c = themedColors(t);
+		// scatter3d ignores `selectedpoints` + selected/unselected
+		// marker styles (unlike scattergl). So in 3D we ACTUALLY FILTER
+		// the data to lassoed points when the lasso is active —
+		// rendering ONLY the selection. The 2D pane keeps the dim-
+		// unselected approach via selectedpoints. When the lasso is
+		// cleared, both panes go back to rendering everything.
+		const lassoActive = ohbmLassoSet.size + neuroLassoSet.size > 0;
+		const renderBackdrop = lassoActive
+			? backdrop.filter((p) => neuroLassoSet.has(p.pubmed_id))
+			: backdrop;
+		const renderOverlay = lassoActive
+			? overlay.filter((p) => ohbmLassoSet.has(p.poster_id))
+			: overlay;
 		const traces: unknown[] = [
-			buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, true, neuroLassoSet)
+			buildAtlasBackdropTrace(
+				renderBackdrop,
+				clusters,
+				// When lasso-filtered, bump opacity — at the default
+				// `backdropOpacity=0.05` the few hundred selected points
+				// would be invisible against the empty 3D scene.
+				lassoActive ? 0.9 : opacity,
+				useShapes,
+				true,
+				new Set()
+			)
 		];
 		const overlayTrace = buildAtlasOverlayTrace(
-			overlay,
+			renderOverlay,
 			clusters,
 			showOverlayTrace,
 			useShapes,
 			true,
-			ohbmLassoSet
+			new Set()
 		);
 		if (overlayTrace) traces.push(overlayTrace);
 		const axisCfg = { visible: false, showbackground: false };
@@ -827,25 +850,25 @@
 		// box of the lassoed points so the user's selection "fills"
 		// the 3D view. Without a lasso, restore the user's last
 		// interactive camera (or default).
-		const lassoActive = ohbmLassoSet.size + neuroLassoSet.size > 0;
 		let xRange: [number, number] | null = null;
 		let yRange: [number, number] | null = null;
 		let zRange: [number, number] | null = null;
 		if (lassoActive) {
+			// Bbox spans the lassoed points; `renderBackdrop` +
+			// `renderOverlay` are already pre-filtered above to just
+			// the lassoed ids, so iterate them directly.
 			let xmin = Infinity, xmax = -Infinity;
 			let ymin = Infinity, ymax = -Infinity;
 			let zmin = Infinity, zmax = -Infinity;
 			let touched = false;
-			for (const p of backdrop) {
-				if (!neuroLassoSet.has(p.pubmed_id)) continue;
+			for (const p of renderBackdrop) {
 				const [x, y, z] = p.umap_3d;
 				if (x < xmin) xmin = x; if (x > xmax) xmax = x;
 				if (y < ymin) ymin = y; if (y > ymax) ymax = y;
 				if (z < zmin) zmin = z; if (z > zmax) zmax = z;
 				touched = true;
 			}
-			for (const p of overlay) {
-				if (!ohbmLassoSet.has(p.poster_id)) continue;
+			for (const p of renderOverlay) {
 				const [x, y, z] = p.umap_3d;
 				if (x < xmin) xmin = x; if (x > xmax) xmax = x;
 				if (y < ymin) ymin = y; if (y > ymax) ymax = y;
