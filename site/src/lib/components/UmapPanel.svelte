@@ -124,7 +124,17 @@
 	let viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
 	let mobile = viewportWidth < mobileBreakpoint;
 
-	let autoRotate = true;
+	// Auto-rotate default differs by mode:
+	//   - OHBM (per-community ~3k-point scatter): rotate on by default;
+	//     the dataset is small enough that the continuous
+	//     Plotly.relayout({ 'scene.camera.eye': ... }) tick is cheap.
+	//   - atlas / neuroscape (461k-point scatter3d): rotate OFF by
+	//     default. The relayout-per-frame redraw against 461k points
+	//     stalls the user-driven orbit too — mouse drags compete with
+	//     the rotation loop for the same render queue and the camera
+	//     ends up feeling stuck. The user can still toggle it on with
+	//     the pause/rotate button if they want a slow tour.
+	let autoRotate = mode === 'ohbm';
 	let rotateFrame: number | null = null;
 	let rotateAngle = 0;
 
