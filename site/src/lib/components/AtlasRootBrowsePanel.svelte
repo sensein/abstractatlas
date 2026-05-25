@@ -15,7 +15,8 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { normalize } from '$lib/filter';
-	import { cartStore, cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
+	import { cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
+	import CartIconButton from '$lib/components/CartIconButton.svelte';
 
 	type BackdropPoint = {
 		pubmed_id: number;
@@ -178,20 +179,12 @@
 					<div class="ar-title">{r.title}</div>
 				</a>
 				<div class="ar-row-actions">
-					<button
-						type="button"
-						class="ar-cart-toggle"
-						class:active={inCart}
-						title={inCart ? 'Remove from saved list' : 'Save to list'}
-						aria-label={inCart ? 'Remove from saved list' : 'Save to list'}
-						on:click={() =>
-							inCart
-								? cartStore.removeItem(r.kind, r.id)
-								: cartStore.addItem(r.kind, r.id)}
-						data-testid="atlas-root-row-cart"
-					>
-						{inCart ? '🛒✓' : '🛒'}
-					</button>
+					<CartIconButton
+						kind={r.kind}
+						id={r.id}
+						{inCart}
+						testidPrefix="atlas-root-row-cart"
+					/>
 					<button
 						type="button"
 						class="ar-show-atlas"
@@ -306,22 +299,6 @@
 		gap: 0.25rem;
 		align-items: flex-end;
 		flex-shrink: 0;
-	}
-	.ar-cart-toggle {
-		all: unset;
-		cursor: pointer;
-		font-size: 1rem;
-		padding: 0.2rem 0.4rem;
-		border-radius: 3px;
-		line-height: 1;
-		color: var(--text-muted);
-	}
-	.ar-cart-toggle:hover {
-		background: var(--bg-sunken);
-		color: var(--accent);
-	}
-	.ar-cart-toggle.active {
-		color: var(--accent);
 	}
 	.ar-show-atlas {
 		all: unset;

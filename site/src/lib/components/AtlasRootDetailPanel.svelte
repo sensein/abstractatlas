@@ -23,7 +23,8 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { cartStore, cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
+	import { cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
+	import CartIconButton from '$lib/components/CartIconButton.svelte';
 
 	type ClusterRow = {
 		cluster_id: number;
@@ -119,12 +120,11 @@
 			: selection?.kind === 'neuroscape'
 				? $cartNeuroPubmedIds.has(selection.pubmed_id)
 				: false;
-	function toggleCart() {
-		if (!selection) return;
-		const id = selection.kind === 'ohbm2026' ? selection.poster_id : selection.pubmed_id;
-		if (inCart) cartStore.removeItem(selection.kind, id);
-		else cartStore.addItem(selection.kind, id);
-	}
+	$: cartItemId = selection
+		? selection.kind === 'ohbm2026'
+			? selection.poster_id
+			: selection.pubmed_id
+		: 0;
 </script>
 
 {#if selection}
@@ -150,17 +150,14 @@
 						{selection.kind === 'ohbm2026' ? 'OHBM 2026' : 'NeuroScape PubMed'}
 					</span>
 					<div class="head-actions">
-						<button
-							type="button"
-							class="cart-toggle"
-							class:active={inCart}
-							on:click={toggleCart}
-							title={inCart ? 'Remove from saved list' : 'Save to list'}
-							aria-label={inCart ? 'Remove from saved list' : 'Save to list'}
-							data-testid="atlas-root-detail-cart"
-						>
-							{inCart ? '🛒✓' : '🛒'}
-						</button>
+						{#if selection && cartItemId}
+							<CartIconButton
+								kind={selection.kind}
+								id={cartItemId}
+								{inCart}
+								testidPrefix="atlas-root-detail-cart"
+							/>
+						{/if}
 						<button
 							type="button"
 							class="close"
@@ -358,22 +355,6 @@
 		display: flex;
 		align-items: center;
 		gap: 0.3rem;
-	}
-	.cart-toggle {
-		all: unset;
-		cursor: pointer;
-		font-size: 1rem;
-		line-height: 1;
-		color: var(--text-muted);
-		padding: 0.25rem 0.45rem;
-		border-radius: 4px;
-	}
-	.cart-toggle:hover {
-		background: var(--bg-subtle);
-		color: var(--accent);
-	}
-	.cart-toggle.active {
-		color: var(--accent);
 	}
 	.close {
 		all: unset;

@@ -10,7 +10,8 @@
 	import { createEventDispatcher } from 'svelte';
 	import { base } from '$app/paths';
 	import { normalize } from '$lib/filter';
-	import { cartStore, cartNeuroPubmedIds } from '$lib/stores/cart';
+	import { cartNeuroPubmedIds } from '$lib/stores/cart';
+	import CartIconButton from '$lib/components/CartIconButton.svelte';
 
 	type Article = {
 		pubmed_id: number;
@@ -101,28 +102,17 @@
 					<div class="ns-title">{a.title}</div>
 				</button>
 				<div class="ns-row-actions">
-					<button
-						type="button"
-						class="ns-cart-toggle"
-						class:active={inCart}
-						title={inCart ? 'Remove from saved list' : 'Save to list'}
-						aria-label={inCart ? 'Remove from saved list' : 'Save to list'}
-						on:click={() =>
-							inCart
-								? cartStore.removeItem('neuroscape', a.pubmed_id)
-								: cartStore.addItem('neuroscape', a.pubmed_id)}
-						data-testid="neuroscape-row-cart"
-					>
-						{inCart ? '🛒✓' : '🛒'}
-					</button>
-					<a
-						class="ns-detail-link"
-						href={gotoDetail(a.pubmed_id)}
-						title="Open full detail page"
-						data-testid="neuroscape-row-detail-link"
-					>
-						Full details ↗
-					</a>
+					<!-- Same cart-icon UX as OHBM 2026 ResultList: outlined
+					     cart → filled-with-✓ when in the unifying list.
+					     "Full details" link removed from the row; the
+					     inline detail panel's CTA is the canonical path
+					     to the dedicated permalink page. -->
+					<CartIconButton
+						kind="neuroscape"
+						id={a.pubmed_id}
+						{inCart}
+						testidPrefix="neuroscape-row-cart"
+					/>
 				</div>
 			</li>
 		{/each}
@@ -215,38 +205,8 @@
 	}
 	.ns-row-actions {
 		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		align-items: flex-end;
+		align-items: center;
 		flex-shrink: 0;
-	}
-	.ns-cart-toggle {
-		all: unset;
-		cursor: pointer;
-		font-size: 1rem;
-		padding: 0.2rem 0.4rem;
-		border-radius: 3px;
-		line-height: 1;
-		color: var(--text-muted);
-	}
-	.ns-cart-toggle:hover {
-		background: var(--bg-sunken);
-		color: var(--accent);
-	}
-	.ns-cart-toggle.active {
-		color: var(--accent);
-	}
-	.ns-detail-link {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		text-decoration: none;
-		white-space: nowrap;
-		padding: 0.25rem 0.4rem;
-		border-radius: 3px;
-	}
-	.ns-detail-link:hover {
-		color: var(--accent);
-		background: var(--accent-soft-bg);
 	}
 	.ns-more {
 		all: unset;
