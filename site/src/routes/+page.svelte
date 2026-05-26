@@ -934,28 +934,34 @@
 		return () => window.removeEventListener('resize', onWindowResize);
 	});
 
-	// Auto-open the inline detail panel when the URL carries
+	// Auto-open the inline detail panel ONCE when the URL carries
 	// `?focus=<id>&cluster=<id>`. The "Show on atlas" buttons on the
 	// /neuroscape/abstract/<pmid>/ permalink page navigate to
 	// `/neuroscape/?focus=<pmid>&cluster=<cid>`; without this hook the
 	// visitor arrives at the home with no visible signal that they
 	// asked to focus a specific point. Reactively watching
 	// `atlasBackdrop` so the focus applies after the parquet finishes
-	// loading (race: the URL is set before data is ready on cold load).
+	// loading (race: the URL is set before data is ready on cold
+	// load).
+	//
+	// The `?focus=` params are CLEARED from the URL after applying,
+	// otherwise closing the panel (atlasSelection → null) would
+	// re-trigger this reactive and re-open the panel on the next
+	// tick — a "can't close it" loop the user hit when round-
+	// tripping detail page → "Show on atlas" → close.
+	let focusParamConsumed = false;
 	$: if (
 		typeof window !== 'undefined' &&
 		(SITE_MODE === 'atlas-root' || SITE_MODE === 'neuroscape') &&
 		atlasBackdrop.length > 0 &&
-		atlasSelection === null
+		atlasSelection === null &&
+		!focusParamConsumed
 	) {
 		const params = new URLSearchParams(window.location.search);
 		const focusStr = params.get('focus');
 		if (focusStr) {
 			const focusId = Number(focusStr);
 			if (Number.isFinite(focusId)) {
-				// Try OHBM overlay first (atlas-root), then NeuroScape
-				// backdrop (atlas-root + neuroscape). Whichever matches
-				// opens the inline detail panel.
 				const overlayHit = atlasOverlayById.get(focusId);
 				if (overlayHit) {
 					onAtlasPointClick(
@@ -970,8 +976,24 @@
 						})
 					);
 				}
+				// Strip `?focus=` + `?cluster=` from the URL so
+				// closing the panel doesn't trigger another auto-open.
+				// `replaceState` keeps the history entry intact (no
+				// back-button confusion).
+				params.delete('focus');
+				params.delete('cluster');
+				const search = params.toString();
+				const cleaned =
+					window.location.pathname +
+					(search ? '?' + search : '') +
+					window.location.hash;
+				window.history.replaceState({}, '', cleaned);
 			}
 		}
+		// Mark consumed regardless — even if there was no `?focus=`
+		// or it didn't match, we only want this reactive to fire
+		// once per page load. Future opens come from explicit clicks.
+		focusParamConsumed = true;
 	}
 </script>
 
