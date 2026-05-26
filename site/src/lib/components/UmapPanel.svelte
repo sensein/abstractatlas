@@ -209,6 +209,11 @@
 		atlas2dHandlersAttached = false;
 		atlas3dHandlersAttached = false;
 		chart3dInitialized = false;
+		// Reset the focus tracker so the next render after a bfcache
+		// restore or Hide/Show cycle re-applies the zoom-to-focus
+		// range (the chart's prior range was wiped along with the
+		// rest of its state).
+		last2dFocusKey = '';
 		// Drop the 2D array cache so post-bfcache restore renders
 		// build fresh references that match the (purged-then-reborn)
 		// chart's internal data buffers. Stale cached arrays could
@@ -851,6 +856,13 @@
 	let atlas2dHandlersAttached = false;
 	let atlas3dHandlersAttached = false;
 
+	// Track the last focused (kind, id) the 2D chart zoomed to.
+	// Only triggers a fresh `Plotly.relayout({ xaxis.range, yaxis.range,
+	// uirevision: ... })` when the focus actually changes; subsequent
+	// renders with the SAME focus don't re-zoom (which would override
+	// the user's manual zoom out / pan).
+	let last2dFocusKey = '';
+
 	/**
 	 * Per-render 2D trace-array cache. Without it, every lasso state
 	 * change in `renderAtlasChart2D` rebuilds the same 461k-point
@@ -1076,11 +1088,32 @@
 				...overlaySelectedConfig
 			});
 		}
-		// Focus halo — a single magenta-ring marker at the focused
-		// point's coordinates. Sits ON TOP of everything else so it's
-		// the obvious visual signal of "you asked to focus this dot".
+		// Focus halo — TWO concentric magenta rings at the focused
+		// point's coordinates. Outer ring (size 38, low-alpha fill +
+		// soft border) reads as an "aura" at zoomed-out scales where
+		// the point would otherwise be a speck in the 461k-point
+		// carpet; inner ring (size 22, sharp magenta stroke) gives
+		// the precise anchor when the camera zooms in. Both sit ON
+		// TOP of every other trace so they're the obvious visual
+		// signal of "you asked to focus this dot".
 		const focus2d = atlasFocusCoords(focusKind, focusId, backdrop, overlay, false);
+		const focusKey2d = focus2d && focusKind && focusId !== null ? `${focusKind}:${focusId}` : '';
 		if (focus2d) {
+			traces.push({
+				type: 'scattergl' as const,
+				mode: 'markers' as const,
+				x: [focus2d.x],
+				y: [focus2d.y],
+				name: 'focus-aura',
+				marker: {
+					size: 38,
+					color: 'rgba(255, 0, 255, 0.18)',
+					line: { color: 'rgba(255, 0, 255, 0.45)', width: 1 },
+					symbol: 'circle'
+				},
+				hoverinfo: 'skip' as const,
+				showlegend: false
+			});
 			traces.push({
 				type: 'scattergl' as const,
 				mode: 'markers' as const,
@@ -1088,7 +1121,7 @@
 				y: [focus2d.y],
 				name: 'focus',
 				marker: {
-					size: 18,
+					size: 22,
 					color: 'rgba(0,0,0,0)',
 					line: { color: '#ff00ff', width: 2.5 },
 					symbol: 'circle'
@@ -1097,18 +1130,36 @@
 				showlegend: false
 			});
 		}
-		// We DON'T set `selectionrevision`. The earlier attempt to
-		// pin it to a fingerprint string (e.g. lasso-size combos)
-		// still emitted `unrecognized GUI edit: selections[0].yref`
-		// when Plotly tried to merge its preserved internal
-		// `selections` polygon into a chart whose trace structure had
-		// shifted (the dual-trace lasso split). Letting Plotly default
-		// to "no preservation" drops the polygon outline on re-render
-		// — acceptable since the lassoed points are still highlighted
-		// via `selectedpoints` + the dim-unselected opacity, and the
-		// "Clear selection" button in the panel header is the
-		// authoritative deselect.
-		const layout = {
+		// Camera zoom on focus change. When the focus id changed
+		// since the last render, snap the 2D viewport to a tight
+		// window around the focused point so the visitor sees it
+		// even when the rest of the corpus is otherwise dense.
+		// `uirevision` is bumped per-focus so Plotly accepts the
+		// new range; if the user pans/zooms manually afterwards
+		// the same uirevision preserves their gesture for further
+		// re-renders. When focus clears, uirevision goes back to
+		// 'atlas-2d' and `autorange: true` restores the full view.
+		const focusChanged2d = focusKey2d !== last2dFocusKey;
+		const ZOOM_HALF_SPAN = 3.0; // ~6 UMAP units of window
+		const xRange =
+			focus2d && focusChanged2d
+				? [focus2d.x - ZOOM_HALF_SPAN, focus2d.x + ZOOM_HALF_SPAN]
+				: null;
+		const yRange =
+			focus2d && focusChanged2d
+				? [focus2d.y - ZOOM_HALF_SPAN, focus2d.y + ZOOM_HALF_SPAN]
+				: null;
+		const uirev2d = focusKey2d ? `atlas-2d-focus-${focusKey2d}` : 'atlas-2d';
+		last2dFocusKey = focusKey2d;
+		// We DON'T set `selectionrevision` — see the earlier attempt
+		// that emitted `unrecognized GUI edit: selections[0].yref`
+		// when Plotly tried to merge a preserved selection into a
+		// shifted trace structure. Letting it default to "no
+		// preservation" drops the polygon outline on re-render —
+		// acceptable since lassoed points stay highlighted via
+		// `selectedpoints` + the dim-unselected opacity, and the
+		// "Clear selection" button is the authoritative deselect.
+		const layout: Record<string, unknown> = {
 			autosize: true,
 			margin: { l: 0, r: 0, t: 0, b: 0 },
 			hovermode: 'closest' as const,
@@ -1117,9 +1168,13 @@
 			plot_bgcolor: c.plot,
 			font: { color: c.font },
 			showlegend: false,
-			xaxis: { visible: false, scaleanchor: 'y' },
-			yaxis: { visible: false },
-			uirevision: 'atlas-2d'
+			xaxis: xRange
+				? { visible: false, scaleanchor: 'y', range: xRange, autorange: false }
+				: { visible: false, scaleanchor: 'y' },
+			yaxis: yRange
+				? { visible: false, range: yRange, autorange: false }
+				: { visible: false },
+			uirevision: uirev2d
 		};
 		const config = {
 			responsive: true,
@@ -1206,6 +1261,27 @@
 		// only the inline detail panel as the signal).
 		const focus3d = atlasFocusCoords(focusKind, focusId, backdrop, overlay, true);
 		if (focus3d) {
+			// Two-marker halo in 3D to match the 2D pattern. scatter3d
+			// marker.size scales differently from scattergl — sizes are
+			// in canvas pixels not data units — so the outer "aura"
+			// here uses a larger filled translucent sphere + the inner
+			// ring stays a sharp magenta stroke for the precise anchor.
+			traces.push({
+				type: 'scatter3d' as const,
+				mode: 'markers' as const,
+				x: [focus3d.x],
+				y: [focus3d.y],
+				z: [focus3d.z ?? 0],
+				name: 'focus-aura',
+				marker: {
+					size: 26,
+					color: 'rgba(255,0,255,0.20)',
+					line: { color: 'rgba(255,0,255,0.45)', width: 1 },
+					symbol: 'circle'
+				},
+				hoverinfo: 'skip' as const,
+				showlegend: false
+			});
 			traces.push({
 				type: 'scatter3d' as const,
 				mode: 'markers' as const,
@@ -1214,9 +1290,9 @@
 				z: [focus3d.z ?? 0],
 				name: 'focus',
 				marker: {
-					size: 12,
-					color: 'rgba(255,0,255,0.25)',
-					line: { color: '#ff00ff', width: 4 },
+					size: 16,
+					color: 'rgba(255,0,255,0.35)',
+					line: { color: '#ff00ff', width: 5 },
 					symbol: 'circle'
 				},
 				hoverinfo: 'skip' as const,
