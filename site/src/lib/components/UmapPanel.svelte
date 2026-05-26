@@ -1419,6 +1419,41 @@
 		(api as unknown as { react: (...args: unknown[]) => Promise<unknown> })
 			.react(el, traces, layout, config)
 			.then(() => {
+				// Seed the cached range from the chart's resolved
+				// `_fullLayout` if we haven't captured it yet.
+				// `plotly_relayout` does NOT fire for initial-render
+				// autorange computation — so without this seed, the
+				// FIRST facet toggle (or any data change before the
+				// user has panned/zoomed) falls into the
+				// `xRange === null` branch, omits `autorange: false`,
+				// and Plotly re-autoranges to the new data — looking
+				// like a "view reset". Reading `_fullLayout.{x,y}axis
+				// .range` after react() gives us the actual rendered
+				// bounds; caching them means subsequent renders pass
+				// them through explicitly with `autorange: false`.
+				if (!current2dXRange) {
+					const fl = (el as unknown as { _fullLayout?: {
+						xaxis?: { range?: [number, number] };
+						yaxis?: { range?: [number, number] };
+					} })._fullLayout;
+					const xr = fl?.xaxis?.range;
+					const yr = fl?.yaxis?.range;
+					if (
+						Array.isArray(xr) &&
+						typeof xr[0] === 'number' &&
+						typeof xr[1] === 'number'
+					) {
+						current2dXRange = [xr[0], xr[1]];
+						current2dXSpan = Math.abs(xr[1] - xr[0]);
+					}
+					if (
+						Array.isArray(yr) &&
+						typeof yr[0] === 'number' &&
+						typeof yr[1] === 'number'
+					) {
+						current2dYRange = [yr[0], yr[1]];
+					}
+				}
 				// Re-apply zoom-aware opacity after EVERY react. The
 				// backdrop trace's `marker.opacity` is rebuilt to the
 				// base value (e.g. 0.05) on every render, which would
@@ -1428,9 +1463,6 @@
 				//      (`xRange` set) — use that as the current span.
 				//   2. The user was already zoomed in / out manually
 				//      (`current2dXSpan > 0`) — preserve their state.
-				// First render before any handler fires falls through
-				// to the base opacity, which is correct for the
-				// default autorange view.
 				const reapplySpan = xRange
 					? Math.abs(xRange[1] - xRange[0])
 					: current2dXSpan > 0
