@@ -750,12 +750,12 @@
 	// top-row, map toggles in/out via a control-toggle button). Both
 	// atlas-root and neuroscape modes share these.
 	//
-	// `atlasShowMap` defaults to false on mobile-width viewports —
-	// the 461k-point scatter3d hammers SwiftShader CPU rendering on
-	// phones, drains battery, and forces the parquet download
-	// (~25–96 MB) over cellular before the user has even decided
-	// they want the map. They can flip it on with the same toggle
-	// after reading the admonition near the top of the page.
+	// `atlasShowMap` defaults to false on mobile-width viewports.
+	// On phones this may drain battery and could incur cellular
+	// download charges (the parquet is ~25–96 MB and the 461k-point
+	// scatter3d hammers SwiftShader CPU rendering). Visitors flip
+	// it on with the same toggle after reading the admonition near
+	// the top of the page.
 	let atlasSearchQuery = '';
 	let atlasShowMap =
 		typeof window === 'undefined' ? true : window.innerWidth >= 1024;
@@ -1034,9 +1034,10 @@
 						: '~461k PubMed points'}
 					and downloads a {SITE_MODE === 'atlas-root'
 						? '~35 MB'
-						: '~96 MB'} data file. On phones this drains battery
-					quickly and may incur cellular charges. The map is hidden
-					by default — tap "Show map" to load it if you're on Wi-Fi.
+						: '~96 MB'} data file. On phones this may drain
+					battery and could incur cellular download charges. The
+					map is hidden by default — tap "Show map" to load it if
+					you're on Wi-Fi.
 				</p>
 			</aside>
 		{/if}
