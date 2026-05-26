@@ -15,7 +15,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { normalize } from '$lib/filter';
-	import { cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
+	import { cartStore, cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
 	import CartIconButton from '$lib/components/CartIconButton.svelte';
 
 	type BackdropPoint = {
@@ -137,15 +137,43 @@
 
 	$: visible = filtered.slice(0, limit);
 	$: totalCount = filtered.length;
+
+	// Visible-not-in-cart rows (mixed kinds). Same pattern as
+	// OHBM 2026's ResultList + NeuroscapeBrowsePanel — bulk-add
+	// every row currently visible that isn't already in the cart.
+	$: visibleNotInCart = visible.filter((r) =>
+		r.kind === 'ohbm2026'
+			? !$cartOhbmPosterIds.has(r.id)
+			: !$cartNeuroPubmedIds.has(r.id)
+	);
+	function addAllVisible() {
+		if (visibleNotInCart.length === 0) return;
+		cartStore.addManyItems(
+			visibleNotInCart.map((r) => ({ kind: r.kind, id: r.id }))
+		);
+	}
 </script>
 
 <section class="ar-browse" data-testid="atlas-root-browse-panel">
-	<p class="ar-count" data-testid="atlas-root-result-count">
-		{totalCount.toLocaleString()} {totalCount === 1 ? 'match' : 'matches'}
-		{#if totalCount > limit}
-			· showing first {limit}
+	<header class="ar-list-head">
+		<p class="ar-count" data-testid="atlas-root-result-count">
+			{totalCount.toLocaleString()} {totalCount === 1 ? 'match' : 'matches'}
+			{#if totalCount > limit}
+				· showing first {limit}
+			{/if}
+		</p>
+		{#if visibleNotInCart.length > 0}
+			<button
+				type="button"
+				class="ar-bulk-cart-add"
+				on:click={addAllVisible}
+				title={`Add the ${visibleNotInCart.length} visible row${visibleNotInCart.length === 1 ? '' : 's'} not yet in your cart`}
+				data-testid="atlas-root-bulk-cart-add"
+			>
+				+ Add {visibleNotInCart.length} to cart
+			</button>
 		{/if}
-	</p>
+	</header>
 
 	<ul class="ar-results" data-testid="atlas-root-result-list">
 		{#each visible as r (r.kind + ':' + r.id)}
@@ -252,6 +280,29 @@
 	.ar-results {
 		min-width: 0;
 		box-sizing: border-box;
+	}
+	.ar-list-head {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+	.ar-list-head .ar-count {
+		flex: 1;
+	}
+	.ar-bulk-cart-add {
+		all: unset;
+		cursor: pointer;
+		padding: 0.3rem 0.6rem;
+		font-size: 0.78rem;
+		color: var(--accent);
+		border: 1px solid var(--accent);
+		background: transparent;
+		border-radius: 4px;
+		white-space: nowrap;
+	}
+	.ar-bulk-cart-add:hover {
+		background: var(--accent-soft-bg);
 	}
 	.ar-row:hover {
 		background: var(--bg-subtle);

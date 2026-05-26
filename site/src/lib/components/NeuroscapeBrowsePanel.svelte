@@ -10,7 +10,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import { base } from '$app/paths';
 	import { normalize } from '$lib/filter';
-	import { cartNeuroPubmedIds } from '$lib/stores/cart';
+	import { cartStore, cartNeuroPubmedIds } from '$lib/stores/cart';
 	import CartIconButton from '$lib/components/CartIconButton.svelte';
 
 	type Article = {
@@ -61,15 +61,40 @@
 	function onShowOnAtlas(a: Article) {
 		dispatch('focus', { pubmed_id: a.pubmed_id, cluster_id: a.cluster_id });
 	}
+
+	// Visible-not-in-cart pubmed_ids, for the bulk "+ Add N to cart"
+	// button. Same pattern as OHBM 2026's ResultList.
+	$: visibleNotInCart = visible
+		.map((a) => a.pubmed_id)
+		.filter((id) => !$cartNeuroPubmedIds.has(id));
+	function addAllVisible() {
+		if (visibleNotInCart.length === 0) return;
+		cartStore.addManyItems(
+			visibleNotInCart.map((id) => ({ kind: 'neuroscape' as const, id }))
+		);
+	}
 </script>
 
 <section class="ns-browse" data-testid="neuroscape-browse-panel">
-	<p class="ns-count" data-testid="neuroscape-result-count">
-		{filtered.length.toLocaleString()} {filtered.length === 1 ? 'match' : 'matches'}
-		{#if filtered.length > limit}
-			· showing first {limit}
+	<header class="ns-list-head">
+		<p class="ns-count" data-testid="neuroscape-result-count">
+			{filtered.length.toLocaleString()} {filtered.length === 1 ? 'match' : 'matches'}
+			{#if filtered.length > limit}
+				· showing first {limit}
+			{/if}
+		</p>
+		{#if visibleNotInCart.length > 0}
+			<button
+				type="button"
+				class="ns-bulk-cart-add"
+				on:click={addAllVisible}
+				title={`Add the ${visibleNotInCart.length} visible article${visibleNotInCart.length === 1 ? '' : 's'} not yet in your cart`}
+				data-testid="neuroscape-bulk-cart-add"
+			>
+				+ Add {visibleNotInCart.length} to cart
+			</button>
 		{/if}
-	</p>
+	</header>
 
 	<ul class="ns-results" data-testid="neuroscape-result-list">
 		{#each visible as a (a.pubmed_id)}
@@ -166,6 +191,29 @@
 	.ns-results {
 		min-width: 0;
 		box-sizing: border-box;
+	}
+	.ns-list-head {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+	.ns-list-head .ns-count {
+		flex: 1;
+	}
+	.ns-bulk-cart-add {
+		all: unset;
+		cursor: pointer;
+		padding: 0.3rem 0.6rem;
+		font-size: 0.78rem;
+		color: var(--accent);
+		border: 1px solid var(--accent);
+		background: transparent;
+		border-radius: 4px;
+		white-space: nowrap;
+	}
+	.ns-bulk-cart-add:hover {
+		background: var(--accent-soft-bg);
 	}
 	.ns-row:hover {
 		background: var(--bg-subtle);

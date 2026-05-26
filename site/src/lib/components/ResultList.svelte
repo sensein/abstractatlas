@@ -113,10 +113,10 @@
 				type="button"
 				class="bulk-action"
 				on:click={addAllVisible}
-				title={`Add the ${missingFromCart.length} visible abstract${missingFromCart.length === 1 ? '' : 's'} not yet in your list`}
+				title={`Add the ${missingFromCart.length} visible abstract${missingFromCart.length === 1 ? '' : 's'} not yet in your cart`}
 				data-testid="bulk-cart-add"
 			>
-				+ Add {missingFromCart.length} to list
+				+ Add {missingFromCart.length} to cart
 			</button>
 		{/if}
 	</header>
