@@ -27,7 +27,83 @@
 	import { semanticEnabled } from '$lib/stores/searchMode';
 	import { semanticStatus } from '$lib/search/semantic';
 	import { cartStore } from '$lib/stores/cart';
-	import CartDrawer from '$lib/components/CartDrawer.svelte';
+	import {
+		cartDrawerOpen,
+		ohbmTitleLookup,
+		neuroscapeTitleLookup
+	} from '$lib/stores/cart_ui';
+	// CartDrawer is mounted by `+layout.svelte` for all modes — no
+	// import needed here.
+	// Stage 15 (spec 015-neuroscape-context, FR-008/FR-009/FR-013/FR-014):
+	// the bare-root cross-conference atlas landing page mounts a small
+	// chrome (header + binary toggle + density slider) in place of the
+	// existing OHBM-2026-only home page. SITE_MODE is a build-time
+	// constant (Vite substitutes `import.meta.env.VITE_SITE_MODE` at
+	// compile time), so the {#if SITE_MODE === 'atlas-root'} branch
+	// below is dead-code eliminated in the 'ohbm2026' / 'neuroscape'
+	// builds — FR-022 byte-identity is preserved.
+	import { SITE_MODE } from '$lib/site_mode';
+	// SiteHeader is rendered by `+layout.svelte` for ALL modes —
+	// atlas-root + neuroscape no longer mount their own header here.
+	// AtlasSubsiteNav is the hub-and-spoke nav strip; only mounted on
+	// the atlas-root build (subsites surface a home icon instead).
+	import AtlasSubsiteNav from '$lib/components/AtlasSubsiteNav.svelte';
+	// AtlasOverlayToggle + BackdropDensitySlider + DimensionalityToggle
+	// were removed from the atlas-root/neuroscape top-row to match the
+	// OHBM 2026 UI shape. Overlay visibility is now driven by the
+	// Sites facet (filterShowOhbm); opacity defaults to 0.05; both
+	// 2D and 3D scatters are rendered side-by-side so no
+	// dimensionality toggle is needed.
+	// AtlasUmapPanel is now an alias for the unified UmapPanel — the
+	// underlying file was deleted (Stage 15 UX-unification, slice D);
+	// all three subsites use `UmapPanel` with mode='ohbm' | 'atlas' |
+	// 'neuroscape'.
+	import AtlasRootDetailPanel from '$lib/components/AtlasRootDetailPanel.svelte';
+	// AtlasRootLassoResults retired (slice E) — lasso filters the
+	// result list inline now, no modal needed.
+	import AtlasRootBrowsePanel from '$lib/components/AtlasRootBrowsePanel.svelte';
+	import AtlasRootFacets from '$lib/components/AtlasRootFacets.svelte';
+	import NeuroscapeBrowsePanel from '$lib/components/NeuroscapeBrowsePanel.svelte';
+	import NeuroscapeFacets from '$lib/components/NeuroscapeFacets.svelte';
+	import { base } from '$app/paths';
+	// atlasOverlay + dimensionality stores no longer driven from this
+	// page (removed top-row toggles). Stores still exist for any
+	// external consumer; tree-shaken from this bundle if unused.
+	import {
+		loadDataPackage,
+		verifyAtlasSiblingDrift,
+		type AtlasDriftEntry
+	} from '$lib/data_package/loader';
+
+	// Shapes the AtlasUmapPanel expects. Defined here (not imported
+	// from the .svelte component) because Svelte's type re-export
+	// path is unreliable across the build.
+	type AtlasBackdropPoint = {
+		pubmed_id: number;
+		cluster_id: number;
+		umap_3d: [number, number, number];
+		title: string;
+		year: number;
+		// Populated by the loader's `neighbors_neuroscape` → articles
+		// join (loader.ts). Present only on the /neuroscape/ build;
+		// atlas-root's `backdrop` rows from atlas.parquet don't carry
+		// neighbours.
+		nearest_pubmed_ids?: number[];
+		nearest_distances?: number[];
+	};
+	type AtlasOverlayPoint = {
+		submission_id: number;
+		poster_id: number;
+		umap_3d: [number, number, number];
+		title: string;
+		nearest_cluster_id: number;
+	};
+	type AtlasClusterRow = {
+		cluster_id: number;
+		title: string;
+		colour_hex: string;
+		palette_tier: 'primary' | 'secondary';
+	};
 
 	let manifest: Manifest | null = null;
 	let abstracts: AbstractRecord[] = [];
@@ -39,7 +115,9 @@
 	// `showMap` is now backed by a localStorage-persistent store
 	// (`$lib/stores/selection.showMap`) so a browser reload keeps the
 	// user's chosen view. Read/write via the `$showMap` Svelte sugar.
-	let cartOpen = false;
+	// `cartOpen` was the OHBM-only local; the unifying cart drawer is
+	// now controlled by the shared `cartDrawerOpen` store so the 🛒
+	// in the SiteHeader can open it from any subsite.
 	let semanticScores: Map<number, number> | null = null;
 	let semanticQuerySerial = 0;
 	let showFacets = false; // mobile drawer state; desktop always-shown
@@ -109,6 +187,19 @@
 				a.abstracts.filter((x) => x.poster_id).map((x) => [x.poster_id, x])
 			);
 			abstractsById = new Map(a.abstracts.map((x) => [x.poster_id, x]));
+			// Publish the OHBM title lookup so the unifying cart drawer
+			// can render rich rows for OHBM items saved from any subsite.
+			ohbmTitleLookup.set(
+				new Map(
+					a.abstracts
+						.filter((x) => x.poster_id)
+						.map((x) => {
+							const leadId = x.author_ids[0];
+							const lead = leadId !== undefined ? au.authors.find((y) => y.author_id === leadId)?.name : undefined;
+							return [x.poster_id, { title: x.title, lead_author: lead }];
+						})
+				)
+			);
 			// Test-only debug global used by Playwright accepted-only invariant guard.
 			if (typeof window !== 'undefined') {
 				(window as unknown as { __abstracts: AbstractRecord[] }).__abstracts = abstracts;
@@ -362,8 +453,964 @@
 		for (const id of small) if (large.has(id)) out.add(id);
 		return out;
 	}
+
+	// Stage 15 — backdrop opacity for the bare-root atlas landing page
+	// (FR-013). Not persisted (defaults to 0.25 on every visit per
+	// contracts/atlas-root-ui.md). When SITE_MODE !== 'atlas-root' this
+	// variable is unused and tree-shaken.
+	let backdropDensity = 0.05;
+
+	// Stage 15 — atlas.parquet / neuroscape.parquet hydration state.
+	// Loaded lazily on mount when SITE_MODE !== 'ohbm2026'. The same
+	// AtlasUmapPanel powers both modes; in neuroscape mode the
+	// overlayPoints list stays empty (the OHBM 2026 overlay only
+	// renders on the bare-root cross-conference page).
+	let atlasBackdrop: AtlasBackdropPoint[] = [];
+	let atlasOverlayPoints: AtlasOverlayPoint[] = [];
+	let atlasClusters: AtlasClusterRow[] = [];
+	// T046 + T047 — selection state for the slide-in detail panel
+	// and the lasso grouped result list. Both are atlas-root-only.
+	let atlasSelection:
+		| {
+				kind: 'ohbm2026';
+				title: string;
+				poster_id: number;
+				nearest_cluster_id: number;
+				permalink: string;
+		  }
+		| {
+				kind: 'neuroscape';
+				title: string;
+				pubmed_id: number;
+				year: number;
+				cluster_id: number;
+				permalink: string;
+		  }
+		| null = null;
+	// Lasso state now lives in `atlasLassoOhbmSet` / `atlasLassoNeuroSet`
+	// declared further down — Sets are the right shape since the
+	// browse panel needs O(1) lookup, and the scatter highlight needs
+	// a "selected indices" mask too.
+
+	// O(1) lookup maps built whenever the atlas data lands.
+	$: atlasOverlayById = new Map(atlasOverlayPoints.map((p) => [p.poster_id, p]));
+	$: atlasBackdropById = new Map(atlasBackdrop.map((p) => [p.pubmed_id, p]));
+	$: atlasClustersById = new Map(
+		atlasClusters.map((c) => [c.cluster_id, { cluster_id: c.cluster_id, title: c.title, colour_hex: c.colour_hex }])
+	);
+
+	// Filtered point lists threaded into AtlasUmapPanel so the
+	// scatter visibly reflects browse-panel facet state. Empty cluster
+	// set means "all clusters". For neuroscape mode, filterShowOhbm
+	// is irrelevant (overlay is always empty) and filterShowNeuro is
+	// always true (we never want to hide ALL backdrop points there).
+	// Facet-only filters — these are what the SCATTER sees. The lasso
+	// HIGHLIGHTS within these (via the dim-unselected mechanism in
+	// UmapPanel) but does NOT remove points from the map.
+	$: scatterBackdrop = (() => {
+		if (SITE_MODE === 'atlas-root' && !filterShowNeuro) return [];
+		const yLo = filterMinYear ?? yearBounds.lo;
+		const yHi = filterMaxYear ?? yearBounds.hi;
+		const needsYear = SITE_MODE === 'neuroscape';
+		const needsCluster = filterClusterIds.size > 0;
+		if (!needsYear && !needsCluster) return atlasBackdrop;
+		return atlasBackdrop.filter((p) => {
+			if (needsYear && (p.year < yLo || p.year > yHi)) return false;
+			if (needsCluster && !filterClusterIds.has(p.cluster_id)) return false;
+			return true;
+		});
+	})();
+	$: scatterOverlay = (() => {
+		if (SITE_MODE !== 'atlas-root' || !filterShowOhbm) return [] as AtlasOverlayPoint[];
+		if (filterClusterIds.size === 0) return atlasOverlayPoints;
+		return atlasOverlayPoints.filter((p) => filterClusterIds.has(p.nearest_cluster_id));
+	})();
+	// Result-list filters — the same facets plus the lasso. Browse
+	// panel narrows to lassoed ids when the lasso is active.
+	//
+	// The "active lasso" decision is GLOBAL across both kinds — if
+	// the user lassoes a region containing ONLY NeuroScape points
+	// (zero OHBM overlay points fell inside), the OHBM result-list
+	// must collapse to empty rather than fall through to "show all
+	// OHBM" (the prior bug). The reverse holds for an OHBM-only
+	// lasso region: NeuroScape rows collapse to empty.
+	$: anyLassoActive = atlasLassoOhbmSet.size + atlasLassoNeuroSet.size > 0;
+	$: filteredBackdrop = (() => {
+		if (!anyLassoActive) return scatterBackdrop;
+		return scatterBackdrop.filter((p) => atlasLassoNeuroSet.has(p.pubmed_id));
+	})();
+	$: filteredOverlay = (() => {
+		if (!anyLassoActive) return scatterOverlay;
+		return scatterOverlay.filter((p) => atlasLassoOhbmSet.has(p.poster_id));
+	})();
+
+	// Cross-subsite permalink construction.
+	//
+	// gh-pages serves a single ROOT /404.html for every unresolved
+	// path host-wide. Until the cross-conference root 404.html shim
+	// is on production, a direct navigation to
+	// `/pr-37/neuroscape/abstract/<n>/` 404s into the legacy redirect
+	// and bounces to /ohbm2026/ — the lasso-click bug.
+	//
+	// Workaround: route through the existing `?spa=<deep-link>`
+	// mechanism. The SvelteKit shell at `/pr-37/neuroscape/index.html`
+	// (which DOES exist, served HTTP 200) handles `?spa=` in its
+	// `+layout.svelte` onMount — it `goto`s the deep link with
+	// `replaceState: true` so the final URL bar shows the clean
+	// `/pr-37/neuroscape/abstract/<n>/` form. No root-404 update
+	// needed; no production risk.
+	//
+	// Two URL forms:
+	//   - `cleanPermalink(kind, id)` — the canonical deep link
+	//     `/pr-37/<mode>/abstract/<n>/`. Use for status display,
+	//     copy-link buttons, anything the visitor would expect to
+	//     paste into a browser. (These DO 404 until the root shim
+	//     update lands.)
+	//   - `atlasPermalink(kind, id)` — the SPA-shell+`?spa=` form
+	//     above. Used for href attributes on in-page anchors so the
+	//     navigation actually works.
+	// Strip the per-mode suffix off `base` so the permalink helpers
+	// can compose URLs against the deploy ROOT regardless of which
+	// build is currently running. Without this, on `/neuroscape/`
+	// `base` already ends in `/neuroscape`, and the naive
+	// `${base}/neuroscape/abstract/<id>/` form produced
+	// `/neuroscape/neuroscape/abstract/<id>/` — the `?spa=` shim then
+	// looped trying to resolve the non-existent path.
+	function permalinkRoot(): string {
+		if (SITE_MODE === 'ohbm2026' && base.endsWith('/ohbm2026')) {
+			return base.slice(0, -'/ohbm2026'.length);
+		}
+		if (SITE_MODE === 'neuroscape' && base.endsWith('/neuroscape')) {
+			return base.slice(0, -'/neuroscape'.length);
+		}
+		return base;
+	}
+	function cleanPermalink(kind: 'ohbm2026' | 'neuroscape', id: number): string {
+		const root = permalinkRoot();
+		return kind === 'ohbm2026'
+			? `${root}/ohbm2026/abstract/${id}/`
+			: `${root}/neuroscape/abstract/${id}/`;
+	}
+	function atlasPermalink(kind: 'ohbm2026' | 'neuroscape', id: number): string {
+		// Same-mode permalink (e.g. /neuroscape/ → NeuroScape detail
+		// page): use the clean in-app URL directly. SvelteKit handles
+		// the navigation within the same bundle; no `?spa=` shim
+		// dance needed.
+		if (SITE_MODE === kind) {
+			return cleanPermalink(kind, id);
+		}
+		// Cross-mode (atlas-root → either subsite, or sibling → sibling
+		// in some future routing): wrap in the `?spa=` payload so the
+		// gh-pages root 404 shim bounces into the right sibling shell.
+		const root = permalinkRoot();
+		const target = cleanPermalink(kind, id);
+		const shellPath = kind === 'ohbm2026' ? `${root}/ohbm2026/` : `${root}/neuroscape/`;
+		return `${shellPath}?spa=${encodeURIComponent(target)}`;
+	}
+
+	function onAtlasPointClick(
+		ev: CustomEvent<{ kind: 'ohbm2026' | 'neuroscape'; id: number }>
+	) {
+		const { kind, id } = ev.detail;
+		if (kind === 'ohbm2026') {
+			const p = atlasOverlayById.get(id);
+			if (!p) return;
+			atlasSelection = {
+				kind: 'ohbm2026',
+				title: p.title,
+				poster_id: p.poster_id,
+				nearest_cluster_id: p.nearest_cluster_id,
+				permalink: atlasPermalink('ohbm2026', p.poster_id)
+			};
+		} else {
+			const p = atlasBackdropById.get(id);
+			if (!p) return;
+			atlasSelection = {
+				kind: 'neuroscape',
+				title: p.title,
+				pubmed_id: p.pubmed_id,
+				year: p.year,
+				cluster_id: p.cluster_id,
+				permalink: atlasPermalink('neuroscape', p.pubmed_id)
+			};
+		}
+	}
+
+	// Most-similar list for the inline detail panel. On /neuroscape/
+	// the backdrop articles carry `nearest_pubmed_ids` (10 ids per
+	// article), baked into neuroscape.parquet by the orchestrator and
+	// joined onto each article record in loader.ts. atlas-root's
+	// backdrop comes from atlas.parquet which has no neighbours table,
+	// so we surface an empty list there — the CTA "Open on /<sibling>/"
+	// is the user's path to the full detail page in that case.
+	$: detailNeighbours = (() => {
+		if (!atlasSelection || atlasSelection.kind !== 'neuroscape') return [];
+		const src = atlasBackdropById.get(atlasSelection.pubmed_id);
+		if (!src?.nearest_pubmed_ids) return [];
+		const out: Array<{ id: number; title: string; href: string }> = [];
+		for (const nid of src.nearest_pubmed_ids.slice(0, 10)) {
+			const hit = atlasBackdropById.get(nid);
+			if (!hit) continue;
+			out.push({
+				id: nid,
+				title: hit.title,
+				href: atlasPermalink('neuroscape', nid)
+			});
+		}
+		return out;
+	})();
+
+	function onAtlasLasso(
+		ev: CustomEvent<{ ohbm2026_ids: number[]; neuroscape_ids: number[] }>
+	) {
+		atlasLassoOhbmSet = new Set(ev.detail.ohbm2026_ids);
+		atlasLassoNeuroSet = new Set(ev.detail.neuroscape_ids);
+	}
+
+	function clearAtlasLasso() {
+		atlasLassoOhbmSet = new Set();
+		atlasLassoNeuroSet = new Set();
+	}
+	// T043 — drift banner state. Populated by the sibling-state-key
+	// check that fires in the background after atlas.parquet loads.
+	let atlasDrift: AtlasDriftEntry[] = [];
+	// UX unification — facet state lives at the page level so the
+	// AtlasRootFacets / NeuroscapeFacets sidebars can be the single
+	// source of truth. Browse panels + scatter both read the
+	// filtered arrays computed from this state.
+	let filterClusterIds: Set<number> = new Set();
+	let filterShowOhbm = true;
+	let filterShowNeuro = true;
+	let filterMinYear: number | null = null;
+	let filterMaxYear: number | null = null;
+
+	// Year bounds for the NeuroScape year facet — derived from the
+	// loaded backdrop. Default 0/0 until articles arrive.
+	$: yearBounds = (() => {
+		if (SITE_MODE !== 'neuroscape' || atlasBackdrop.length === 0) {
+			return { lo: 0, hi: 0 };
+		}
+		let lo = Infinity;
+		let hi = -Infinity;
+		for (const p of atlasBackdrop) {
+			if (p.year < lo) lo = p.year;
+			if (p.year > hi) hi = p.year;
+		}
+		return { lo: Number.isFinite(lo) ? lo : 0, hi: Number.isFinite(hi) ? hi : 0 };
+	})();
+
+	// Cluster counts — shared by both facet sidebars. For atlas-root,
+	// counts include BOTH backdrop and overlay; for neuroscape, only
+	// backdrop. SITE_MODE-conditional so we don't pay the iteration
+	// cost on the wrong mode.
+	// Facet counts mirror OHBM 2026's pattern: each facet shows the
+	// counts that WOULD result if you added one of its options,
+	// computed from the intersection of (lasso ∩ every OTHER active
+	// facet). The facet's own selection is excluded from its own
+	// counts so unchecking an option doesn't make its count vanish.
+	// Base sources after lasso (the lasso is global — affects every
+	// facet).
+	$: lassoBackdropPoints = (() => {
+		if (!anyLassoActive) return atlasBackdrop;
+		return atlasBackdrop.filter((p) => atlasLassoNeuroSet.has(p.pubmed_id));
+	})();
+	$: lassoOverlayPoints = (() => {
+		if (!anyLassoActive) return atlasOverlayPoints;
+		return atlasOverlayPoints.filter((p) => atlasLassoOhbmSet.has(p.poster_id));
+	})();
+	// Sites counts (atlas-root) — apply cluster filter, exclude self.
+	$: siteCounts = (() => {
+		if (SITE_MODE !== 'atlas-root') return { ohbm: 0, neuro: 0 };
+		const useC = filterClusterIds.size > 0;
+		const ohbm = useC
+			? lassoOverlayPoints.filter((p) => filterClusterIds.has(p.nearest_cluster_id)).length
+			: lassoOverlayPoints.length;
+		const neuro = useC
+			? lassoBackdropPoints.filter((p) => filterClusterIds.has(p.cluster_id)).length
+			: lassoBackdropPoints.length;
+		return { ohbm, neuro };
+	})();
+	// Cluster counts — apply every OTHER active facet (Sites on atlas-
+	// root; Years on neuroscape), exclude self.
+	$: clusterCounts = (() => {
+		const counts = new Map<number, number>();
+		if (SITE_MODE === 'atlas-root') {
+			if (filterShowNeuro) {
+				for (const a of lassoBackdropPoints)
+					counts.set(a.cluster_id, (counts.get(a.cluster_id) ?? 0) + 1);
+			}
+			if (filterShowOhbm) {
+				for (const o of lassoOverlayPoints)
+					counts.set(o.nearest_cluster_id, (counts.get(o.nearest_cluster_id) ?? 0) + 1);
+			}
+		} else if (SITE_MODE === 'neuroscape') {
+			const yLo = filterMinYear ?? yearBounds.lo;
+			const yHi = filterMaxYear ?? yearBounds.hi;
+			for (const a of lassoBackdropPoints) {
+				if (a.year < yLo || a.year > yHi) continue;
+				counts.set(a.cluster_id, (counts.get(a.cluster_id) ?? 0) + 1);
+			}
+		}
+		return counts;
+	})();
+	// UX-unification: search query + show-map state at the page level,
+	// matching the OHBM 2026 home's pattern (search lives in the
+	// top-row, map toggles in/out via a control-toggle button). Both
+	// atlas-root and neuroscape modes share these.
+	//
+	// `atlasShowMap` defaults to false on mobile-width viewports.
+	// On phones this may drain battery and could incur cellular
+	// download charges (the parquet is ~25–96 MB and the 461k-point
+	// scatter3d hammers SwiftShader CPU rendering). Visitors flip
+	// it on with the same toggle after reading the admonition near
+	// the top of the page.
+	let atlasSearchQuery = '';
+	let atlasShowMap =
+		typeof window === 'undefined' ? true : window.innerWidth >= 1024;
+	// Mobile-only "🔍 Filters" toggle, mirroring OHBM's pattern: the
+	// facets sidebar is hidden by default on narrow viewports and
+	// opens above the result list when the user taps the button.
+	// On desktop (≥1024 px) OHBM's `.facet-pane { display: block
+	// !important }` rule keeps it always visible.
+	let showAtlasFacets = false;
+
+	// Mobile-viewport reactive — tracked via a resize listener so the
+	// admonition + map default re-flow if the user rotates / resizes.
+	// `mobileViewport` mirrors UmapPanel's 1024px breakpoint so the
+	// page-level chrome and the chart-level layout switch in lockstep.
+	let mobileViewport =
+		typeof window === 'undefined' ? false : window.innerWidth < 1024;
+	function onWindowResize() {
+		mobileViewport = window.innerWidth < 1024;
+	}
+	// Lasso selection. When non-null, the result list filters to these
+	// ids and the 2D scatter dims unselected points + zooms the 3D
+	// camera to the lassoed bounding box.
+	let atlasLassoOhbmSet: Set<number> = new Set();
+	let atlasLassoNeuroSet: Set<number> = new Set();
+	// Lasso "active" reactive — currently unused after the clear-
+	// selection button moved into UmapPanel's header, but kept as a
+	// stable selector if any future top-row chrome needs it.
+	$: atlasLassoActive = atlasLassoOhbmSet.size + atlasLassoNeuroSet.size > 0;
+	void atlasLassoActive;
+	let atlasLoading = false;
+	let atlasError: string | null = null;
+	let atlasProgressLoaded = 0;
+	let atlasProgressTotal: number | null = null;
+	// Phase string drives the placeholder label so the parsing window
+	// (CPU-bound, no byte progress) doesn't look frozen on fast links.
+	let atlasPhase: 'connecting' | 'downloading' | 'parsing' | 'ready' = 'connecting';
+
+	async function loadAtlasData() {
+		if (SITE_MODE === 'ohbm2026') return;
+		if (atlasLoading || atlasBackdrop.length > 0) return;
+		atlasLoading = true;
+		atlasProgressLoaded = 0;
+		atlasProgressTotal = null;
+		atlasPhase = 'connecting';
+		try {
+			const pkg = await loadDataPackage(
+				fetch,
+				(loaded, total) => {
+					atlasProgressLoaded = loaded;
+					atlasProgressTotal = total;
+				},
+				(phase) => {
+					atlasPhase = phase;
+				}
+			);
+			if (!pkg) {
+				atlasError =
+					SITE_MODE === 'atlas-root'
+						? 'Atlas data package URL not configured.'
+						: 'NeuroScape data package URL not configured.';
+				return;
+			}
+			if (SITE_MODE === 'atlas-root') {
+				const backdropShard = pkg.get('data/atlas/backdrop_full.json') as
+					| { points: AtlasBackdropPoint[] }
+					| undefined;
+				const overlayShard = pkg.get('data/atlas/ohbm_overlay.json') as
+					| { points: AtlasOverlayPoint[] }
+					| undefined;
+				const clustersShard = pkg.get('data/atlas/clusters.json') as
+					| { clusters: AtlasClusterRow[] }
+					| undefined;
+				if (!backdropShard || !overlayShard || !clustersShard) {
+					atlasError = 'Atlas data package is missing one of the expected row groups.';
+					return;
+				}
+				atlasBackdrop = backdropShard.points;
+				atlasOverlayPoints = overlayShard.points;
+				atlasClusters = clustersShard.clusters;
+				// Publish title lookups so the unifying cart drawer can
+				// render rich rows for items from EITHER subsite when
+				// the user is on atlas-root (the only build that loads
+				// both kinds locally).
+				const ohbmMap = new Map<number, { title: string; lead_author?: string }>();
+				for (const p of atlasOverlayPoints) {
+					ohbmMap.set(p.poster_id, { title: p.title });
+				}
+				ohbmTitleLookup.set(ohbmMap);
+				const clusterTitleById = new Map<number, string>();
+				for (const c of atlasClusters) clusterTitleById.set(c.cluster_id, c.title);
+				const neuroMap = new Map<
+					number,
+					{ title: string; year?: number; cluster_title?: string }
+				>();
+				for (const p of atlasBackdrop) {
+					neuroMap.set(p.pubmed_id, {
+						title: p.title,
+						year: p.year,
+						cluster_title: clusterTitleById.get(p.cluster_id)
+					});
+				}
+				neuroscapeTitleLookup.set(neuroMap);
+				// T043 — Sibling-state-key drift check. Fires after the
+				// atlas scatter renders, so a slow / unreachable sibling
+				// doesn't block first paint. The check itself retries
+				// each sibling fetch up to 4 times with 400/1200/3000 ms
+				// backoff (loader.ts) before giving up.
+				//
+				// Two distinct loud signals — never silent:
+				//   - `mismatch` → confirmed drift; cross-conference
+				//     links will point at stale ids. Per R-012.
+				//   - `fetch-failed` / `no-state-key` → couldn't verify
+				//     after retries. The atlas MAY be fine, but we
+				//     can't confirm. Surfaced with different copy so
+				//     the visitor can act on the actual signal.
+				const manifest = pkg.get('data/manifest.json');
+				void verifyAtlasSiblingDrift(manifest).then((result) => {
+					if (!result.ok) atlasDrift = result.drift;
+				});
+			} else if (SITE_MODE === 'neuroscape') {
+				const articlesShard = pkg.get('data/neuroscape/articles.json') as
+					| { articles: AtlasBackdropPoint[] }
+					| undefined;
+				const clustersShard = pkg.get('data/neuroscape/clusters.json') as
+					| { clusters: AtlasClusterRow[] }
+					| undefined;
+				if (!articlesShard || !clustersShard) {
+					atlasError =
+						'NeuroScape data package is missing the articles or clusters row group.';
+					return;
+				}
+				// neuroscape.parquet doesn't ship a pre-decimated row group;
+				// keep the full 461k articles for search + result-list,
+				// decimate at scatter-render time below.
+				atlasBackdrop = articlesShard.articles;
+				atlasOverlayPoints = [];
+				atlasClusters = clustersShard.clusters;
+				// /neuroscape/ publishes only the neuroscape title
+				// lookup; cross-site OHBM rows in the cart render with
+				// a placeholder until the user visits an OHBM page or
+				// atlas-root warms the OHBM lookup.
+				const clusterTitleById = new Map<number, string>();
+				for (const c of atlasClusters) clusterTitleById.set(c.cluster_id, c.title);
+				const neuroMap = new Map<
+					number,
+					{ title: string; year?: number; cluster_title?: string }
+				>();
+				for (const p of atlasBackdrop) {
+					neuroMap.set(p.pubmed_id, {
+						title: p.title,
+						year: p.year,
+						cluster_title: clusterTitleById.get(p.cluster_id)
+					});
+				}
+				neuroscapeTitleLookup.set(neuroMap);
+			}
+		} catch (err) {
+			atlasError = `failed to load atlas data: ${(err as Error)?.message ?? String(err)}`;
+		} finally {
+			atlasLoading = false;
+		}
+	}
+
+	$: atlasProgressPercent =
+		atlasProgressTotal && atlasProgressTotal > 0
+			? Math.min(100, Math.round((atlasProgressLoaded / atlasProgressTotal) * 100))
+			: null;
+
+	function formatMb(bytes: number): string {
+		return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+	}
+
+	onMount(() => {
+		void loadAtlasData();
+		window.addEventListener('resize', onWindowResize);
+		return () => window.removeEventListener('resize', onWindowResize);
+	});
+
+	// Auto-open the inline detail panel ONCE when the URL carries
+	// `?focus=<id>&cluster=<id>`. The "Show on atlas" buttons on the
+	// /neuroscape/abstract/<pmid>/ permalink page navigate to
+	// `/neuroscape/?focus=<pmid>&cluster=<cid>`; without this hook the
+	// visitor arrives at the home with no visible signal that they
+	// asked to focus a specific point. Reactively watching
+	// `atlasBackdrop` so the focus applies after the parquet finishes
+	// loading (race: the URL is set before data is ready on cold
+	// load).
+	//
+	// The `?focus=` params are CLEARED from the URL after applying,
+	// otherwise closing the panel (atlasSelection → null) would
+	// re-trigger this reactive and re-open the panel on the next
+	// tick — a "can't close it" loop the user hit when round-
+	// tripping detail page → "Show on atlas" → close.
+	let focusParamConsumed = false;
+	$: if (
+		typeof window !== 'undefined' &&
+		(SITE_MODE === 'atlas-root' || SITE_MODE === 'neuroscape') &&
+		atlasBackdrop.length > 0 &&
+		atlasSelection === null &&
+		!focusParamConsumed
+	) {
+		const params = new URLSearchParams(window.location.search);
+		const focusStr = params.get('focus');
+		if (focusStr) {
+			const focusId = Number(focusStr);
+			if (Number.isFinite(focusId)) {
+				const overlayHit = atlasOverlayById.get(focusId);
+				if (overlayHit) {
+					onAtlasPointClick(
+						new CustomEvent('pointclick', {
+							detail: { kind: 'ohbm2026', id: focusId }
+						})
+					);
+				} else if (atlasBackdropById.get(focusId)) {
+					onAtlasPointClick(
+						new CustomEvent('pointclick', {
+							detail: { kind: 'neuroscape', id: focusId }
+						})
+					);
+				}
+				// Strip `?focus=` + `?cluster=` from the URL so
+				// closing the panel doesn't trigger another auto-open.
+				// `replaceState` keeps the history entry intact (no
+				// back-button confusion).
+				params.delete('focus');
+				params.delete('cluster');
+				const search = params.toString();
+				const cleaned =
+					window.location.pathname +
+					(search ? '?' + search : '') +
+					window.location.hash;
+				window.history.replaceState({}, '', cleaned);
+			}
+		}
+		// Mark consumed regardless — even if there was no `?focus=`
+		// or it didn't match, we only want this reactive to fire
+		// once per page load. Future opens come from explicit clicks.
+		focusParamConsumed = true;
+	}
 </script>
 
+{#if SITE_MODE === 'atlas-root' || SITE_MODE === 'neuroscape'}
+	<!-- UX unification: reuse OHBM 2026's `.home` / `.top-row` /
+	     `.layout` structure so the atlas-root and neuroscape pages
+	     have the same shape as `/ohbm2026/` — search at the top,
+	     toggleable map below, then a results pane with an inline
+	     detail panel on the right. SITE_MODE branches inside the
+	     structure pick the appropriate browse-panel + control set;
+	     the OHBM 2026 build still hits the `{:else}` branch lower
+	     down (unchanged). -->
+	<div
+		class="home atlas-home"
+		class:has-focus={atlasSelection !== null}
+		data-testid="atlas-root-home"
+		data-mode={SITE_MODE}
+	>
+		{#if SITE_MODE === 'atlas-root'}
+			<AtlasSubsiteNav />
+		{/if}
+		<!-- Mobile admonition — the 461k-point scatter3d via Plotly +
+		     SwiftShader is unkind to phones. Visible only when the
+		     viewport is narrow; the underlying parquet (25-96 MB) is
+		     also fetched lazily only when the user opts into the map.
+		     The map toggle (top-row, below) starts OFF on mobile;
+		     this banner explains why. -->
+		{#if mobileViewport}
+			<aside
+				class="atlas-mobile-warning"
+				data-testid="atlas-mobile-warning"
+				role="note"
+			>
+				<strong>Mobile viewing tip</strong>
+				<p>
+					The 3D atlas renders {SITE_MODE === 'atlas-root'
+						? '~461k PubMed points + the OHBM overlay'
+						: '~461k PubMed points'}
+					and downloads a {SITE_MODE === 'atlas-root'
+						? '~35 MB'
+						: '~96 MB'} data file. On phones this may drain
+					battery and could incur cellular download charges. The
+					map is hidden by default — tap "Show map" to load it if
+					you're on Wi-Fi.
+				</p>
+			</aside>
+		{/if}
+		{#if SITE_MODE === 'atlas-root' && atlasDrift.length > 0}
+			<!-- T043 / R-012 — surface BOTH drift signals loudly.
+
+			     Confirmed drift (reason === 'mismatch'): visitor's
+			     cross-conference clicks may land on stale ids. Action:
+			     rebuild atlas.parquet against the current siblings.
+
+			     Cannot-verify (reason === 'fetch-failed' or
+			     'no-state-key'): we couldn't read the sibling's
+			     manifest after 4 retries with backoff. The atlas may
+			     be fine, but we can't confirm. Action: check the
+			     sibling deployment is reachable + the parquet has a
+			     state_key. -->
+			{#each [{ kind: 'mismatch', items: atlasDrift.filter((d) => d.reason === 'mismatch') }, { kind: 'cannot-verify', items: atlasDrift.filter((d) => d.reason !== 'mismatch') }] as section (section.kind)}
+				{#if section.items.length > 0}
+					<aside
+						class="atlas-drift-banner"
+						class:atlas-drift-banner--mismatch={section.kind === 'mismatch'}
+						class:atlas-drift-banner--cannot-verify={section.kind === 'cannot-verify'}
+						role="alert"
+						data-testid={`atlas-drift-banner-${section.kind}`}
+					>
+						{#if section.kind === 'mismatch'}
+							<strong>Atlas data is out of sync with a sibling subsite.</strong>
+							<ul class="atlas-drift-list" data-testid="atlas-drift-list">
+								{#each section.items as d (d.sibling)}
+									<li>
+										<code>{d.sibling}</code> expected
+										<code>{d.expected.slice(0, 8)}…</code> but found
+										<code>{d.actual ? d.actual.slice(0, 8) + '…' : '(unknown)'}</code>
+									</li>
+								{/each}
+							</ul>
+							<p class="atlas-drift-explain">
+								Cross-conference links may point at stale ids. Rebuild
+								<code>atlas.parquet</code> against the current sibling parquets.
+							</p>
+						{:else}
+							<strong
+								>Couldn't verify atlas data against {section.items.length === 1
+									? 'a sibling subsite'
+									: 'sibling subsites'}.</strong
+							>
+							<ul class="atlas-drift-list" data-testid="atlas-drift-list-cannot-verify">
+								{#each section.items as d (d.sibling)}
+									<li>
+										<code>{d.sibling}</code> ·
+										{#if d.reason === 'fetch-failed'}
+											fetch failed after retries{#if d.error_message}: <code>{d.error_message}</code>{/if}
+										{:else}
+											sibling parquet manifest has no state_key
+										{/if}
+									</li>
+								{/each}
+							</ul>
+							<p class="atlas-drift-explain">
+								Atlas may be fine, but we couldn't confirm. Check the
+								Network tab for the actual error; refresh to retry.
+							</p>
+						{/if}
+					</aside>
+				{/if}
+			{/each}
+		{/if}
+		<!-- Top row — minimal control set matching OHBM 2026's pattern:
+		     search input + Show/Hide Map toggle. The overlay-visibility
+		     toggle (atlas-root) is now driven by the Sites facet; the
+		     dimensionality toggle + backdrop-opacity slider are gone
+		     (sensible defaults instead, exposed later via a Settings
+		     panel if needed). -->
+		<div class="top-row">
+			<div class="search-row">
+				<label class="atlas-search" data-testid="atlas-search-label">
+					<span class="visually-hidden">Search</span>
+					<input
+						type="search"
+						bind:value={atlasSearchQuery}
+						placeholder={SITE_MODE === 'atlas-root'
+							? 'Search OHBM 2026 + NeuroScape titles or ids…'
+							: 'Search 461,316 NeuroScape titles…'}
+						data-testid={SITE_MODE === 'atlas-root'
+							? 'atlas-root-search-input'
+							: 'neuroscape-search-input'}
+					/>
+					{#if atlasSearchQuery}
+						<button
+							type="button"
+							class="atlas-search-clear"
+							on:click={() => (atlasSearchQuery = '')}
+							aria-label="Clear search"
+							data-testid="atlas-search-clear"
+						>×</button>
+					{/if}
+				</label>
+			</div>
+			<div class="controls" data-testid="atlas-root-controls">
+				<!-- Clear-selection button lives inside the UmapPanel header
+				     for atlas/neuroscape modes, mirroring how OHBM 2026
+				     does it. The top-row holds the map + filters toggles
+				     (filters is mobile-only — desktop facet sidebar is
+				     always visible via the .layout grid). -->
+				<button
+					type="button"
+					class="control-toggle mobile-only"
+					class:active={showAtlasFacets}
+					on:click={() => (showAtlasFacets = !showAtlasFacets)}
+					aria-pressed={showAtlasFacets}
+					data-testid="toggle-facets"
+				>
+					🔍 Filters
+				</button>
+				<button
+					type="button"
+					class="control-toggle"
+					class:active={atlasShowMap}
+					on:click={() => (atlasShowMap = !atlasShowMap)}
+					aria-pressed={atlasShowMap}
+					data-testid="toggle-map"
+				>
+					{atlasShowMap ? '✕ Hide map' : '🗺  Show map'}
+				</button>
+			</div>
+		</div>
+
+		<!-- Drift banners — surface before the scatter so the visitor
+		     sees them above the fold. Only fires in atlas-root mode. -->
+		{#if SITE_MODE === 'atlas-root' && atlasDrift.length > 0}
+			{#each [{ kind: 'mismatch', items: atlasDrift.filter((d) => d.reason === 'mismatch') }, { kind: 'cannot-verify', items: atlasDrift.filter((d) => d.reason !== 'mismatch') }] as section (section.kind)}
+				{#if section.items.length > 0}
+					<aside
+						class="atlas-drift-banner"
+						class:atlas-drift-banner--mismatch={section.kind === 'mismatch'}
+						class:atlas-drift-banner--cannot-verify={section.kind === 'cannot-verify'}
+						role="alert"
+						data-testid={`atlas-drift-banner-${section.kind}`}
+					>
+						{#if section.kind === 'mismatch'}
+							<strong>Atlas data is out of sync with a sibling subsite.</strong>
+							<ul class="atlas-drift-list" data-testid="atlas-drift-list">
+								{#each section.items as d (d.sibling)}
+									<li>
+										<code>{d.sibling}</code> expected
+										<code>{d.expected.slice(0, 8)}…</code> but found
+										<code>{d.actual ? d.actual.slice(0, 8) + '…' : '(unknown)'}</code>
+									</li>
+								{/each}
+							</ul>
+							<p class="atlas-drift-explain">
+								Cross-conference links may point at stale ids. Rebuild
+								<code>atlas.parquet</code> against the current sibling parquets.
+							</p>
+						{:else}
+							<strong
+								>Couldn't verify atlas data against {section.items.length === 1
+									? 'a sibling subsite'
+									: 'sibling subsites'}.</strong
+							>
+							<ul class="atlas-drift-list" data-testid="atlas-drift-list-cannot-verify">
+								{#each section.items as d (d.sibling)}
+									<li>
+										<code>{d.sibling}</code> ·
+										{#if d.reason === 'fetch-failed'}
+											fetch failed after retries{#if d.error_message}: <code
+													>{d.error_message}</code
+												>{/if}
+										{:else}
+											sibling parquet manifest has no state_key
+										{/if}
+									</li>
+								{/each}
+							</ul>
+							<p class="atlas-drift-explain">
+								Atlas may be fine, but we couldn't confirm. Check the
+								Network tab for the actual error; refresh to retry.
+							</p>
+						{/if}
+					</aside>
+				{/if}
+			{/each}
+		{/if}
+
+		<!-- Map panel — toggleable above the layout grid, OHBM-style.
+		     The loading state OVERLAYS the UmapPanel containers (the
+		     2D + 3D chart frames render immediately, the loading
+		     status floats on top of the frame area) instead of
+		     replacing them with a bottom-of-page placeholder. Same
+		     pattern as native map widgets: visitor sees where the
+		     map WILL be while it loads. -->
+		{#if atlasShowMap}
+			<div class="atlas-map-wrap">
+				<UmapPanel
+					mode={SITE_MODE === 'atlas-root' ? 'atlas' : 'neuroscape'}
+					backdropPoints={scatterBackdrop}
+					overlayPoints={scatterOverlay}
+					atlasClusters={atlasClusters}
+					showOverlay={SITE_MODE === 'atlas-root' ? filterShowOhbm : false}
+					backdropOpacity={0.05}
+					lassoOhbmSet={atlasLassoOhbmSet}
+					lassoNeuroSet={atlasLassoNeuroSet}
+					atlasFocusKind={atlasSelection?.kind ?? null}
+					atlasFocusId={atlasSelection
+						? atlasSelection.kind === 'ohbm2026'
+							? atlasSelection.poster_id
+							: atlasSelection.pubmed_id
+						: null}
+					on:pointclick={onAtlasPointClick}
+					on:lassoselect={onAtlasLasso}
+					on:lassoclear={clearAtlasLasso}
+				/>
+				{#if atlasError}
+					<div class="atlas-map-overlay" data-testid="atlas-scatter-error" role="alert">
+						<p class="placeholder-text">{atlasError}</p>
+					</div>
+				{:else if atlasBackdrop.length === 0}
+					<div class="atlas-map-overlay" data-testid="atlas-scatter-loading">
+						<p class="placeholder-text">
+							{#if atlasPhase === 'connecting'}
+								Connecting to {SITE_MODE === 'atlas-root'
+									? 'cross-conference atlas'
+									: 'NeuroScape atlas'}…
+							{:else if atlasPhase === 'downloading'}
+								Downloading {SITE_MODE === 'atlas-root'
+									? 'cross-conference atlas'
+									: 'NeuroScape atlas'}…
+								{#if atlasProgressPercent !== null}
+									<strong data-testid="atlas-loading-percent">{atlasProgressPercent}%</strong>
+								{:else if atlasProgressLoaded > 0}
+									<strong data-testid="atlas-loading-bytes"
+										>{formatMb(atlasProgressLoaded)}</strong
+									>
+								{/if}
+							{:else if atlasPhase === 'parsing'}
+								Parsing
+								{#if atlasProgressLoaded > 0}
+									<strong data-testid="atlas-loading-parsing-bytes"
+										>{formatMb(atlasProgressLoaded)}</strong
+									>
+								{/if}
+								{SITE_MODE === 'atlas-root' ? 'cross-conference atlas' : 'NeuroScape atlas'}…
+							{:else}
+								Loading {SITE_MODE === 'atlas-root'
+									? 'cross-conference atlas'
+									: 'NeuroScape atlas'}…
+							{/if}
+						</p>
+						{#if atlasPhase === 'downloading' && atlasProgressPercent !== null}
+							<progress
+								class="atlas-progress"
+								value={atlasProgressPercent}
+								max="100"
+								data-testid="atlas-loading-progressbar"
+							></progress>
+						{:else}
+							<progress class="atlas-progress" data-testid="atlas-loading-indeterminate"></progress>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		{/if}
+
+		<!-- 3-column layout grid — facets | list | detail. Uses OHBM's
+		     `.layout` rules directly (no `atlas-layout` overrides):
+		     single column on mobile, 3 columns ≥1024 px, facet-pane
+		     opens via `.open` when the user taps "🔍 Filters". -->
+		{#if atlasBackdrop.length > 0}
+			<div class="layout">
+				<div class="facet-pane" class:open={showAtlasFacets}>
+					{#if SITE_MODE === 'atlas-root'}
+						<AtlasRootFacets
+							clustersById={atlasClustersById}
+							{clusterCounts}
+							ohbmCount={siteCounts.ohbm}
+							neuroCount={siteCounts.neuro}
+							selectedClusterIds={filterClusterIds}
+							showOhbm={filterShowOhbm}
+							showNeuro={filterShowNeuro}
+							on:update={(ev) => {
+								filterClusterIds = ev.detail.cluster_ids;
+								filterShowOhbm = ev.detail.show_ohbm;
+								filterShowNeuro = ev.detail.show_neuro;
+							}}
+						/>
+					{:else}
+						<NeuroscapeFacets
+							clustersById={atlasClustersById}
+							{clusterCounts}
+							selectedClusterIds={filterClusterIds}
+							minYear={filterMinYear}
+							maxYear={filterMaxYear}
+							{yearBounds}
+							on:update={(ev) => {
+								filterClusterIds = ev.detail.cluster_ids;
+								filterMinYear = ev.detail.min_year;
+								filterMaxYear = ev.detail.max_year;
+							}}
+						/>
+					{/if}
+				</div>
+				<div class="list-pane">
+					{#if SITE_MODE === 'neuroscape'}
+						<NeuroscapeBrowsePanel
+							articles={filteredBackdrop}
+							clustersById={atlasClustersById}
+							bind:query={atlasSearchQuery}
+							on:focus={(ev) => {
+								// Update the URL so deep-link restore + back-button work,
+								// THEN open the detail panel so the inline third pane
+								// renders the article + its nearest-neighbours list.
+								const url = new URL(window.location.href);
+								url.searchParams.set('focus', String(ev.detail.pubmed_id));
+								url.searchParams.set('cluster', String(ev.detail.cluster_id));
+								window.history.pushState({}, '', url);
+								onAtlasPointClick(
+									new CustomEvent('pointclick', {
+										detail: { kind: 'neuroscape', id: ev.detail.pubmed_id }
+									})
+								);
+							}}
+						/>
+					{:else}
+						<AtlasRootBrowsePanel
+							backdropPoints={filteredBackdrop}
+							overlayPoints={filteredOverlay}
+							clustersById={atlasClustersById}
+							permalinkFor={atlasPermalink}
+							bind:query={atlasSearchQuery}
+							on:select={(ev) => {
+								onAtlasPointClick(
+									new CustomEvent('pointclick', { detail: ev.detail })
+								);
+							}}
+						/>
+					{/if}
+				</div>
+				<div class="detail-pane" class:active={atlasSelection !== null}>
+					{#if atlasSelection}
+						<AtlasRootDetailPanel
+							selection={atlasSelection}
+							clustersById={atlasClustersById}
+							mode="inline"
+							neighbours={detailNeighbours}
+							on:close={() => (atlasSelection = null)}
+						/>
+					{:else}
+						<aside class="detail-empty">
+							<p>
+								{SITE_MODE === 'atlas-root'
+									? 'Click a result or a point on the map to see details here.'
+									: 'Click a result or a point on the map to see article details here.'}
+							</p>
+						</aside>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
+		<!-- AtlasRootLassoResults modal removed in slice E: lassoed
+		     ids now filter the result-list inline (see
+		     `filteredBackdrop` / `filteredOverlay` reactives). The
+		     "Clear lasso (n)" button in the top-row resets state. -->
+	</div>
+{:else}
 <div class="home" class:has-focus={focused !== null}>
 	<div class="top-row">
 		<div class="search-row">
@@ -470,24 +1517,19 @@
 				>
 					{$cartOnly ? '✓ Saved' : 'Saved only'}
 				</button>
-				<button
-					type="button"
-					class="control-toggle cart-toggle"
-					class:active={$cartStore.size > 0}
-					on:click={() => (cartOpen = true)}
-					aria-label={`Open your list (${$cartStore.size} saved)`}
-					title={$cartStore.size > 0
-						? `${$cartStore.size} abstract${$cartStore.size === 1 ? '' : 's'} saved — click to open`
-						: 'Your list is empty — save abstracts via the cart icon on each result'}
-					data-testid="toggle-cart"
-				>
-					🛒 {$cartStore.size}
-				</button>
+				<!-- The 🛒 N "open cart drawer" button is now in the
+				     unifying SiteHeader so it's the single source on
+				     every subsite. The "Saved only" filter stays here
+				     because it's OHBM-home-specific (no equivalent on
+				     atlas-root / neuroscape). -->
 			</div>
 		{/if}
 	</div>
 
-	<CartDrawer bind:open={cartOpen} {abstracts} {authorsById} />
+	<!-- Cart drawer is mounted by `+layout.svelte` for ALL subsites so
+	     the 🛒 toggle in the unified SiteHeader works from anywhere.
+	     The OHBM home publishes its abstracts + authors into the shared
+	     `ohbmTitleLookup` store, so cart rows render with rich titles. -->
 
 	{#if $showMap && loaded && !dataMissing}
 		<UmapPanel {abstracts} selection={filteredIds} />
@@ -545,8 +1587,219 @@
 		</div>
 	{/if}
 </div>
+{/if}
 
 <style>
+	/* Stage 15 atlas-root chrome. Dead-CSS-eliminated in
+	   non-atlas-root builds (the markup branch is gone, so Svelte
+	   marks these selectors as unused and they don't ship). */
+	.atlas-drift-banner {
+		border-radius: 4px;
+		padding: 0.75rem 1rem;
+		margin: 0.75rem clamp(1rem, 2vw, 2rem);
+		font-size: 0.92rem;
+	}
+	.atlas-drift-banner--mismatch {
+		/* Yellow — confirmed drift; user-actionable. */
+		background: var(--warning-bg);
+		color: var(--warning-text);
+		border: 1px solid var(--warning-border);
+	}
+	.atlas-drift-banner--cannot-verify {
+		/* Subtle — "couldn't check" is informational, not alarming. */
+		background: var(--bg-subtle);
+		color: var(--text-muted);
+		border: 1px solid var(--border);
+	}
+	.atlas-drift-list {
+		margin: 0.4rem 0 0.4rem 1.25rem;
+		padding: 0;
+	}
+	.atlas-drift-explain {
+		margin: 0;
+		color: var(--warning-text);
+		opacity: 0.85;
+	}
+	.atlas-drift-banner code {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		background: rgba(0, 0, 0, 0.06);
+		padding: 0 0.25em;
+		border-radius: 2px;
+	}
+
+	/* UX-unification — atlas-home reuses OHBM's `.home` + `.layout` +
+	   `.facet-pane` / `.list-pane` / `.detail-pane` shape directly.
+	   The only atlas-specific overrides here are:
+	     - page-wide padding (atlas-root + neuroscape use a minimal
+	       shell, not OHBM's `.shell` wrapper that adds the OHBM
+	       header padding)
+	     - the mobile admonition banner styling
+	     - the side-by-side 2D + 3D scatter row at desktop
+	   Everything else (grid columns, .open facet pattern, detail-pane
+	   overlay on mobile, has-focus widening) is inherited from
+	   OHBM's CSS at the bottom of this stylesheet. */
+	.atlas-home {
+		min-height: 100vh;
+		padding: 0 clamp(1rem, 2vw, 2rem) 1rem;
+		box-sizing: border-box;
+	}
+	.atlas-mobile-warning {
+		margin-top: 0.75rem;
+		padding: 0.7rem 0.9rem;
+		border-radius: 6px;
+		border: 1px solid var(--warning-border, #b8860b);
+		background: var(--warning-bg, #fff7e0);
+		color: var(--warning-text, #5c4400);
+		font-size: 0.85rem;
+		line-height: 1.4;
+	}
+	.atlas-mobile-warning strong {
+		display: block;
+		margin-bottom: 0.2rem;
+		font-size: 0.9rem;
+	}
+	.atlas-mobile-warning p {
+		margin: 0;
+	}
+	@media (prefers-color-scheme: dark) {
+		.atlas-mobile-warning {
+			background: rgba(184, 134, 11, 0.18);
+			color: #f0d68d;
+			border-color: rgba(184, 134, 11, 0.45);
+		}
+	}
+	/* Side-by-side 2D + 3D scatter row, matching OHBM 2026's
+	   UmapPanel layout (2D + 3D side-by-side on desktop, stacked
+	   on mobile). Each pane gets equal width on desktop. */
+	.atlas-umap-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+		min-height: 24rem;
+	}
+	@media (max-width: 1024px) {
+		.atlas-umap-row {
+			grid-template-columns: 1fr;
+		}
+	}
+	/* `.atlas-map-wrap` hosts the UmapPanel + an absolutely-positioned
+	   loading overlay so the chart frames are visible as soon as the
+	   map toggle flips on, with the loading status floating over them
+	   until the parquet finishes parsing. */
+	.atlas-map-wrap {
+		position: relative;
+	}
+	.atlas-map-overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.6rem;
+		padding: 1rem;
+		background: rgba(255, 255, 255, 0.78);
+		backdrop-filter: blur(2px);
+		-webkit-backdrop-filter: blur(2px);
+		z-index: 10;
+		border-radius: 6px;
+		pointer-events: none;
+	}
+	@media (prefers-color-scheme: dark) {
+		.atlas-map-overlay {
+			background: rgba(20, 22, 28, 0.78);
+		}
+	}
+	.atlas-map-overlay .placeholder-text {
+		margin: 0;
+		color: var(--text);
+		font-size: 0.95rem;
+		text-align: center;
+		max-width: 32rem;
+	}
+	.atlas-map-overlay .placeholder-text strong {
+		color: var(--accent);
+		font-variant-numeric: tabular-nums;
+		margin-left: 0.3rem;
+	}
+	.atlas-map-overlay .atlas-progress {
+		width: min(20rem, 80%);
+		height: 0.45rem;
+	}
+	/* Atlas-home search input — same visual weight as OHBM's
+	   SearchBar (large, full-width-ish, prominent). */
+	.atlas-search {
+		position: relative;
+		display: flex;
+		align-items: center;
+		width: 100%;
+	}
+	.atlas-search input[type='search'] {
+		width: 100%;
+		padding: 0.6rem 2.25rem 0.6rem 0.85rem;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: var(--bg-elevated);
+		color: var(--text);
+		font-size: 1rem;
+	}
+	.atlas-search input[type='search']:focus {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+	.atlas-search-clear {
+		all: unset;
+		cursor: pointer;
+		position: absolute;
+		right: 0.6rem;
+		font-size: 1.2rem;
+		color: var(--text-muted);
+		padding: 0.1rem 0.4rem;
+		border-radius: 3px;
+	}
+	.atlas-search-clear:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		border: 0;
+	}
+	.atlas-scatter-placeholder {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		border: 1px dashed var(--border);
+		border-radius: 6px;
+		min-height: 50vh;
+	}
+	.placeholder-text {
+		color: var(--text-muted);
+		margin: 0;
+	}
+	.atlas-progress {
+		width: 16rem;
+		height: 0.6rem;
+	}
+	.neuroscape-tag {
+		color: var(--text-muted);
+		font-size: 0.85rem;
+		margin-left: auto;
+	}
+	.neuroscape-tag em {
+		font-style: italic;
+		opacity: 0.7;
+	}
+
 	.home {
 		display: flex;
 		flex-direction: column;
@@ -562,14 +1815,28 @@
 	.search-row {
 		flex: 1 1 22rem;
 		min-width: 0;
+		position: relative;
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: 0;
 	}
+	/* `g jump to poster id` is a discoverability hint that used to
+	   add ~1rem of vertical space below the SearchBar inside the
+	   search-row column. The extra height pushed the search input's
+	   centre off the baseline of the MODEL/INPUT/Semantic/Hide/Saved
+	   controls that the parent .top-row centre-aligns against — the
+	   SearchBar sat slightly above the controls instead of in line
+	   with them. Float the hint absolutely below the search-row so
+	   it carries zero layout height and the baseline lines up. */
 	.kbd-hint {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		margin-top: 0.2rem;
 		font-size: 0.75rem;
 		color: var(--text-muted);
-		padding-left: 0.2rem;
+		pointer-events: none;
+		white-space: nowrap;
 	}
 	.kbd-hint kbd {
 		display: inline-block;

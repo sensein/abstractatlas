@@ -2,13 +2,28 @@
  * Runtime data-package loader.
  *
  * The deployed site doesn't bundle any data. At runtime, the client
- * fetches the single `data.parquet` file from `VITE_DATA_PACKAGE_URL`
- * (a Dropbox / CDN URL), parses it via `hyparquet`, and returns a
+ * fetches a single `*.parquet` file from a per-deployment env var,
+ * parses it via `hyparquet`, and returns a
  * `Map<path, JsonValue | Uint8Array>` whose keys are the legacy
  * shard paths (`data/manifest.json`, `data/cells/<key>.json`, ...).
  * UI consumers in `$lib/shards` keep their existing import surface
  * unchanged; the map shape is identical to the old tarball loader's
  * output so no Stage-6 component needed a refactor.
+ *
+ * Stage 15 (spec 015-neuroscape-context, FR-022) renamed the
+ * canonical OHBM 2026 file from `data.parquet` to
+ * `ohbm2026.parquet` and split the URL by deployment mode:
+ *
+ *   - `VITE_DATA_PACKAGE_URL_OHBM2026` → `ohbm2026.parquet` (the
+ *     `/ohbm2026/` SvelteKit build reads this).
+ *   - `VITE_DATA_PACKAGE_URL_NEUROSCAPE` → `neuroscape.parquet`
+ *     (the `/neuroscape/` build reads this; landed via T069).
+ *   - `VITE_DATA_PACKAGE_URL_ATLAS` → `atlas.parquet` (the bare-root
+ *     cross-conference build reads this; landed via T042).
+ *
+ * The legacy `VITE_DATA_PACKAGE_URL` is honoured as a fallback for
+ * one deploy cycle so a stale GitHub Actions repo variable does not
+ * silently break production.
  *
  * The outer Parquet file has one row per logical table, with the
  * table's own Parquet bytes in a `table_bytes` BLOB column. We decode
@@ -16,14 +31,37 @@
  * them into the Stage-6 envelope shape the UI expects.
  */
 
-import { parquetReadObjects } from 'hyparquet';
+import { parquetReadObjects, asyncBufferFromUrl } from 'hyparquet';
+import { fetchParquetCached, prefetchInBackground } from './cache';
 import { compressors } from 'hyparquet-compressors';
+import { SITE_MODE } from '$lib/site_mode';
 
 let packageCache: Promise<Map<string, unknown> | null> | null = null;
 
-export function getDataPackageUrl(): string | null {
-	const url = import.meta.env.VITE_DATA_PACKAGE_URL;
-	if (!url) return null;
+function pickRawUrl(): string | undefined {
+	const env = import.meta.env;
+	// Stage-15 per-mode URL variables. The legacy single
+	// `VITE_DATA_PACKAGE_URL` is honoured as a final fallback so a
+	// not-yet-updated deploy-workflow repo variable doesn't break
+	// production silently.
+	if (SITE_MODE === 'neuroscape') {
+		return (env.VITE_DATA_PACKAGE_URL_NEUROSCAPE ?? env.VITE_DATA_PACKAGE_URL) as
+			| string
+			| undefined;
+	}
+	if (SITE_MODE === 'atlas-root') {
+		return (env.VITE_DATA_PACKAGE_URL_ATLAS ?? env.VITE_DATA_PACKAGE_URL) as
+			| string
+			| undefined;
+	}
+	// SITE_MODE === 'ohbm2026' (default): prefer the new per-mode
+	// variable; fall back to the legacy single variable.
+	return (env.VITE_DATA_PACKAGE_URL_OHBM2026 ?? env.VITE_DATA_PACKAGE_URL) as
+		| string
+		| undefined;
+}
+
+function normaliseDropboxUrl(url: string): string {
 	// Dropbox shared links served via `www.dropbox.com` redirect (HTTP 302)
 	// to `*.dl.dropboxusercontent.com`, but the redirect step itself lacks
 	// CORS headers — browsers refuse the cross-origin fetch. Rewriting the
@@ -35,8 +73,65 @@ export function getDataPackageUrl(): string | null {
 		.replace(/[?&]dl=0(\b|$)/, (m) => m.replace('dl=0', ''));
 }
 
+export function getDataPackageUrl(): string | null {
+	const url = pickRawUrl();
+	if (!url) return null;
+	return normaliseDropboxUrl(url);
+}
+
+/**
+ * URLs of the two SIBLING parquets for the current build mode — the
+ * ones that aren't this build's own parquet. Used to warm the Cache
+ * API after the primary load so any cross-subsite click (e.g. from a
+ * permalink on /ohbm2026/ to the atlas-root home) reads from cache
+ * instead of doing a cold network fetch.
+ *
+ * Visitors can land on any subsite first — permalinks bookmark
+ * specific /<mode>/abstract/<id>/ URLs and we never know which mode
+ * starts the session. So the prefetch runs from every mode's
+ * loadDataPackage success branch; each warms the other two parquets.
+ */
+export function getCrossSiblingUrls(): string[] {
+	const env = import.meta.env;
+	const ohbm = env.VITE_DATA_PACKAGE_URL_OHBM2026 ?? env.VITE_DATA_PACKAGE_URL;
+	const neuro = env.VITE_DATA_PACKAGE_URL_NEUROSCAPE;
+	const atlas = env.VITE_DATA_PACKAGE_URL_ATLAS;
+	const all: Array<string | undefined> = [];
+	if (SITE_MODE === 'atlas-root') {
+		all.push(ohbm as string | undefined, neuro as string | undefined);
+	} else if (SITE_MODE === 'ohbm2026') {
+		all.push(atlas as string | undefined, neuro as string | undefined);
+	} else if (SITE_MODE === 'neuroscape') {
+		all.push(atlas as string | undefined, ohbm as string | undefined);
+	}
+	return all.filter((u): u is string => !!u).map(normaliseDropboxUrl);
+}
+
+/** Progress callback fired during the parquet HTTP fetch. The
+ *  caller can render "Loading… X%" while bytes stream in. `total`
+ *  is null when the server doesn't send a Content-Length header
+ *  (the caller can show "Loading X MB…" instead). */
+export type LoadProgress = (loaded: number, total: number | null) => void;
+
+/** Phase callback. Lets the UI distinguish the three observable
+ *  steps that together feel like "loading":
+ *
+ *    'connecting' → request issued, no bytes yet
+ *    'downloading' → first chunk arrived; onProgress is now firing
+ *    'parsing'    → bytes complete, hyparquet decode is in flight
+ *                   (CPU-bound; the main thread will be busy)
+ *    'ready'      → result map is fully populated
+ *
+ *  Without this, fast connections show a blank placeholder for the
+ *  ~3-5s parsing window after the byte progress hits 100%, which
+ *  reads as "frozen". */
+export type LoadPhase = 'connecting' | 'downloading' | 'parsing' | 'ready';
+export type PhaseHook = (phase: LoadPhase) => void;
+
 export function loadDataPackage(
-	fetcher: typeof fetch = fetch
+	fetcher: typeof fetch = fetch,
+	onProgress: LoadProgress | null = null,
+	onPhase: PhaseHook | null = null
 ): Promise<Map<string, unknown> | null> {
 	if (packageCache !== null) return packageCache;
 	const url = getDataPackageUrl();
@@ -46,10 +141,65 @@ export function loadDataPackage(
 	}
 	packageCache = (async (): Promise<Map<string, unknown> | null> => {
 		try {
-			const response = await fetcher(url);
+			onPhase?.('connecting');
+			// Wrap the GET in a Cache-API layer: persistent across
+			// sessions, conditionally revalidated via If-None-Match /
+			// If-Modified-Since on subsequent loads. A cache-hit-
+			// validated response is byte-equivalent to a fresh GET so
+			// the rest of the loader doesn't need to know.
+			const { response, source } = await fetchParquetCached(url, fetcher);
 			if (!response.ok || !response.body) return null;
-			const buffer = await response.arrayBuffer();
-			return await parseParquetSingle(new Uint8Array(buffer));
+			if (source === 'cache-hit-validated' || source === 'cache-hit-offline') {
+				console.info(`[ohbm2026] data package served from ${source}`);
+			}
+			// When a progress callback is provided, stream the body via
+			// `getReader()` so we can report bytes-arrived as we go.
+			// Without a callback we still take the simpler `arrayBuffer()`
+			// path — no measurable overhead in the no-progress case.
+			let bytes: Uint8Array;
+			if (onProgress && response.body && typeof response.body.getReader === 'function') {
+				const contentLengthHeader = response.headers.get('content-length');
+				const total = contentLengthHeader ? Number(contentLengthHeader) : null;
+				const reader = response.body.getReader();
+				const chunks: Uint8Array[] = [];
+				let loaded = 0;
+				onProgress(0, total);
+				onPhase?.('downloading');
+				// eslint-disable-next-line no-constant-condition
+				while (true) {
+					const { value, done } = await reader.read();
+					if (done) break;
+					if (value) {
+						chunks.push(value);
+						loaded += value.byteLength;
+						onProgress(loaded, total);
+					}
+				}
+				bytes = new Uint8Array(loaded);
+				let offset = 0;
+				for (const c of chunks) {
+					bytes.set(c, offset);
+					offset += c.byteLength;
+				}
+			} else {
+				onPhase?.('downloading');
+				const buffer = await response.arrayBuffer();
+				bytes = new Uint8Array(buffer);
+			}
+			// Yield once so any pending DOM update (final 100% / final
+			// MB readout) flushes before parseParquetSingle blocks the
+			// main thread.
+			onPhase?.('parsing');
+			await new Promise<void>((r) => setTimeout(r, 0));
+			const result = await parseParquetSingle(bytes);
+			onPhase?.('ready');
+			// Warm the Cache API with the two sibling parquets so any
+			// cross-subsite navigation lands on cache instead of a
+			// cold fetch. Fire-and-forget; skipped on save-data /
+			// slow-2g connections (see cache.ts).
+			const siblings = getCrossSiblingUrls();
+			if (siblings.length) prefetchInBackground(siblings);
+			return result;
 		} catch (err) {
 			console.error('[ohbm2026] failed to load data package:', err);
 			return null;
@@ -146,8 +296,25 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 	}
 	if (manifest) out.set('data/manifest.json', manifest);
 	const buildInfo = (manifest as { build_info?: unknown } | null)?.build_info ?? {};
+	// Stage 15 (T042): the same single-file parquet shape carries
+	// three distinct schemas now — Stage-10 'abstracts.v2' (the
+	// OHBM 2026 corpus), 'atlas.v1' (the bare-root cross-conference
+	// scatter), and 'neuroscape.v1' (the new /neuroscape/ subsite).
+	// The manifest's schema_version selects the dispatch table.
+	const schemaVersion =
+		(manifest as { schema_version?: string } | null)?.schema_version ?? 'abstracts.v2';
+	const isAtlas = schemaVersion === 'atlas.v1';
+	const isNeuroscape = schemaVersion === 'neuroscape.v1';
 
 	for (const row of outerRows) {
+		// Yield to the event loop before each blob decode. hyparquet's
+		// per-blob decode is largely synchronous once it starts; for
+		// large tables (e.g. the 461k-row neuroscape backdrop) that
+		// can block the main thread for hundreds of ms. Yielding here
+		// lets the browser repaint the "Parsing…" placeholder + animate
+		// the indeterminate progress bar between blobs, so the parse
+		// phase is visibly active instead of looking frozen.
+		await new Promise<void>((r) => setTimeout(r, 0));
 		const { table_name: name, table_bytes: blob } = row;
 		if (name === 'manifest') continue;
 		// Enrichment tables are joined into one envelope below.
@@ -165,9 +332,107 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 			}
 			continue;
 		}
+		// Stage 15 — neuroscape.parquet's title-only search sidecar.
+		if (name === 'search:neuroscape_titles') {
+			out.set('data/neuroscape/titles_index.bin', blob);
+			continue;
+		}
+		if (name === 'search:neuroscape_titles_meta') {
+			try {
+				out.set(
+					'data/neuroscape/titles_index.meta.json',
+					JSON.parse(new TextDecoder().decode(blob))
+				);
+			} catch {
+				/* skip malformed sidecar */
+			}
+			continue;
+		}
 
 		const rows = await decodeBlob(blob);
 
+		// Stage 15 — atlas.parquet dispatch (schema_version === 'atlas.v1').
+		// Bare-root cross-conference landing page reads these row groups.
+		if (isAtlas) {
+			if (name === 'clusters') {
+				out.set('data/atlas/clusters.json', {
+					schema_version: 'atlas.clusters.v1',
+					build_info: buildInfo,
+					clusters: rows
+				});
+				continue;
+			}
+			if (name === 'neuroscape_backdrop_full') {
+				out.set('data/atlas/backdrop_full.json', {
+					schema_version: 'atlas.backdrop.v1',
+					build_info: buildInfo,
+					points: rows
+				});
+				continue;
+			}
+			if (name === 'neuroscape_backdrop_decimated') {
+				out.set('data/atlas/backdrop_decimated.json', {
+					schema_version: 'atlas.backdrop.v1',
+					build_info: buildInfo,
+					points: rows
+				});
+				continue;
+			}
+			if (name === 'ohbm_overlay') {
+				out.set('data/atlas/ohbm_overlay.json', {
+					schema_version: 'atlas.overlay.v1',
+					build_info: buildInfo,
+					points: rows
+				});
+				continue;
+			}
+			if (name === 'cross_pointers') {
+				out.set('data/atlas/cross_pointers.json', {
+					schema_version: 'atlas.cross_pointers.v1',
+					build_info: buildInfo,
+					pointers: rows
+				});
+				continue;
+			}
+			// Unknown atlas.v1 outer row — ignore silently (forwards
+			// compatible: future atlas.parquet versions can add tables
+			// without breaking this decoder).
+			continue;
+		}
+
+		// Stage 15 — neuroscape.parquet dispatch (schema_version === 'neuroscape.v1').
+		// The new /neuroscape/ subsite reads these row groups.
+		if (isNeuroscape) {
+			if (name === 'articles') {
+				out.set('data/neuroscape/articles.json', {
+					schema_version: 'neuroscape.articles.v1',
+					build_info: buildInfo,
+					articles: rows
+				});
+				continue;
+			}
+			if (name === 'clusters') {
+				out.set('data/neuroscape/clusters.json', {
+					schema_version: 'neuroscape.clusters.v1',
+					build_info: buildInfo,
+					clusters: rows
+				});
+				continue;
+			}
+			if (name === 'neighbors_neuroscape') {
+				out.set('data/neuroscape/neighbors.json', {
+					schema_version: 'neuroscape.neighbors.v1',
+					build_info: buildInfo,
+					rows
+				});
+				continue;
+			}
+			// Unknown neuroscape.v1 outer row — ignore (forwards
+			// compatible, same rationale as the atlas branch).
+			continue;
+		}
+
+		// Default dispatch path — Stage-10 'abstracts.v2' (OHBM 2026).
 		if (name === 'abstracts') {
 			out.set('data/abstracts.json', {
 				schema_version: 'abstracts.v2',
@@ -228,6 +493,56 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 		}
 	}
 
+	// Stage 15 — atlas.parquet and neuroscape.parquet don't carry the
+	// OHBM-2026-specific enrichment / standby tables; the post-loop
+	// hydration steps below are OHBM-2026-only.
+	//
+	// Before returning, however, fold the neuroscape `neighbors_neuroscape`
+	// table back onto every article so the abstract detail page +
+	// inline detail panel can render the "Most similar" list without
+	// loading a second shard. The parquet stores them in parallel
+	// rows (one per pubmed_id) instead of inlined to keep the row
+	// group compressible; the in-browser join is O(N) and cheap.
+	if (isNeuroscape) {
+		const articlesShard = out.get('data/neuroscape/articles.json') as
+			| {
+					articles?: Array<{
+						pubmed_id: number;
+						nearest_pubmed_ids?: number[];
+						nearest_distances?: number[];
+					}>;
+			  }
+			| undefined;
+		const neighboursShard = out.get('data/neuroscape/neighbors.json') as
+			| {
+					rows?: Array<{
+						pubmed_id: number;
+						nearest_pubmed_ids: number[];
+						nearest_distances: number[];
+					}>;
+			  }
+			| undefined;
+		if (articlesShard?.articles && neighboursShard?.rows) {
+			const byId = new Map<number, { ids: number[]; dists: number[] }>();
+			for (const n of neighboursShard.rows) {
+				byId.set(n.pubmed_id, {
+					ids: n.nearest_pubmed_ids,
+					dists: n.nearest_distances
+				});
+			}
+			for (const a of articlesShard.articles) {
+				const hit = byId.get(a.pubmed_id);
+				if (hit) {
+					a.nearest_pubmed_ids = hit.ids;
+					a.nearest_distances = hit.dists;
+				}
+			}
+		}
+	}
+	if (isAtlas || isNeuroscape) {
+		return out;
+	}
+
 	// Combine the two flattened enrichment tables back into the
 	// `{records: {String(poster_id): {claims, figures}}}` envelope.
 	const claimsRow = outerRows.find((r) => r.table_name === 'enrichment_claims');
@@ -283,4 +598,205 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 	}
 
 	return out;
+}
+
+// ===========================================================================
+// T043 — Cross-parquet drift assertion (R-012)
+// ===========================================================================
+//
+// Atlas.parquet's manifest declares the sibling state-keys it was built
+// against, e.g.
+//
+//   build_info.sibling_state_keys = { ohbm2026: '1ba5a9ea1efe',
+//                                     neuroscape: '27f8f139b296' }
+//
+// The actual `ohbm2026.parquet` and `neuroscape.parquet` deployed beside
+// it carry their own state-keys in their own manifests. If a deploy ever
+// publishes a refreshed sibling without re-running the atlas builder, the
+// `cross_pointers` / `ohbm_overlay` rows in `atlas.parquet` will point at
+// stale ids on the sibling subsite. R-012 mandates the atlas-root page
+// detect this and render a visible banner rather than rendering a
+// partial / silently-wrong scatter.
+//
+// Implementation: an HTTP-Range-only read of each sibling parquet's
+// `manifest` row group via hyparquet's `asyncBufferFromUrl`. Hyparquet
+// fetches just the footer (~few KB) and the manifest row group bytes (~1
+// KB) — total network cost is sub-10 KB per sibling, not the full 26+96
+// MB. The check is fired in parallel for both siblings; both must come
+// back matching for `ok: true`.
+
+export type AtlasDriftEntry = {
+	sibling: 'ohbm2026' | 'neuroscape';
+	expected: string; // state-key declared by atlas.parquet
+	actual: string | null; // state-key read from the sibling's manifest
+	reason: 'mismatch' | 'fetch-failed' | 'no-state-key';
+	error_message?: string; // for fetch-failed: the underlying error
+};
+
+export type AtlasDriftResult =
+	| { ok: true }
+	| { ok: false; drift: AtlasDriftEntry[] };
+
+function ohbm2026SiblingUrl(): string | null {
+	const raw = (import.meta.env.VITE_DATA_PACKAGE_URL_OHBM2026 ?? null) as string | null;
+	if (!raw) return null;
+	return raw
+		.replace(/^https:\/\/www\.dropbox\.com\//, 'https://dl.dropboxusercontent.com/')
+		.replace(/[?&]dl=0(\b|$)/, (m) => m.replace('dl=0', ''));
+}
+function neuroscapeSiblingUrl(): string | null {
+	const raw = (import.meta.env.VITE_DATA_PACKAGE_URL_NEUROSCAPE ?? null) as string | null;
+	if (!raw) return null;
+	return raw
+		.replace(/^https:\/\/www\.dropbox\.com\//, 'https://dl.dropboxusercontent.com/')
+		.replace(/[?&]dl=0(\b|$)/, (m) => m.replace('dl=0', ''));
+}
+
+/**
+ * Read just the state_key from a sibling parquet's manifest row group.
+ *
+ * Network strategy: hyparquet's `asyncBufferFromUrl` uses HTTP Range
+ * requests so we don't pay the full 26-96 MB to read a few KB of
+ * manifest. But a single failure (transient network, Dropbox
+ * throttling on rapid-fire Range requests, etc.) shouldn't lose us
+ * the entire check — retry with exponential backoff before giving up.
+ *
+ * Throws on persistent failure. The caller (verifyAtlasSiblingDrift)
+ * catches and classifies as `reason: 'fetch-failed'`.
+ */
+const SIBLING_FETCH_RETRY_DELAYS_MS = [400, 1200, 3000] as const;
+
+async function readSiblingStateKey(url: string): Promise<string | null> {
+	let lastErr: unknown = null;
+	for (let attempt = 0; attempt <= SIBLING_FETCH_RETRY_DELAYS_MS.length; attempt++) {
+		try {
+			const file = await asyncBufferFromUrl({ url });
+			const rows = (await parquetReadObjects({
+				file,
+				compressors,
+				utf8: false
+			})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
+			const manifestRow = rows.find((r) => r.table_name === 'manifest');
+			if (!manifestRow?.table_bytes) return null;
+			const innerFile = bytesAsAsyncBuffer(manifestRow.table_bytes);
+			const inner = (await parquetReadObjects({ file: innerFile, compressors })) as Array<{
+				manifest_json?: string;
+			}>;
+			const json = inner[0]?.manifest_json;
+			if (!json) return null;
+			const meta = JSON.parse(json) as {
+				build_info?: { state_key?: string; corpus_state_key?: string };
+			};
+			return meta.build_info?.state_key ?? meta.build_info?.corpus_state_key ?? null;
+		} catch (err) {
+			lastErr = err;
+			if (attempt < SIBLING_FETCH_RETRY_DELAYS_MS.length) {
+				await new Promise<void>((r) =>
+					setTimeout(r, SIBLING_FETCH_RETRY_DELAYS_MS[attempt])
+				);
+			}
+		}
+	}
+	// All retries exhausted — propagate so the caller can record the
+	// fetch-failed entry with an informative reason.
+	throw lastErr instanceof Error
+		? lastErr
+		: new Error(`sibling parquet fetch failed for ${url}: ${String(lastErr)}`);
+}
+
+/**
+ * Verify that the sibling parquets currently published match what
+ * `atlas.parquet` was built against. Returns `{ok: true}` on match,
+ * `{ok: false, drift: [...]}` on any mismatch / fetch error so the
+ * UI can render a banner.
+ *
+ * Safe to call when SITE_MODE !== 'atlas-root' (returns ok: true) and
+ * when sibling URLs aren't configured (returns ok: true — there's
+ * nothing to check against; treats absence as "trust the local
+ * build").
+ */
+export async function verifyAtlasSiblingDrift(
+	atlasManifest: unknown
+): Promise<AtlasDriftResult> {
+	if (SITE_MODE !== 'atlas-root') return { ok: true };
+	const m = atlasManifest as
+		| { build_info?: { sibling_state_keys?: Record<string, string> } }
+		| null;
+	const siblingKeys = m?.build_info?.sibling_state_keys ?? null;
+	if (!siblingKeys) return { ok: true };
+
+	const drift: AtlasDriftEntry[] = [];
+	const checks: Array<Promise<void>> = [];
+
+	const expectedOhbm = siblingKeys.ohbm2026;
+	const ohbmUrl = ohbm2026SiblingUrl();
+	if (expectedOhbm && ohbmUrl) {
+		checks.push(
+			readSiblingStateKey(ohbmUrl)
+				.then((actual) => {
+					if (actual === null) {
+						drift.push({
+							sibling: 'ohbm2026',
+							expected: expectedOhbm,
+							actual: null,
+							reason: 'no-state-key'
+						});
+					} else if (actual !== expectedOhbm) {
+						drift.push({
+							sibling: 'ohbm2026',
+							expected: expectedOhbm,
+							actual,
+							reason: 'mismatch'
+						});
+					}
+				})
+				.catch((err) => {
+					drift.push({
+						sibling: 'ohbm2026',
+						expected: expectedOhbm,
+						actual: null,
+						reason: 'fetch-failed',
+						error_message: err instanceof Error ? err.message : String(err)
+					});
+				})
+		);
+	}
+
+	const expectedNeuro = siblingKeys.neuroscape;
+	const neuroUrl = neuroscapeSiblingUrl();
+	if (expectedNeuro && neuroUrl) {
+		checks.push(
+			readSiblingStateKey(neuroUrl)
+				.then((actual) => {
+					if (actual === null) {
+						drift.push({
+							sibling: 'neuroscape',
+							expected: expectedNeuro,
+							actual: null,
+							reason: 'no-state-key'
+						});
+					} else if (actual !== expectedNeuro) {
+						drift.push({
+							sibling: 'neuroscape',
+							expected: expectedNeuro,
+							actual,
+							reason: 'mismatch'
+						});
+					}
+				})
+				.catch((err) => {
+					drift.push({
+						sibling: 'neuroscape',
+						expected: expectedNeuro,
+						actual: null,
+						reason: 'fetch-failed',
+						error_message: err instanceof Error ? err.message : String(err)
+					});
+				})
+		);
+	}
+
+	await Promise.all(checks);
+	if (drift.length === 0) return { ok: true };
+	return { ok: false, drift };
 }

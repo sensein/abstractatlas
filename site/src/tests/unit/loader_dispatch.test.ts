@@ -1,0 +1,179 @@
+/**
+ * Stage 15 (spec 015-neuroscape-context, T042) — loader.ts atlas
+ * + neuroscape dispatch.
+ *
+ * `parseParquetSingle` switches its outer-row dispatch table based
+ * on the manifest's `schema_version`:
+ *
+ *   - 'abstracts.v2' (default) → Stage-10 OHBM 2026 envelope.
+ *   - 'atlas.v1'              → bare-root cross-conference scatter.
+ *   - 'neuroscape.v1'         → /neuroscape/ subsite envelope.
+ *
+ * The tests construct canned outer + inner rows via a module-level
+ * `vi.mock('hyparquet', …)` factory, then call `loadDataPackage`
+ * against a fake fetch and assert the returned envelope's key set.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Shared mutable "what should the next parquetReadObjects call
+// return". The mock factory below reads this on every call.
+let __innerByName: Record<string, object[]> = {};
+let __outerNames: string[] = [];
+
+vi.mock('hyparquet', () => {
+	return {
+		parquetReadObjects: vi.fn(async (opts: { file: { byteLength: number; slice: (a: number, b?: number) => Promise<ArrayBuffer> } }) => {
+			// Read the bytes the loader handed us. Outer rows have an
+			// empty/short outer-shape payload; inner blobs carry the
+			// table_name as ASCII so we can route them.
+			const ab = await opts.file.slice(0, opts.file.byteLength);
+			const bytes = new Uint8Array(ab);
+			const decoded = new TextDecoder().decode(bytes);
+			if (__innerByName[decoded]) return __innerByName[decoded];
+			// Otherwise the loader is asking for outer rows.
+			return __outerNames.map((name) => ({
+				table_name: name,
+				// Embed the table_name as the blob bytes so the inner
+				// read above can route back to the canned rows.
+				table_bytes: new TextEncoder().encode(name)
+			}));
+		})
+	};
+});
+
+// Hyparquet-compressors is only imported for the compressors map;
+// it's a no-op in this test.
+vi.mock('hyparquet-compressors', () => ({ compressors: {} }));
+
+describe('loader atlas-root dispatch (T042)', () => {
+	beforeEach(() => {
+		__innerByName = {};
+		__outerNames = [];
+	});
+
+	afterEach(() => {
+		vi.resetModules();
+		vi.unstubAllEnvs();
+	});
+
+	async function runAssertions(args: {
+		innerByName: Record<string, object[]>;
+		expectedKeys: string[];
+		notExpectedKeys: string[];
+	}) {
+		__innerByName = args.innerByName;
+		__outerNames = Object.keys(args.innerByName);
+
+		const fakeFetch = vi.fn(async () => {
+			return new Response(new Uint8Array(8).buffer, {
+				status: 200,
+				headers: { 'content-type': 'application/octet-stream' }
+			});
+		}) as unknown as typeof fetch;
+
+		// Provide a URL so the loader doesn't short-circuit to null.
+		// `import.meta.env` is compile-time substituted by Vite, so a
+		// runtime assignment doesn't take; use vitest's stubEnv API.
+		vi.stubEnv('VITE_DATA_PACKAGE_URL', 'https://example.test/data.parquet');
+
+		const { loadDataPackage, resetDataPackageCacheForTests } = await import(
+			'$lib/data_package/loader'
+		);
+		resetDataPackageCacheForTests();
+		const map = await loadDataPackage(fakeFetch);
+		expect(map).not.toBeNull();
+		const keys = Array.from(map!.keys());
+
+		for (const k of args.expectedKeys) {
+			expect(keys, `missing expected key: ${k}\nactual: ${JSON.stringify(keys)}`).toContain(k);
+		}
+		for (const k of args.notExpectedKeys) {
+			expect(keys, `unexpected key present: ${k}\nactual: ${JSON.stringify(keys)}`).not.toContain(
+				k
+			);
+		}
+	}
+
+	it('emits the documented atlas-root envelope keys for schema_version atlas.v1', async () => {
+		await runAssertions({
+			innerByName: {
+				manifest: [
+					{
+						manifest_json: JSON.stringify({
+							schema_version: 'atlas.v1',
+							build_info: { state_key: 'atlas1234abcd' },
+							n_overlay_points: 2,
+							n_clusters: 3
+						})
+					}
+				],
+				clusters: [{ cluster_id: 0, title: 'C0' }],
+				neuroscape_backdrop_full: [{ pubmed_id: 100, cluster_id: 0 }],
+				neuroscape_backdrop_decimated: [{ pubmed_id: 100, cluster_id: 0 }],
+				ohbm_overlay: [{ submission_id: 1001, poster_id: 201 }],
+				cross_pointers: [
+					{ point_kind: 'ohbm2026', id: 201, permalink: '/ohbm2026/abstract/201/' }
+				]
+			},
+			expectedKeys: [
+				'data/manifest.json',
+				'data/atlas/clusters.json',
+				'data/atlas/backdrop_full.json',
+				'data/atlas/backdrop_decimated.json',
+				'data/atlas/ohbm_overlay.json',
+				'data/atlas/cross_pointers.json'
+			],
+			notExpectedKeys: [
+				'data/abstracts.json',
+				'data/enrichment.json',
+				'data/standby_slots.json'
+			]
+		});
+	});
+
+	it('emits the documented neuroscape envelope keys for schema_version neuroscape.v1', async () => {
+		await runAssertions({
+			innerByName: {
+				manifest: [
+					{
+						manifest_json: JSON.stringify({
+							schema_version: 'neuroscape.v1',
+							build_info: { state_key: 'ns0000000001' },
+							n_articles: 1,
+							n_clusters: 1
+						})
+					}
+				],
+				articles: [{ pubmed_id: 100, title: 'T', year: 2020, cluster_id: 0 }],
+				clusters: [{ cluster_id: 0, title: 'C0' }],
+				neighbors_neuroscape: [{ pubmed_id: 100, nearest_pubmed_ids: [101, 102] }]
+			},
+			expectedKeys: [
+				'data/manifest.json',
+				'data/neuroscape/articles.json',
+				'data/neuroscape/clusters.json',
+				'data/neuroscape/neighbors.json'
+			],
+			notExpectedKeys: ['data/abstracts.json', 'data/enrichment.json']
+		});
+	});
+
+	it('still emits the OHBM 2026 envelope when manifest has no schema_version (legacy abstracts.v2 path)', async () => {
+		await runAssertions({
+			innerByName: {
+				manifest: [
+					{
+						manifest_json: JSON.stringify({
+							build_info: { state_key: 'ohbm12345678' }
+						})
+					}
+				],
+				abstracts: [{ submission_id: 1001, poster_id: 201, title: 'OHBM' }],
+				authors: [{ author_id: 1, name: 'A' }]
+			},
+			expectedKeys: ['data/manifest.json', 'data/abstracts.json', 'data/authors.json'],
+			notExpectedKeys: ['data/atlas/clusters.json', 'data/neuroscape/articles.json']
+		});
+	});
+});

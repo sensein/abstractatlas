@@ -106,6 +106,13 @@ The latest end state of the project is:
 
 10. **Data export redesign** (`010-export-redesign`) — the data package switched from a gzipped tarball of JSON shards to a single Parquet file. Reasons: native STRUCT/LIST types eliminate every `range: Any` slot from the schema, dict-encoded int columns shrink id storage ~4× before zstd, and the single-file shape supports HTTP Range requests for future row-group lazy load. Schema change: `poster_id` (int16, range 1–3333) is the sole user-facing identifier across every shard — Oxford submission_id no longer appears in the export. The reverse map lives in `data/primary/abstracts.json` for traceability. Phase 5 (cross-conference linking) is deferred to a UI-side artifact so conference parquets stay immutable post-build.
 
+11. **Cross-conference atlas + NeuroScape PubMed subsite** (`015-neuroscape-context`) — three sibling deployments on one gh-pages host:
+    - **`/` (atlas-root)** — cross-conference landing page. NeuroScape PubMed backdrop coloured by cluster (175 communities) + OHBM 2026 abstracts overlaid via `umap.transform` into the same UMAP space. 2D scattergl + 3D scatter3d side-by-side, lasso on 2D fires `selectedpoints` highlighting + zooms the 3D camera to the bounding box of the lassoed points + narrows the result list inline.
+    - **`/ohbm2026/`** — unchanged from prior stages (FR-022 / SC-008 functional intact). Data-loader path renamed `data.parquet → ohbm2026.parquet`.
+    - **`/neuroscape/`** — new PubMed subsite. Browse home with title-only search across 461k articles + cluster + year facets; detail page at `/neuroscape/abstract/<pubmed_id>/` paints local fields (title, year, cluster, k-NN neighbours) immediately and fetches authors / journal / abstract body / DOI at view time from NCBI E-utilities EFetch (in-memory Promise cache + token-bucket rate limiter + retry-with-backoff + body-offline state with Retry button).
+
+    Three parquets back the three sites: `ohbm2026.parquet` (renamed from `data.parquet`, content-identical), `neuroscape.parquet` (full NeuroScape 1999–2023 corpus + cluster table + k=20 neighbours), `atlas.parquet` (scatter rows pointing into the two siblings by stable id; embeds sibling state-keys for cross-parquet drift detection). The new `ohbmcli build-atlas-package` orchestrator fits a deterministic UMAP on the NeuroScape Stage-2 vectors (seed=0, n_neighbors=30, min_dist=0.10, metric=cosine) and projects OHBM 2026 via `umap.transform`. Multi-mode build matrix lives in `.github/workflows/deploy-ui.yml` (one `pnpm build` per `SITE_MODE`). Root `/404.html` is a smart shim that bounces every deep-linked path to the right SPA shell via `?spa=<original>`; loop-safety prevents infinite redirects if a sibling subsite isn't deployed yet.
+
 ## Atlas UI
 
 The site lives under `site/` (a self-contained SvelteKit project; SvelteKit 2 + Vite 6 + Svelte 5). The data-package builder lives under `src/ohbm2026/ui_data/`. Capabilities: typo-tolerant lexical search, transformers.js-backed semantic search (MiniLM-L6 ONNX in a Web Worker against an int8-quantised corpus matrix), 2D + 3D UMAP with lasso + cluster colour-coding, interactive facets, cart + email-my-list, a guided tour (shepherd.js), and an About page whose external citations are HEAD-checked at build time (`link_check.py`). Every OHBM 2026 surface (home, About, abstract permalink) lives under the `/ohbm2026/` URL subpath so the same domain can later host other conferences without URL-space collision.
@@ -182,6 +189,40 @@ Optional, depending on which branch of the pipeline you run:
 - Voyage API access for Voyage embeddings
 - OpenAlex API key for authenticated reference matching
 
+### Stage 15 prerequisites (`ohbmcli build-atlas-package`)
+
+Stage 15 (spec `015-neuroscape-context`) builds the cross-conference
+atlas landing page and the new `/neuroscape/` subsite. Operators
+running `ohbmcli build-atlas-package` need the NeuroScape v1.0.1
+release on disk under `data/inputs/neuroscape-source/v101/` with this
+layout (gitignored):
+
+```text
+data/inputs/neuroscape-source/v101/
+└── Data/
+    ├── CSV/
+    │   ├── neuroscience_articles_1999-2023.csv   # one row per article: pmid, title, abstract, year, cluster_id, journal, doi, …
+    │   ├── neuroscience_clusters_1999-2023.csv   # cluster_id → title, description, keywords, focus, …
+    │   └── neuroscience_dimensions_1999-2023.csv # dimension axis labels (optional)
+    ├── HDF5/
+    │   ├── DomainEmbeddings/                     # 2307 `shard_*.h5` files — Stage-2 vectors (64-dim, ~200 articles/shard)
+    │   └── VoyageAIEmbeddings/                   # Stage-1 vectors (Voyage 1024-dim; not used by Stage-15 pipeline)
+    └── Models/
+        ├── domain_embedding_model.pth            # NeuroScape Stage-2 model checkpoint (sha 8a8e6931…)
+        └── discipline_classification_model.pth   # not used by Stage-15 pipeline
+```
+
+Scale: 461,316 articles across 175 clusters (the upstream clusters
+CSV holds 2,632 entries but only 175 are used at the top level — the
+Stage-15 orchestrator filters to clusters that appear in the articles
+CSV's `Cluster ID` column, mirroring the convention already used by
+`scripts/derive_neuroscape_centroids.py`).
+
+See [specs/015-neuroscape-context/quickstart.md](specs/015-neuroscape-context/quickstart.md)
+for the full operator runbook (download + rebuild + upload + deploy).
+The release is published on Zenodo; the orchestrator does not
+redistribute it.
+
 ## Environment Variables
 
 Create `.env` from [.env.sample](.env.sample).
@@ -200,6 +241,12 @@ Common keys:
   - optional but recommended for reference enrichment
 - `HF_TOKEN`
   - optional for Hugging Face model downloads
+- `NCBI_API_KEY`
+  - optional. Used by `ohbmcli build-atlas-package`'s link-check pass (validates a small set of PubMed + DOI URLs that the atlas-root page exposes). Provider rate limit only — NOT a write-access token.
+- `VITE_NCBI_API_KEY`
+  - optional. Baked into the `/neuroscape/` SvelteKit bundle at build time. Raises the runtime PubMed body-fetch rate limit on `/neuroscape/abstract/<pubmed_id>/` from 3 req/s (anon) to 10 req/s.
+- `VITE_DATA_PACKAGE_URL_OHBM2026` / `VITE_DATA_PACKAGE_URL_NEUROSCAPE` / `VITE_DATA_PACKAGE_URL_ATLAS`
+  - parquet URLs threaded through the deploy workflows to each `SITE_MODE` build. Repo variable equivalents are `OHBM2026_UI_DATA_PACKAGE_URL_OHBM2026` etc. The legacy single `VITE_DATA_PACKAGE_URL` is honoured by `loader.ts` as a one-cycle fallback during the spec-015 transition.
 
 No API key is needed for local Ollama figure analysis.
 

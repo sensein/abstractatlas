@@ -1,10 +1,40 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { selectedCell, lassoSelection, focusedAbstract } from '$lib/stores/selection';
 	import { effectiveTheme } from '$lib/stores/theme';
 	import { loadCell, loadTopics, type CellShard, type TopicShard } from '$lib/shards';
 	import type { AbstractRecord } from '$lib/shards';
 
+	/**
+	 * Stage 15 — unified UMAP panel. Drives all three subsites:
+	 *
+	 *   - `mode='ohbm'` (default; existing behaviour) — renders the
+	 *     OHBM 2026 home page's per-community scatter from
+	 *     `cell_shard` + `abstracts`. Lasso writes to
+	 *     `$lassoSelection`; click writes to `$focusedAbstract`.
+	 *     Per-community marker symbols cycle through 5 shapes ×
+	 *     Tol-bright colour palette.
+	 *   - `mode='atlas' | 'neuroscape'` (Stage 15 new) — renders a
+	 *     simpler two-trace scatter from `backdropPoints` +
+	 *     `overlayPoints` + `clusters`. Cluster count is usually too
+	 *     large (~175) for shape variation to read, so per-point
+	 *     symbol cycling is gated by `shapeVariation`:
+	 *       - 'auto'        → shape if `clusters.length ≤ 7`
+	 *       - 'color-only'  → no symbol cycling (default for atlas)
+	 *       - 'color+shape' → force shape cycling
+	 *     Atlas mode dispatches `pointclick`, `lassoselect`,
+	 *     `lassoclear` events instead of writing to the OHBM stores;
+	 *     the parent decides whether to open a detail panel or
+	 *     navigate.
+	 *
+	 *  Common across all modes: 2D + 3D side-by-side; pause/rotate
+	 *  with camera-preserved-across-toggle (`currentEye3D` tracked
+	 *  via `plotly_relayout` listener); mobile-responsive stacked
+	 *  layout; theme-aware colours.
+	 */
+	export let mode: 'ohbm' | 'atlas' | 'neuroscape' = 'ohbm';
+
+	// === OHBM mode props (existing) ========================================
 	export let abstracts: AbstractRecord[] = [];
 	/**
 	 * Set of poster_ids the rest of the app considers "currently selected"
@@ -21,7 +51,73 @@
 	 */
 	export let mobileBreakpoint = 1024;
 
-	type PlotlyApi = typeof import('plotly.js-gl3d-dist-min');
+	// === Atlas/neuroscape mode props (Stage 15 new) =========================
+	type BackdropPoint = {
+		pubmed_id: number;
+		title: string;
+		year: number;
+		cluster_id: number;
+		umap_2d?: [number, number];
+		umap_3d: [number, number, number];
+	};
+	type OverlayPoint = {
+		submission_id: number;
+		poster_id: number;
+		title: string;
+		nearest_cluster_id: number;
+		umap_2d?: [number, number];
+		umap_3d: [number, number, number];
+	};
+	type AtlasCluster = {
+		cluster_id: number;
+		title: string;
+		colour_hex: string;
+	};
+
+	export let backdropPoints: BackdropPoint[] = [];
+	export let overlayPoints: OverlayPoint[] = [];
+	export let atlasClusters: AtlasCluster[] = [];
+	export let showOverlay = true;
+	export let backdropOpacity = 0.05;
+	/** Symbol cycling policy for the new atlas/neuroscape modes. */
+	export let shapeVariation: 'auto' | 'color-only' | 'color+shape' = 'auto';
+	/**
+	 * Lasso highlight sets (atlas / neuroscape mode). When non-empty,
+	 * the 2D scattergl traces set `selectedpoints` + dim the
+	 * unselected via Plotly's selected/unselected marker styles, AND
+	 * the 3D scene zooms to the bounding box of the selected points.
+	 *
+	 * The parent owns the sets (so the result list can filter to the
+	 * lasso simultaneously); the panel reads them and updates the
+	 * scatter visuals.
+	 */
+	export let lassoOhbmSet: Set<number> = new Set();
+	export let lassoNeuroSet: Set<number> = new Set();
+	/** Focus halo — when the inline detail panel is open on atlas-root
+	 *  / neuroscape, the parent passes the selected point's kind + id
+	 *  so the chart can render a bigger outlined marker at the
+	 *  matching point's coordinates. Without this, "Show on atlas"
+	 *  navigates from the abstract permalink to the home but the
+	 *  visitor has no visual hint of WHICH dot they were looking at.
+	 */
+	export let atlasFocusKind: 'ohbm2026' | 'neuroscape' | null = null;
+	export let atlasFocusId: number | null = null;
+
+	const dispatch = createEventDispatcher<{
+		pointclick: { kind: 'ohbm2026' | 'neuroscape'; id: number };
+		lassoselect: { ohbm2026_ids: number[]; neuroscape_ids: number[] };
+		lassoclear: void;
+	}>();
+
+	$: clustersById = new Map(atlasClusters.map((c) => [c.cluster_id, c]));
+	$: useAtlasShapes = (() => {
+		if (shapeVariation === 'color-only') return false;
+		if (shapeVariation === 'color+shape') return true;
+		// 'auto': shape only if we have few enough clusters.
+		return atlasClusters.length > 0 && atlasClusters.length <= 7;
+	})();
+
+	type PlotlyApi = typeof import('plotly.js-dist-min');
 
 	let plotly: PlotlyApi | null = null;
 	let plotlyLoading = false;
@@ -66,27 +162,127 @@
 		}
 	}
 
+	// Pause/resume rotation tied to tab visibility + page hide. The
+	// browser bfcache can leave the page suspended for a long time —
+	// when it returns, any rAF callbacks scheduled before suspension
+	// fire immediately + can pile onto a fresh ensureRotate from the
+	// remount. These listeners stop the loop deterministically.
+	//
+	// pagehide additionally purges the Plotly charts so their WebGL
+	// contexts release the GPU. Why: cross-deployment sibling
+	// navigation (e.g. /neuroscape/ → /ohbm2026/) bfcaches the prior
+	// page; without purge the suspended page keeps its WebGL contexts
+	// allocated, contending with the new page's charts (browsers cap
+	// at ~16 contexts/origin) and producing visible lag on the new
+	// page. We re-render on pageshow if the page is bfcache-restored.
+	let renderToken = 0;
+	/**
+	 * Force-release a Plotly chart's WebGL context. `Plotly.purge`
+	 * alone doesn't always destroy the underlying gl-vis canvas
+	 * (plotly.js#2852, #6365): the canvas element survives in the
+	 * div, holding its WebGL context open. Browsers cap origin-wide
+	 * GL contexts (~16 in Chrome), so toggling hide/show on the
+	 * 461k-point scatter3d a few times exhausts the pool. Explicitly
+	 * iterating canvas children + calling `loseContext()` releases
+	 * the context immediately; then clearing innerHTML wipes any
+	 * remaining DOM bookkeeping Plotly held.
+	 */
+	function destroyChart(el: HTMLDivElement | null) {
+		if (!el) return;
+		if (plotly) plotly.purge(el);
+		// Iterate ALL canvases (Plotly creates several — 2D scattergl
+		// uses one, scatter3d uses one + an HUD canvas).
+		for (const canvas of Array.from(el.querySelectorAll('canvas'))) {
+			const gl =
+				(canvas as HTMLCanvasElement).getContext?.('webgl2') ??
+				(canvas as HTMLCanvasElement).getContext?.('webgl');
+			const lc = gl?.getExtension?.('WEBGL_lose_context');
+			lc?.loseContext?.();
+		}
+		el.innerHTML = '';
+	}
+	function purgeCharts() {
+		destroyChart(chart2dEl);
+		destroyChart(chart3dEl);
+		handlers2dAttached = false;
+		handlers3dAttached = false;
+		atlas2dHandlersAttached = false;
+		atlas3dHandlersAttached = false;
+		chart3dInitialized = false;
+		// Reset the focus tracker so the next render after a bfcache
+		// restore or Hide/Show cycle re-applies the zoom-to-focus
+		// range (the chart's prior range was wiped along with the
+		// rest of its state).
+		last2dFocusKey = '';
+		last2dUirev = 'atlas-2d';
+		current2dXSpan = 0;
+		current2dXRange = null;
+		current2dYRange = null;
+		// Drop the 2D array cache so post-bfcache restore renders
+		// build fresh references that match the (purged-then-reborn)
+		// chart's internal data buffers. Stale cached arrays could
+		// otherwise cause Plotly's identity comparison to short-
+		// circuit the rebuild it actually needs.
+		cached2dBackdropArrays = null;
+		cached2dBackdropKey = '';
+		cached2dOverlayArrays = null;
+		cached2dOverlayKey = '';
+	}
+	function onVisibilityChange() {
+		if (typeof document === 'undefined') return;
+		if (document.visibilityState === 'hidden') {
+			stopRotate();
+		} else if (autoRotate) {
+			ensureRotate();
+		}
+	}
+	function onPageHide() {
+		stopRotate();
+		purgeCharts();
+	}
+	function onPageShow(ev: PageTransitionEvent) {
+		if (!ev.persisted) return;
+		// bfcache restore. Belt-and-braces reset before re-render:
+		// pagehide should have purged the charts already, but a race
+		// can leave latent rAF callbacks or stale `currentEye3D` /
+		// `rotateAngle` that produce a visible camera jolt on the
+		// next ensureRotate tick. Re-purge + reset the rotation state
+		// so the chart inits from a clean slate. The parquet itself
+		// is held in the Cache API (see `data_package/cache.ts`), so
+		// the re-render reads from cache — no network hit.
+		stopRotate();
+		purgeCharts();
+		rotateAngle = 0;
+		currentEye3D = null;
+		renderToken += 1;
+	}
+
 	onMount(async () => {
 		window.addEventListener('resize', onResize);
+		document.addEventListener('visibilitychange', onVisibilityChange);
+		window.addEventListener('pagehide', onPageHide);
+		window.addEventListener('pageshow', onPageShow);
 		await ensurePlotly();
 	});
 
 	onDestroy(() => {
 		if (typeof window !== 'undefined') {
 			window.removeEventListener('resize', onResize);
+			window.removeEventListener('pagehide', onPageHide);
+			window.removeEventListener('pageshow', onPageShow);
+		}
+		if (typeof document !== 'undefined') {
+			document.removeEventListener('visibilitychange', onVisibilityChange);
 		}
 		stopRotate();
-		if (plotly) {
-			if (chart2dEl) plotly.purge(chart2dEl);
-			if (chart3dEl) plotly.purge(chart3dEl);
-		}
+		purgeCharts();
 	});
 
 	async function ensurePlotly() {
 		if (plotly || plotlyLoading) return;
 		plotlyLoading = true;
 		try {
-			plotly = (await import('plotly.js-gl3d-dist-min')).default as PlotlyApi;
+			plotly = (await import('plotly.js-dist-min')).default as PlotlyApi;
 		} catch (err) {
 			plotlyError = (err as Error).message;
 		} finally {
@@ -95,6 +291,9 @@
 	}
 
 	$: void (async () => {
+		// Cell-shard load only runs in OHBM mode — atlas/neuroscape get
+		// their cluster geometry from the `atlasClusters` prop.
+		if (mode !== 'ohbm') return;
 		const key = cellKey;
 		cellLoading = true;
 		cellError = null;
@@ -128,8 +327,92 @@
 		const rec = abstracts.find((a) => a.poster_id === $focusedAbstract);
 		return rec ? rec.poster_id : null;
 	})();
-	$: void renderChart2D(plotly, chart2dEl, cellShard, abstracts, selection, mobile, theme, topicByCluster, focusedAbstractId);
-	$: void renderChart3D(plotly, chart3dEl, cellShard, abstracts, selection, theme, topicByCluster, focusedAbstractId);
+	$: if (mode === 'ohbm') {
+		// renderToken is a tracked dep so bfcache-restore (which purges
+		// the charts) re-fires this block from onPageShow.
+		void renderToken;
+		void renderChart2D(
+			plotly,
+			chart2dEl,
+			cellShard,
+			abstracts,
+			selection,
+			mobile,
+			theme,
+			topicByCluster,
+			focusedAbstractId
+		);
+		void renderChart3D(
+			plotly,
+			chart3dEl,
+			cellShard,
+			abstracts,
+			selection,
+			theme,
+			topicByCluster,
+			focusedAbstractId
+		);
+	} else {
+		// Atlas / neuroscape mode — 2D render. Tracks lasso state so
+		// scattergl's native `selectedpoints` + selected/unselected
+		// marker opacity update on every lasso change. The 3D render
+		// is split into a SEPARATE reactive block below (intentionally
+		// not lasso-aware at this point-count). See that block for
+		// the rationale.
+		void renderToken;
+		void renderAtlasChart2D(
+			plotly,
+			chart2dEl,
+			backdropPoints,
+			overlayPoints,
+			clustersById,
+			showOverlay,
+			backdropOpacity,
+			useAtlasShapes,
+			lassoOhbmSet,
+			lassoNeuroSet,
+			atlasFocusKind,
+			atlasFocusId,
+			theme
+		);
+	}
+
+	// Atlas / neuroscape 3D render — INTENTIONALLY lasso-agnostic at
+	// this point-count (461k backdrop + 3,240 overlay). Mirroring the
+	// 2D lasso here would require a dual-trace selected/unselected
+	// split (scatter3d ignores `selectedpoints`) and the per-cycle
+	// `Plotly.react` rebuild leaks ~620 MB / cycle via plotly.js#6365
+	// (WebGL contexts not destroyed when trace count changes).
+	//
+	// Single-clicked points still get the magenta focus halo via
+	// `atlasFocusKind` + `atlasFocusId` — the per-single-point
+	// highlight stays cheap (one extra trace, one point). "See this
+	// lassoed point in 3D" works by clicking any result in the
+	// narrowed list → focus halo + detail panel.
+	//
+	// OHBM mode (renderChart3D, above) is unaffected — its per-
+	// community scatter is ~3k points total, well below where the
+	// leak matters, so its existing selection mirror keeps working.
+	//
+	// Separate reactive block so Svelte's dep tracker does NOT pick
+	// up `lassoOhbmSet` / `lassoNeuroSet` here. The 3D render fires
+	// only on data, theme, overlay-toggle, opacity, or focus changes.
+	$: if (mode !== 'ohbm') {
+		void renderToken;
+		void renderAtlasChart3D(
+			plotly,
+			chart3dEl,
+			backdropPoints,
+			overlayPoints,
+			clustersById,
+			showOverlay,
+			backdropOpacity,
+			useAtlasShapes,
+			atlasFocusKind,
+			atlasFocusId,
+			theme
+		);
+	}
 
 	// Paul Tol's "bright" qualitative palette — high-contrast, deuteranopia /
 	// protanopia / tritanopia safe. Communities are CATEGORICAL (the integer
@@ -386,6 +669,898 @@
 			});
 	}
 
+	// ========================================================================
+	// Atlas / NeuroScape mode renderers (Stage 15).
+	//
+	// Two traces per pane: backdrop (cluster-coloured, low opacity for the
+	// dense 461k-point case) + overlay (cluster-coloured, larger outlined
+	// marker, full opacity). 2D pane uses scattergl + dragmode='lasso';
+	// 3D pane uses scatter3d. Customdata = {kind, id}.
+	// ========================================================================
+
+	const ATLAS_SHAPES_2D = ['circle', 'diamond', 'square', 'triangle-up', 'cross'];
+	const ATLAS_SHAPES_3D = ['circle', 'diamond', 'square', 'cross', 'x'];
+	function atlasShape2D(communityId: number): string {
+		const i = ((communityId % ATLAS_SHAPES_2D.length) + ATLAS_SHAPES_2D.length) % ATLAS_SHAPES_2D.length;
+		return ATLAS_SHAPES_2D[i];
+	}
+	function atlasShape3D(communityId: number): string {
+		const i = ((communityId % ATLAS_SHAPES_3D.length) + ATLAS_SHAPES_3D.length) % ATLAS_SHAPES_3D.length;
+		return ATLAS_SHAPES_3D[i];
+	}
+
+	function atlasEscape(s: string): string {
+		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	}
+
+	function buildAtlasBackdropTrace(
+		points: BackdropPoint[],
+		clusters: Map<number, AtlasCluster>,
+		opacity: number,
+		useShapes: boolean,
+		is3d: boolean,
+		lassoSet: Set<number>
+	) {
+		const x = points.map((p) => (is3d ? p.umap_3d[0] : (p.umap_2d ?? [0, 0])[0]));
+		const y = points.map((p) => (is3d ? p.umap_3d[1] : (p.umap_2d ?? [0, 0])[1]));
+		// `selectedpoints` is the canonical Plotly mechanism for "these
+		// indices are selected" — combined with `selected.marker` +
+		// `unselected.marker` it dims the un-lassoed and pops the
+		// lassoed. Only set when the lasso is active; when empty,
+		// Plotly defaults to "everything at full opacity".
+		const selectedIdx: number[] = [];
+		if (lassoSet.size > 0) {
+			for (let i = 0; i < points.length; i++) {
+				if (lassoSet.has(points[i].pubmed_id)) selectedIdx.push(i);
+			}
+		}
+		const colours = points.map((p) => clusters.get(p.cluster_id)?.colour_hex ?? '#9c9c9c');
+		const hoverText = points.map(
+			(p) =>
+				`<b>${atlasEscape(p.title)}</b><br>${p.year} · ${atlasEscape(
+					clusters.get(p.cluster_id)?.title ?? `Cluster ${p.cluster_id}`
+				)}`
+		);
+		const customdata = points.map((p) => ({ kind: 'neuroscape', id: p.pubmed_id }));
+		const symbol = useShapes ? points.map((p) => atlasShape2D(p.cluster_id)) : undefined;
+		// In 2D lasso mode the unselected backdrop stays VISIBLE so
+		// the cluster carpet remains readable as context for where
+		// the selection sits inside the corpus. Bump from
+		// `Math.max(opacity * 2, 0.10)` to `Math.max(opacity * 4,
+		// 0.20)`: with the default 0.05 backdrop opacity that's
+		// 0.20 unselected (was 0.10), enough that cluster colours
+		// are recognisable while still leaving the selected points
+		// pop visually distinct at opacity 1.0.
+		const selectedConfig = selectedIdx.length
+			? {
+					selectedpoints: selectedIdx,
+					selected: { marker: { opacity: 1 } },
+					unselected: { marker: { opacity: Math.max(opacity * 4, 0.2) } }
+			  }
+			: {};
+		if (is3d) {
+			return {
+				type: 'scatter3d' as const,
+				mode: 'markers' as const,
+				x,
+				y,
+				z: points.map((p) => p.umap_3d[2]),
+				name: 'NeuroScape backdrop',
+				marker: {
+					size: 2,
+					color: colours,
+					opacity,
+					line: { width: 0 },
+					...(useShapes ? { symbol: points.map((p) => atlasShape3D(p.cluster_id)) } : {})
+				},
+				hovertemplate: '%{text}<extra></extra>',
+				text: hoverText,
+				showlegend: false,
+				customdata,
+				...selectedConfig
+			};
+		}
+		return {
+			type: 'scattergl' as const,
+			mode: 'markers' as const,
+			x,
+			y,
+			name: 'NeuroScape backdrop',
+			marker: { size: 3, color: colours, opacity, line: { width: 0 }, ...(symbol ? { symbol } : {}) },
+			hovertemplate: '%{text}<extra></extra>',
+			text: hoverText,
+			showlegend: false,
+			customdata,
+			...selectedConfig
+		};
+	}
+
+	function buildAtlasOverlayTrace(
+		points: OverlayPoint[],
+		clusters: Map<number, AtlasCluster>,
+		visible: boolean,
+		useShapes: boolean,
+		is3d: boolean,
+		lassoSet: Set<number>
+	) {
+		if (points.length === 0) return null;
+		const x = points.map((p) => (is3d ? p.umap_3d[0] : (p.umap_2d ?? [0, 0])[0]));
+		const y = points.map((p) => (is3d ? p.umap_3d[1] : (p.umap_2d ?? [0, 0])[1]));
+		const selectedIdx: number[] = [];
+		if (lassoSet.size > 0) {
+			for (let i = 0; i < points.length; i++) {
+				if (lassoSet.has(points[i].poster_id)) selectedIdx.push(i);
+			}
+		}
+		// 2D overlay: unselected stays visible (0.25) so the user
+		// sees where the non-lassoed OHBM overlay points are; selected
+		// at full opacity pops against them.
+		const selectedConfig = selectedIdx.length
+			? {
+					selectedpoints: selectedIdx,
+					selected: { marker: { opacity: 1 } },
+					unselected: { marker: { opacity: 0.25 } }
+			  }
+			: {};
+		const colours = points.map(
+			(p) => clusters.get(p.nearest_cluster_id)?.colour_hex ?? '#1f77b4'
+		);
+		const hoverText = points.map(
+			(p) =>
+				`<b>${atlasEscape(p.title)}</b><br>OHBM 2026 poster #${p.poster_id} · near ${atlasEscape(
+					clusters.get(p.nearest_cluster_id)?.title ?? `Cluster ${p.nearest_cluster_id}`
+				)}`
+		);
+		const customdata = points.map((p) => ({ kind: 'ohbm2026', id: p.poster_id }));
+		if (is3d) {
+			return {
+				type: 'scatter3d' as const,
+				mode: 'markers' as const,
+				x,
+				y,
+				z: points.map((p) => p.umap_3d[2]),
+				name: 'OHBM 2026 overlay',
+				visible,
+				marker: {
+					size: 3,
+					color: colours,
+					opacity: 1.0,
+					line: { color: '#111111', width: 1.5 },
+					...(useShapes ? { symbol: points.map((p) => atlasShape3D(p.nearest_cluster_id)) } : {})
+				},
+				hovertemplate: '%{text}<extra></extra>',
+				text: hoverText,
+				showlegend: false,
+				customdata,
+				...selectedConfig
+			};
+		}
+		return {
+			type: 'scattergl' as const,
+			mode: 'markers' as const,
+			x,
+			y,
+			name: 'OHBM 2026 overlay',
+			visible,
+			marker: {
+				size: 5,
+				color: colours,
+				opacity: 1.0,
+				line: { color: '#111111', width: 1.5 },
+				...(useShapes ? { symbol: points.map((p) => atlasShape2D(p.nearest_cluster_id)) } : {})
+			},
+			hovertemplate: '%{text}<extra></extra>',
+			text: hoverText,
+			showlegend: false,
+			customdata,
+			...selectedConfig
+		};
+	}
+
+	let atlas2dHandlersAttached = false;
+	let atlas3dHandlersAttached = false;
+
+	// Track the last focused (kind, id) the 2D chart zoomed to.
+	// Only triggers a fresh `Plotly.relayout({ xaxis.range, yaxis.range,
+	// uirevision: ... })` when the focus actually changes; subsequent
+	// renders with the SAME focus don't re-zoom (which would override
+	// the user's manual zoom out / pan).
+	let last2dFocusKey = '';
+	// Sticky uirevision for the 2D atlas chart. Only bumps when we
+	// auto-snap to a focus point; otherwise reused across renders so
+	// the user's manual pan/zoom survives close-detail / theme / data
+	// changes.
+	let last2dUirev = 'atlas-2d';
+
+	// Zoom-aware backdrop opacity. The 2D scattergl renders the full
+	// 461k-point backdrop at a low scalar opacity (~0.05) so the
+	// cluster carpet shows through without saturating. As the user
+	// zooms in, points-per-pixel drops and at high zoom the dots
+	// become almost invisible against the page background. The
+	// plotly_relayout handler below catches every axis-range change
+	// and rescales `marker.opacity` on the backdrop trace (index 0
+	// in renderAtlasChart2D) inversely to the visible x-range. The
+	// `data2dFullSpan` cache is the corpus' full x-extent, computed
+	// once when the parquet finishes loading.
+	let data2dFullSpan = 0;
+	// Live x-span + actual x/y ranges of the 2D chart's current
+	// viewport. Updated by the `plotly_relayout` handler on every
+	// pan / zoom / autorange change. The span drives the focus-zoom
+	// decision (snap or stay); the explicit ranges get replayed into
+	// subsequent renders' layouts so a fresh `Plotly.react` call
+	// after a non-snap (e.g. clicking another point at the same
+	// zoom) doesn't reset to autorange.
+	let current2dXSpan = 0;
+	let current2dXRange: [number, number] | null = null;
+	let current2dYRange: [number, number] | null = null;
+	// Re-cache the full x-span whenever the backdrop dataset arrives
+	// or changes (parquet load, mode swap). Cheap one-pass scan.
+	$: data2dFullSpan = computeAtlasFullSpan(backdropPoints);
+	function computeAtlasFullSpan(points: BackdropPoint[]): number {
+		if (points.length === 0) return 0;
+		let xmin = Infinity;
+		let xmax = -Infinity;
+		for (const p of points) {
+			const x = (p.umap_2d ?? [0, 0])[0];
+			if (x < xmin) xmin = x;
+			if (x > xmax) xmax = x;
+		}
+		const span = xmax - xmin;
+		return Number.isFinite(span) && span > 0 ? span : 0;
+	}
+	function applyAtlasZoomOpacity(
+		api: PlotlyApi,
+		el: HTMLDivElement,
+		baseOpacity: number,
+		currentSpan: number
+	) {
+		if (data2dFullSpan <= 0 || currentSpan <= 0) return;
+		// Linear zoom factor (fullSpan / currentSpan); clamped to a
+		// minimum of 1 so zooming OUT never goes below the base
+		// opacity. Top opacity capped at 0.85 so the points still
+		// read as a cloud, not a solid line, at extreme zoom.
+		const zoomFactor = Math.max(1, data2dFullSpan / currentSpan);
+		const op = Math.min(0.85, baseOpacity * zoomFactor);
+		void (
+			api as unknown as {
+				restyle: (e: HTMLDivElement, u: Record<string, unknown[]>, idx: number[]) => Promise<unknown>;
+			}
+		).restyle(el, { 'marker.opacity': [op] }, [0]);
+	}
+
+	/**
+	 * Per-render 2D trace-array cache. Without it, every lasso state
+	 * change in `renderAtlasChart2D` rebuilds the same 461k-point
+	 * arrays (x, y, colours, hoverText, customdata, optional symbol)
+	 * from scratch — the lasso-cycle heap probe measured this as the
+	 * residual ~300 MB / cycle growth after the 3D mirror was
+	 * removed. The cache key is the (pointsRef, useShapes, theme,
+	 * is3d) tuple; cluster-colour changes invalidate via the theme
+	 * key (light/dark) — they shouldn't change at runtime otherwise.
+	 *
+	 * Plotly.react reads the array references; passing the SAME
+	 * reference across renders lets it skip the internal data-buffer
+	 * rebuild. Lasso state changes only flip `selectedpoints` +
+	 * `selected/unselected.marker.opacity` — orders of magnitude
+	 * less per-render allocation.
+	 */
+	type Atlas2dArrayCache = {
+		x: number[];
+		y: number[];
+		colours: string[];
+		hoverText: string[];
+		customdata: Array<{ kind: string; id: number }>;
+		symbol?: string[];
+	};
+	let cached2dBackdropArrays: Atlas2dArrayCache | null = null;
+	let cached2dBackdropKey = '';
+	let cached2dOverlayArrays: Atlas2dArrayCache | null = null;
+	let cached2dOverlayKey = '';
+	function atlas2dArrayKey(
+		pointsLength: number,
+		useShapes: boolean,
+		theme: string
+	): string {
+		// `pointsLength` is a stand-in for "data-ref identity" — the
+		// parent rebuilds the array when the parquet finishes loading
+		// (one-time) or on a state-key change. If the user toggles
+		// theme or useShapes we rebuild; otherwise the cache wins.
+		return `${pointsLength}|${useShapes}|${theme}`;
+	}
+	function getAtlasBackdropArrays(
+		points: BackdropPoint[],
+		clusters: Map<number, AtlasCluster>,
+		useShapes: boolean,
+		theme: string
+	): Atlas2dArrayCache {
+		const key = atlas2dArrayKey(points.length, useShapes, theme);
+		if (cached2dBackdropArrays && cached2dBackdropKey === key) {
+			return cached2dBackdropArrays;
+		}
+		cached2dBackdropArrays = {
+			x: points.map((p) => (p.umap_2d ?? [0, 0])[0]),
+			y: points.map((p) => (p.umap_2d ?? [0, 0])[1]),
+			colours: points.map((p) => clusters.get(p.cluster_id)?.colour_hex ?? '#9c9c9c'),
+			hoverText: points.map(
+				(p) =>
+					`<b>${atlasEscape(p.title)}</b><br>${p.year} · ${atlasEscape(
+						clusters.get(p.cluster_id)?.title ?? `Cluster ${p.cluster_id}`
+					)}`
+			),
+			customdata: points.map((p) => ({ kind: 'neuroscape', id: p.pubmed_id })),
+			symbol: useShapes ? points.map((p) => atlasShape2D(p.cluster_id)) : undefined
+		};
+		cached2dBackdropKey = key;
+		return cached2dBackdropArrays;
+	}
+	function getAtlasOverlayArrays(
+		points: OverlayPoint[],
+		clusters: Map<number, AtlasCluster>,
+		useShapes: boolean,
+		theme: string
+	): Atlas2dArrayCache {
+		const key = atlas2dArrayKey(points.length, useShapes, theme);
+		if (cached2dOverlayArrays && cached2dOverlayKey === key) {
+			return cached2dOverlayArrays;
+		}
+		cached2dOverlayArrays = {
+			x: points.map((p) => (p.umap_2d ?? [0, 0])[0]),
+			y: points.map((p) => (p.umap_2d ?? [0, 0])[1]),
+			colours: points.map(
+				(p) => clusters.get(p.nearest_cluster_id)?.colour_hex ?? '#1f77b4'
+			),
+			hoverText: points.map(
+				(p) =>
+					`<b>${atlasEscape(p.title)}</b><br>OHBM 2026 poster #${p.poster_id} · near ${atlasEscape(
+						clusters.get(p.nearest_cluster_id)?.title ?? `Cluster ${p.nearest_cluster_id}`
+					)}`
+			),
+			customdata: points.map((p) => ({ kind: 'ohbm2026', id: p.poster_id })),
+			symbol: useShapes
+				? points.map((p) => atlasShape2D(p.nearest_cluster_id))
+				: undefined
+		};
+		cached2dOverlayKey = key;
+		return cached2dOverlayArrays;
+	}
+
+	/**
+	 * Find a focused point's coordinates so the chart can render a
+	 * halo trace at its position. Searches the overlay first (OHBM
+	 * markers are larger + the more likely focus target on
+	 * atlas-root), then the backdrop. Returns null if the id isn't
+	 * in either set or the focus is unset.
+	 */
+	function atlasFocusCoords(
+		focusKind: 'ohbm2026' | 'neuroscape' | null,
+		focusId: number | null,
+		backdrop: BackdropPoint[],
+		overlay: OverlayPoint[],
+		is3d: boolean
+	): { x: number; y: number; z?: number } | null {
+		if (!focusKind || focusId === null) return null;
+		if (focusKind === 'ohbm2026') {
+			for (const p of overlay) {
+				if (p.poster_id !== focusId) continue;
+				return is3d
+					? { x: p.umap_3d[0], y: p.umap_3d[1], z: p.umap_3d[2] }
+					: { x: (p.umap_2d ?? [0, 0])[0], y: (p.umap_2d ?? [0, 0])[1] };
+			}
+		} else {
+			for (const p of backdrop) {
+				if (p.pubmed_id !== focusId) continue;
+				return is3d
+					? { x: p.umap_3d[0], y: p.umap_3d[1], z: p.umap_3d[2] }
+					: { x: (p.umap_2d ?? [0, 0])[0], y: (p.umap_2d ?? [0, 0])[1] };
+			}
+		}
+		return null;
+	}
+
+	function renderAtlasChart2D(
+		api: PlotlyApi | null,
+		el: HTMLDivElement | null,
+		backdrop: BackdropPoint[],
+		overlay: OverlayPoint[],
+		clusters: Map<number, AtlasCluster>,
+		showOverlayTrace: boolean,
+		opacity: number,
+		useShapes: boolean,
+		ohbmLassoSet: Set<number>,
+		neuroLassoSet: Set<number>,
+		focusKind: 'ohbm2026' | 'neuroscape' | null,
+		focusId: number | null,
+		t: 'light' | 'dark'
+	) {
+		if (!api || !el) return;
+		const c = themedColors(t);
+
+		// Pull the 461k-point arrays from the cache instead of
+		// rebuilding them every lasso adjustment. Cache invalidates on
+		// data-ref / shapes / theme change; lasso changes don't touch
+		// it. The `selectedpoints` + selected/unselected opacity
+		// configs are still computed fresh per render — they're tiny
+		// (just an indices array up to lasso size).
+		const bdr = getAtlasBackdropArrays(backdrop, clusters, useShapes, t);
+		const ovr = getAtlasOverlayArrays(overlay, clusters, useShapes, t);
+
+		const backdropSelectedIdx: number[] = [];
+		if (neuroLassoSet.size > 0) {
+			for (let i = 0; i < backdrop.length; i++) {
+				if (neuroLassoSet.has(backdrop[i].pubmed_id)) backdropSelectedIdx.push(i);
+			}
+		}
+		const backdropSelectedConfig = backdropSelectedIdx.length
+			? {
+					selectedpoints: backdropSelectedIdx,
+					selected: { marker: { opacity: 1 } },
+					unselected: { marker: { opacity: Math.max(opacity * 4, 0.2) } }
+			  }
+			: {};
+		const backdropTrace: Record<string, unknown> = {
+			type: 'scattergl' as const,
+			mode: 'markers' as const,
+			x: bdr.x,
+			y: bdr.y,
+			name: 'NeuroScape backdrop',
+			marker: {
+				size: 3,
+				color: bdr.colours,
+				opacity,
+				line: { width: 0 },
+				...(bdr.symbol ? { symbol: bdr.symbol } : {})
+			},
+			hovertemplate: '%{text}<extra></extra>',
+			text: bdr.hoverText,
+			showlegend: false,
+			customdata: bdr.customdata,
+			...backdropSelectedConfig
+		};
+		const traces: unknown[] = [backdropTrace];
+
+		if (overlay.length > 0) {
+			const overlaySelectedIdx: number[] = [];
+			if (ohbmLassoSet.size > 0) {
+				for (let i = 0; i < overlay.length; i++) {
+					if (ohbmLassoSet.has(overlay[i].poster_id)) overlaySelectedIdx.push(i);
+				}
+			}
+			const overlaySelectedConfig = overlaySelectedIdx.length
+				? {
+						selectedpoints: overlaySelectedIdx,
+						selected: { marker: { opacity: 1 } },
+						unselected: { marker: { opacity: 0.25 } }
+				  }
+				: {};
+			traces.push({
+				type: 'scattergl' as const,
+				mode: 'markers' as const,
+				x: ovr.x,
+				y: ovr.y,
+				name: 'OHBM 2026 overlay',
+				visible: showOverlayTrace,
+				marker: {
+					size: 5,
+					color: ovr.colours,
+					opacity: 1.0,
+					line: { color: '#111111', width: 1.5 },
+					...(ovr.symbol ? { symbol: ovr.symbol } : {})
+				},
+				hovertemplate: '%{text}<extra></extra>',
+				text: ovr.hoverText,
+				showlegend: false,
+				customdata: ovr.customdata,
+				...overlaySelectedConfig
+			});
+		}
+		// Focus halo — TWO concentric magenta rings at the focused
+		// point's coordinates. Outer ring (size 38, low-alpha fill +
+		// soft border) reads as an "aura" at zoomed-out scales where
+		// the point would otherwise be a speck in the 461k-point
+		// carpet; inner ring (size 22, sharp magenta stroke) gives
+		// the precise anchor when the camera zooms in. Both sit ON
+		// TOP of every other trace so they're the obvious visual
+		// signal of "you asked to focus this dot".
+		const focus2d = atlasFocusCoords(focusKind, focusId, backdrop, overlay, false);
+		const focusKey2d = focus2d && focusKind && focusId !== null ? `${focusKind}:${focusId}` : '';
+		if (focus2d) {
+			traces.push({
+				type: 'scattergl' as const,
+				mode: 'markers' as const,
+				x: [focus2d.x],
+				y: [focus2d.y],
+				name: 'focus-aura',
+				marker: {
+					size: 38,
+					color: 'rgba(255, 0, 255, 0.18)',
+					line: { color: 'rgba(255, 0, 255, 0.45)', width: 1 },
+					symbol: 'circle'
+				},
+				hoverinfo: 'skip' as const,
+				showlegend: false
+			});
+			traces.push({
+				type: 'scattergl' as const,
+				mode: 'markers' as const,
+				x: [focus2d.x],
+				y: [focus2d.y],
+				name: 'focus',
+				marker: {
+					size: 22,
+					color: 'rgba(0,0,0,0)',
+					line: { color: '#ff00ff', width: 2.5 },
+					symbol: 'circle'
+				},
+				hoverinfo: 'skip' as const,
+				showlegend: false
+			});
+		}
+		// Camera zoom on focus change. When the focus id changed
+		// since the last render AND the user isn't already zoomed in
+		// closer than the focus-snap target, snap the 2D viewport to
+		// a tight window around the focused point so the visitor
+		// sees it even when the rest of the corpus is dense.
+		//
+		// Rule: respect the user's existing zoom level. If they've
+		// manually zoomed in tighter than the focus-snap target
+		// (current2dXSpan < FOCUS_WINDOW_SPAN), DON'T pan/zoom — they
+		// clicked a different point at high zoom and expect to stay
+		// there, with just the halo moving. Only auto-snap when the
+		// current view is wider than the focus target.
+		const focusChanged2d = focusKey2d !== last2dFocusKey;
+		const ZOOM_HALF_SPAN = 3.0; // ~6 UMAP units of window
+		const FOCUS_WINDOW_SPAN = ZOOM_HALF_SPAN * 2;
+		// `current2dXSpan === 0` on first render (handler hasn't
+		// fired yet) → treat as default zoom = full span, so the
+		// focus snap applies.
+		const userWiderThanFocus =
+			current2dXSpan === 0 || current2dXSpan > FOCUS_WINDOW_SPAN;
+		const shouldZoomToFocus = focus2d && focusChanged2d && userWiderThanFocus;
+		// Either the new focus-snap window (when we're snapping), or
+		// the user's current explicit zoom range (when we're NOT
+		// snapping but the user has manually zoomed in / panned).
+		// Without this, the bare `xaxis: { ... }` layout would let
+		// Plotly's default autorange:true kick in on the next react
+		// call — and the user's zoom would visibly snap back out.
+		const xRange = shouldZoomToFocus
+			? [focus2d.x - ZOOM_HALF_SPAN, focus2d.x + ZOOM_HALF_SPAN]
+			: current2dXRange;
+		const yRange = shouldZoomToFocus
+			? [focus2d.y - ZOOM_HALF_SPAN, focus2d.y + ZOOM_HALF_SPAN]
+			: current2dYRange;
+		// uirevision is STICKY — only bumps when we actually want to
+		// override the user's zoom. Otherwise we reuse the previous
+		// render's uirev so Plotly preserves the user's manual
+		// pan/zoom gesture across re-renders (theme change, focus
+		// clear, etc.). Closing the detail panel does NOT yank the
+		// user back to autorange; their exploration is preserved.
+		if (shouldZoomToFocus) {
+			last2dUirev = `atlas-2d-focus-${focusKey2d}`;
+		}
+		const uirev2d = last2dUirev;
+		last2dFocusKey = focusKey2d;
+		// We DON'T set `selectionrevision` — see the earlier attempt
+		// that emitted `unrecognized GUI edit: selections[0].yref`
+		// when Plotly tried to merge a preserved selection into a
+		// shifted trace structure. Letting it default to "no
+		// preservation" drops the polygon outline on re-render —
+		// acceptable since lassoed points stay highlighted via
+		// `selectedpoints` + the dim-unselected opacity, and the
+		// "Clear selection" button is the authoritative deselect.
+		const layout: Record<string, unknown> = {
+			autosize: true,
+			margin: { l: 0, r: 0, t: 0, b: 0 },
+			hovermode: 'closest' as const,
+			dragmode: 'lasso' as const,
+			paper_bgcolor: c.paper,
+			plot_bgcolor: c.plot,
+			font: { color: c.font },
+			showlegend: false,
+			xaxis: xRange
+				? { visible: false, scaleanchor: 'y', range: xRange, autorange: false }
+				: { visible: false, scaleanchor: 'y' },
+			yaxis: yRange
+				? { visible: false, range: yRange, autorange: false }
+				: { visible: false },
+			uirevision: uirev2d
+		};
+		const config = {
+			responsive: true,
+			displaylogo: false,
+			scrollZoom: true
+		};
+		(api as unknown as { react: (...args: unknown[]) => Promise<unknown> })
+			.react(el, traces, layout, config)
+			.then(() => {
+				// Re-apply zoom-aware opacity after EVERY react. The
+				// backdrop trace's `marker.opacity` is rebuilt to the
+				// base value (e.g. 0.05) on every render, which would
+				// otherwise overwrite the restyle that
+				// `plotly_relayout` performs on zoom. Two cases:
+				//   1. We just snapped to a new focus window
+				//      (`xRange` set) — use that as the current span.
+				//   2. The user was already zoomed in / out manually
+				//      (`current2dXSpan > 0`) — preserve their state.
+				// First render before any handler fires falls through
+				// to the base opacity, which is correct for the
+				// default autorange view.
+				const reapplySpan = xRange
+					? Math.abs(xRange[1] - xRange[0])
+					: current2dXSpan > 0
+						? current2dXSpan
+						: 0;
+				if (reapplySpan > 0) {
+					applyAtlasZoomOpacity(
+						api as PlotlyApi,
+						el as HTMLDivElement,
+						backdropOpacity,
+						reapplySpan
+					);
+				}
+				if (atlas2dHandlersAttached) return;
+				atlas2dHandlersAttached = true;
+				const node = el as unknown as {
+					on: (e: string, h: (e: unknown) => void) => void;
+				};
+				node.on('plotly_click', (e: unknown) => {
+					const ev = e as { points?: Array<{ customdata?: unknown }> } | null;
+					const cd = ev?.points?.[0]?.customdata as
+						| { kind?: string; id?: number }
+						| undefined;
+					if (cd && typeof cd.kind === 'string' && typeof cd.id === 'number') {
+						dispatch('pointclick', {
+							kind: cd.kind as 'ohbm2026' | 'neuroscape',
+							id: cd.id
+						});
+					}
+				});
+				node.on('plotly_selected', (e: unknown) => {
+					const ev = e as { points?: Array<{ customdata?: unknown }> } | null;
+					if (!ev || !ev.points || ev.points.length === 0) return;
+					const ohbm: number[] = [];
+					const neuro: number[] = [];
+					for (const pt of ev.points) {
+						const cd = pt.customdata as { kind?: string; id?: number } | undefined;
+						if (!cd || typeof cd.id !== 'number') continue;
+						if (cd.kind === 'ohbm2026') ohbm.push(cd.id);
+						else if (cd.kind === 'neuroscape') neuro.push(cd.id);
+					}
+					dispatch('lassoselect', { ohbm2026_ids: ohbm, neuroscape_ids: neuro });
+				});
+				node.on('plotly_deselect', () => dispatch('lassoclear'));
+				// Zoom-aware backdrop opacity: every pan/zoom emits a
+				// `plotly_relayout` with the new axis range. We restyle
+				// the backdrop trace's `marker.opacity` so points scale
+				// up as the user zooms in (and back down on zoom out).
+				// Cheap — `restyle` against trace index 0 only.
+				node.on('plotly_relayout', (e: unknown) => {
+					const ev = e as Record<string, unknown> | null;
+					if (!ev || !api) return;
+					// Plotly emits either expanded keys
+					// (`xaxis.range[0]` / `[1]`) or a single
+					// `xaxis.range` array depending on the gesture
+					// (drag-zoom vs programmatic relayout). Handle both.
+					let xMin: unknown = ev['xaxis.range[0]'];
+					let xMax: unknown = ev['xaxis.range[1]'];
+					const xArr = ev['xaxis.range'] as unknown[] | undefined;
+					if (typeof xMin !== 'number' && Array.isArray(xArr)) {
+						xMin = xArr[0];
+						xMax = xArr[1];
+					}
+					let yMin: unknown = ev['yaxis.range[0]'];
+					let yMax: unknown = ev['yaxis.range[1]'];
+					const yArr = ev['yaxis.range'] as unknown[] | undefined;
+					if (typeof yMin !== 'number' && Array.isArray(yArr)) {
+						yMin = yArr[0];
+						yMax = yArr[1];
+					}
+					if (typeof xMin === 'number' && typeof xMax === 'number') {
+						current2dXSpan = Math.abs(xMax - xMin);
+						current2dXRange = [xMin, xMax];
+						if (typeof yMin === 'number' && typeof yMax === 'number') {
+							current2dYRange = [yMin, yMax];
+						}
+						applyAtlasZoomOpacity(
+							api as PlotlyApi,
+							el as HTMLDivElement,
+							backdropOpacity,
+							current2dXSpan
+						);
+					} else if (ev['xaxis.autorange'] === true) {
+						// User double-clicked to reset axes → autorange
+						// ON → back to the base opacity (full corpus)
+						// and clear the cached ranges so the next render
+						// lets Plotly autorange too.
+						current2dXSpan = data2dFullSpan;
+						current2dXRange = null;
+						current2dYRange = null;
+						applyAtlasZoomOpacity(
+							api as PlotlyApi,
+							el as HTMLDivElement,
+							backdropOpacity,
+							data2dFullSpan
+						);
+					}
+				});
+			})
+			.catch((err: Error) => {
+				plotlyError = err.message;
+			});
+	}
+
+	function renderAtlasChart3D(
+		api: PlotlyApi | null,
+		el: HTMLDivElement | null,
+		backdrop: BackdropPoint[],
+		overlay: OverlayPoint[],
+		clusters: Map<number, AtlasCluster>,
+		showOverlayTrace: boolean,
+		opacity: number,
+		useShapes: boolean,
+		focusKind: 'ohbm2026' | 'neuroscape' | null,
+		focusId: number | null,
+		t: 'light' | 'dark'
+	) {
+		if (!api || !el) return;
+		const c = themedColors(t);
+		// Plain scatter — single backdrop trace + single overlay trace,
+		// scalar opacity per trace. No lasso mirror, no dual-trace
+		// selected/unselected split. Lassoing on the 2D pane does NOT
+		// re-render this chart, which is the only way to keep the
+		// 461k-point scatter3d stable without triggering the documented
+		// plotly.js#6365 WebGL-context leak. The magenta focus halo
+		// below still highlights any single-clicked point.
+		const traces: unknown[] = [
+			buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, true, new Set())
+		];
+		const overlayTrace = buildAtlasOverlayTrace(
+			overlay,
+			clusters,
+			showOverlayTrace,
+			useShapes,
+			true,
+			new Set()
+		);
+		if (overlayTrace) traces.push(overlayTrace);
+		// Focus halo — magenta-ring marker at the focused point's
+		// 3D coordinates so "Show on atlas" gives an obvious visual
+		// anchor (without this the visitor lands on the home with
+		// only the inline detail panel as the signal).
+		const focus3d = atlasFocusCoords(focusKind, focusId, backdrop, overlay, true);
+		if (focus3d) {
+			// 3-axis crosshair centered on the focused point. Three
+			// perpendicular line segments (one per UMAP axis) in the
+			// conventional RGB axis-colour mapping — easier to read at
+			// any camera angle than a filled marker, and crucially the
+			// actual data point underneath stays visible (a filled
+			// sphere occluded it). Each segment is ±1 UMAP unit long
+			// from the point's coordinates; line width 5 keeps the
+			// cross visible from a distance.
+			const cx = focus3d.x;
+			const cy = focus3d.y;
+			const cz = focus3d.z ?? 0;
+			const halfArm = 1.0;
+			// X-axis arm — red.
+			traces.push({
+				type: 'scatter3d' as const,
+				mode: 'lines' as const,
+				x: [cx - halfArm, cx + halfArm],
+				y: [cy, cy],
+				z: [cz, cz],
+				name: 'focus-x',
+				line: { color: '#ff4444', width: 5 },
+				hoverinfo: 'skip' as const,
+				showlegend: false
+			});
+			// Y-axis arm — green.
+			traces.push({
+				type: 'scatter3d' as const,
+				mode: 'lines' as const,
+				x: [cx, cx],
+				y: [cy - halfArm, cy + halfArm],
+				z: [cz, cz],
+				name: 'focus-y',
+				line: { color: '#33cc33', width: 5 },
+				hoverinfo: 'skip' as const,
+				showlegend: false
+			});
+			// Z-axis arm — blue.
+			traces.push({
+				type: 'scatter3d' as const,
+				mode: 'lines' as const,
+				x: [cx, cx],
+				y: [cy, cy],
+				z: [cz - halfArm, cz + halfArm],
+				name: 'focus-z',
+				line: { color: '#4488ff', width: 5 },
+				hoverinfo: 'skip' as const,
+				showlegend: false
+			});
+		}
+		// On lasso, we DON'T touch the 3D camera — the previous
+		// attempt to zoom (explicit axis range) clipped unselected
+		// context points against the scene volume edge, and the
+		// follow-up attempt (camera.center in data coords) silently
+		// made the camera look at empty space because Plotly's
+		// `scene.camera.center` is in NORMALISED scene coords (-1..1),
+		// not data coords. The opacity split (0.6 selected vs 0.15
+		// unselected) is enough on its own to make the selection
+		// stand out — the user can orbit manually if they want to
+		// inspect it more closely.
+		const axisCfg = { visible: false, showbackground: false };
+		const uirev = 'atlas-3d';
+		let cameraEye: { x: number; y: number; z: number } = { x: 1.6, y: 1.6, z: 0.9 };
+		if (chart3dInitialized && currentEye3D) cameraEye = currentEye3D;
+		const scene: Record<string, unknown> = {
+			xaxis: { ...axisCfg },
+			yaxis: { ...axisCfg },
+			zaxis: { ...axisCfg },
+			bgcolor: c.plot,
+			camera: { eye: cameraEye }
+		};
+		const layout = {
+			autosize: true,
+			margin: { l: 0, r: 0, t: 0, b: 0 },
+			showlegend: false,
+			paper_bgcolor: c.paper,
+			plot_bgcolor: c.plot,
+			font: { color: c.font },
+			scene,
+			uirevision: uirev
+		};
+		const config = { responsive: true, displaylogo: false };
+		(api as unknown as { react: (...args: unknown[]) => Promise<unknown> })
+			.react(el, traces, layout, config)
+			.then(() => {
+				chart3dInitialized = true;
+				if (atlas3dHandlersAttached) {
+					ensureRotate();
+					return;
+				}
+				atlas3dHandlersAttached = true;
+				const node = el as unknown as {
+					on: (e: string, h: (e: unknown) => void) => void;
+				};
+				node.on('plotly_click', (e: unknown) => {
+					const ev = e as { points?: Array<{ customdata?: unknown }> } | null;
+					const cd = ev?.points?.[0]?.customdata as
+						| { kind?: string; id?: number }
+						| undefined;
+					if (cd && typeof cd.kind === 'string' && typeof cd.id === 'number') {
+						dispatch('pointclick', {
+							kind: cd.kind as 'ohbm2026' | 'neuroscape',
+							id: cd.id
+						});
+					}
+				});
+				// Share the camera-tracking + pause-without-reset logic with
+				// OHBM mode — same `currentEye3D` is updated on user orbits.
+				node.on('plotly_relayout', (e: unknown) => {
+					const ev = e as Record<string, unknown> | null;
+					if (!ev) return;
+					const flat = ev['scene.camera.eye'] as
+						| { x?: number; y?: number; z?: number }
+						| undefined;
+					const nested = (ev['scene.camera'] as
+						| { eye?: { x?: number; y?: number; z?: number } }
+						| undefined)?.eye;
+					const eye = flat ?? nested;
+					if (
+						eye &&
+						typeof eye.x === 'number' &&
+						typeof eye.y === 'number' &&
+						typeof eye.z === 'number'
+					) {
+						currentEye3D = { x: eye.x, y: eye.y, z: eye.z };
+					}
+				});
+				ensureRotate();
+			})
+			.catch((err: Error) => {
+				plotlyError = err.message;
+			});
+	}
+
 	function renderChart3D(
 		api: PlotlyApi | null,
 		el: HTMLDivElement | null,
@@ -564,9 +1739,28 @@
 			});
 	}
 
+	// Rotation generation counter — every `ensureRotate` bumps this
+	// and captures the current value in its local `step`. When
+	// stopRotate is called (or a fresh ensureRotate starts a new
+	// generation), the old step's `myGen !== rotateGen` guard makes
+	// it bail before scheduling its next rAF.
+	//
+	// Without this, a race window exists: an in-flight `step()`
+	// callback (already past the early-return guard) can unconditionally
+	// overwrite `rotateFrame` with its own next-frame id, EVEN AFTER
+	// stopRotate cancelled the previous frame. Result: two rotation
+	// loops compete, both calling plotly.relayout at 60fps, doubling
+	// CPU. Symptom: navigating back to /atlas-root/ after visiting
+	// /neuroscape/ leaves the previous rotation chain alive and the
+	// new one piles on top.
+	let rotateGen = 0;
+
 	function ensureRotate() {
 		stopRotate();
 		if (!autoRotate || !plotly || !chart3dEl) return;
+		// Don't spin the camera while the tab is hidden — wastes CPU
+		// for no benefit, and bfcache restores can resume stale loops.
+		if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
 		// Seed the orbit from `currentEye3D` (kept in sync via the
 		// `plotly_relayout` listener) so pause → user zoom/orbit → unpause
 		// continues from where the user left off instead of snapping back to
@@ -581,7 +1775,10 @@
 				rotateAngle = Math.atan2(currentEye3D.y, currentEye3D.x);
 			}
 		}
+		rotateGen += 1;
+		const myGen = rotateGen;
 		const step = () => {
+			if (myGen !== rotateGen) return; // a newer ensureRotate / stopRotate replaced us
 			if (!autoRotate || !plotly || !chart3dEl) return;
 			rotateAngle += 0.004;
 			const eye = {
@@ -598,12 +1795,14 @@
 			} catch {
 				/* no-op */
 			}
+			if (myGen !== rotateGen) return;
 			rotateFrame = requestAnimationFrame(step);
 		};
 		rotateFrame = requestAnimationFrame(step);
 	}
 
 	function stopRotate() {
+		rotateGen += 1; // invalidate any in-flight step()s
 		if (rotateFrame !== null) {
 			cancelAnimationFrame(rotateFrame);
 			rotateFrame = null;
@@ -617,18 +1816,33 @@
 	}
 </script>
 
-<section class="umap-panel" data-testid="umap-panel">
+<section class="umap-panel" data-testid="umap-panel" data-mode={mode}>
 	<header class="umap-header">
 		<div class="title-block">
-			<h3>UMAP — cell <code>{cellKey}</code></h3>
-			<p class="hint">
-				Points are coloured + shaped by <em>cluster</em> (community detected for this
-				cell, Tol-bright palette × 5 symbols, colour-vision-friendly). Lasso on 2D
-				filters the result list; click any point to open its detail panel.
-			</p>
+			{#if mode === 'ohbm'}
+				<h3>UMAP — cell <code>{cellKey}</code></h3>
+				<p class="hint">
+					Points are coloured + shaped by <em>cluster</em> (community detected for this
+					cell, Tol-bright palette × 5 symbols, colour-vision-friendly). Lasso on 2D
+					filters the result list; click any point to open its detail panel.
+				</p>
+			{:else}
+				<h3>
+					UMAP — {mode === 'atlas'
+						? 'cross-conference atlas'
+						: 'NeuroScape PubMed atlas'}
+				</h3>
+				<p class="hint">
+					Points are coloured by NeuroScape cluster
+					{#if useAtlasShapes}+ shaped by cluster (≤7 clusters){:else}(colour only — {atlasClusters.length}
+						clusters){/if}.
+					Lasso on the 2D pane filters the result list; click any point to open
+					its detail panel.
+				</p>
+			{/if}
 		</div>
 		<div class="header-actions">
-			{#if $lassoSelection}
+			{#if mode === 'ohbm' && $lassoSelection}
 				<button
 					type="button"
 					class="clear-lasso"
@@ -636,6 +1850,15 @@
 					data-testid="umap-clear-lasso"
 				>
 					Clear selection ({$lassoSelection.size})
+				</button>
+			{:else if mode !== 'ohbm' && (lassoOhbmSet.size + lassoNeuroSet.size > 0)}
+				<button
+					type="button"
+					class="clear-lasso"
+					on:click={() => dispatch('lassoclear')}
+					data-testid="umap-clear-lasso"
+				>
+					Clear selection ({lassoOhbmSet.size + lassoNeuroSet.size})
 				</button>
 			{/if}
 		</div>

@@ -32,12 +32,12 @@ test.describe('US5: saved-list cart + email export', () => {
 		// Open the cart drawer and let Playwright auto-wait for the first
 		// item — web-first assertions retry until the UI converges, no
 		// hand-rolled `waitForTimeout` needed.
-		await page.getByTestId('toggle-cart').click();
+		await page.getByTestId('header-cart').click();
 		await expect(page.getByTestId('cart-drawer')).toBeVisible();
 		await expect(page.getByTestId('cart-item').first()).toBeVisible();
 		// Reload — the cart store hydrates from localStorage on mount.
 		await page.reload();
-		await page.getByTestId('toggle-cart').click();
+		await page.getByTestId('header-cart').click();
 		await expect(page.getByTestId('cart-drawer')).toBeVisible();
 		await expect(page.getByTestId('cart-item').first()).toBeVisible();
 	});
@@ -51,7 +51,7 @@ test.describe('US5: saved-list cart + email export', () => {
 			.locator('xpath=..')
 			.getByTestId('card-cart-add')
 			.click();
-		await page.getByTestId('toggle-cart').click();
+		await page.getByTestId('header-cart').click();
 		await expect(page.getByTestId('cart-drawer')).toBeVisible();
 		await expect(page.getByTestId('cart-item').first()).toBeVisible();
 		await page.getByTestId('cart-clear').click();
@@ -65,7 +65,7 @@ test.describe('US5: saved-list cart + email export', () => {
 		await card.waitFor({ timeout: 10_000 });
 		const posterId = (await card.getAttribute('data-poster-id')) ?? '';
 		await card.locator('xpath=..').getByTestId('card-cart-add').click();
-		await page.getByTestId('toggle-cart').click();
+		await page.getByTestId('header-cart').click();
 		// Wait for at least one cart item to render — the email anchor's
 		// href is recomputed reactively from the cart contents.
 		await expect(page.getByTestId('cart-item').first()).toBeVisible();
