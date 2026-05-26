@@ -15,7 +15,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { normalize } from '$lib/filter';
-	import { cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
+	import { cartStore, cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
 	import CartIconButton from '$lib/components/CartIconButton.svelte';
 
 	type BackdropPoint = {
@@ -137,15 +137,70 @@
 
 	$: visible = filtered.slice(0, limit);
 	$: totalCount = filtered.length;
+
+	// Bulk-add over the FULL filtered set (mixed kinds), not just
+	// the paginated `visible` slice — matches OHBM 2026 ResultList
+	// + NeuroscapeBrowsePanel.
+	//
+	// Sanity-cap + confirmation: localStorage tops out at ~5 MB
+	// (~200k typed cart items), and even well below that the cart
+	// drawer + email exports become unwieldy. CART_BULK_WARN_AT
+	// triggers a confirm() so accidental "add the entire 464k
+	// corpus" clicks don't silently overflow the cart.
+	const CART_BULK_WARN_AT = 200;
+	const CART_BULK_HARD_CAP = 5000;
+	$: filteredNotInCart = filtered.filter((r) =>
+		r.kind === 'ohbm2026'
+			? !$cartOhbmPosterIds.has(r.id)
+			: !$cartNeuroPubmedIds.has(r.id)
+	);
+	function addAllVisible() {
+		const n = filteredNotInCart.length;
+		if (n === 0) return;
+		let toAdd = filteredNotInCart;
+		if (n > CART_BULK_HARD_CAP) {
+			const ok =
+				typeof window !== 'undefined' &&
+				window.confirm(
+					`This selection has ${n.toLocaleString()} rows.\n\n` +
+						`The cart can hold up to ${CART_BULK_HARD_CAP.toLocaleString()} items before browser storage fills up.\n\n` +
+						`Add the first ${CART_BULK_HARD_CAP.toLocaleString()}?`
+				);
+			if (!ok) return;
+			toAdd = filteredNotInCart.slice(0, CART_BULK_HARD_CAP);
+		} else if (n > CART_BULK_WARN_AT) {
+			const ok =
+				typeof window !== 'undefined' &&
+				window.confirm(
+					`Add ${n.toLocaleString()} rows to your cart? ` +
+						`Large carts can be slow to email or display.`
+				);
+			if (!ok) return;
+		}
+		cartStore.addManyItems(toAdd.map((r) => ({ kind: r.kind, id: r.id })));
+	}
 </script>
 
 <section class="ar-browse" data-testid="atlas-root-browse-panel">
-	<p class="ar-count" data-testid="atlas-root-result-count">
-		{totalCount.toLocaleString()} {totalCount === 1 ? 'match' : 'matches'}
-		{#if totalCount > limit}
-			· showing first {limit}
+	<header class="ar-list-head">
+		<p class="ar-count" data-testid="atlas-root-result-count">
+			{totalCount.toLocaleString()} {totalCount === 1 ? 'match' : 'matches'}
+			{#if totalCount > limit}
+				· showing first {limit}
+			{/if}
+		</p>
+		{#if filteredNotInCart.length > 0}
+			<button
+				type="button"
+				class="ar-bulk-cart-add"
+				on:click={addAllVisible}
+				title={`Add the ${filteredNotInCart.length} row${filteredNotInCart.length === 1 ? '' : 's'} not yet in your cart`}
+				data-testid="atlas-root-bulk-cart-add"
+			>
+				+ Add {filteredNotInCart.length} to cart
+			</button>
 		{/if}
-	</p>
+	</header>
 
 	<ul class="ar-results" data-testid="atlas-root-result-list">
 		{#each visible as r (r.kind + ':' + r.id)}
@@ -252,6 +307,29 @@
 	.ar-results {
 		min-width: 0;
 		box-sizing: border-box;
+	}
+	.ar-list-head {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+	.ar-list-head .ar-count {
+		flex: 1;
+	}
+	.ar-bulk-cart-add {
+		all: unset;
+		cursor: pointer;
+		padding: 0.3rem 0.6rem;
+		font-size: 0.78rem;
+		color: var(--accent);
+		border: 1px solid var(--accent);
+		background: transparent;
+		border-radius: 4px;
+		white-space: nowrap;
+	}
+	.ar-bulk-cart-add:hover {
+		background: var(--accent-soft-bg);
 	}
 	.ar-row:hover {
 		background: var(--bg-subtle);
