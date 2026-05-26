@@ -133,7 +133,70 @@
 	let viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
 	let mobile = viewportWidth < mobileBreakpoint;
 
-	let autoRotate = true;
+	// Plotly probes `webgl2` first then falls back to `webgl` and
+	// `experimental-webgl`; WebGL2 is NOT a strict requirement.
+	// The "this needs WebGL" error a user can still see on some
+	// mobile Chrome variants happens AFTER context creation
+	// succeeds — typically a missing extension Plotly's gl-vis /
+	// regl stack relies on (e.g. `OES_vertex_array_object`,
+	// `OES_element_index_uint`). A pre-flight `canvas.getContext`
+	// can't catch those — only Plotly's own runtime can.
+	//
+	// What we CAN gate on: a working WebGL context at all. That
+	// covers the genuinely-no-WebGL case (locked-down kiosks,
+	// outdated drivers) without false-negatives on mobile WebGL1
+	// browsers that work fine.
+	function detectWebGL(): boolean {
+		if (typeof document === 'undefined') return true;
+		try {
+			const c = document.createElement('canvas');
+			const gl =
+				c.getContext('webgl2') ||
+				c.getContext('webgl') ||
+				c.getContext('experimental-webgl');
+			if (!gl) return false;
+			// Release the probe's context immediately so we don't
+			// consume one of the browser's ~8-16 origin-wide WebGL
+			// context slots just to answer a yes/no question. Same
+			// pattern as `destroyChart` uses for the real charts.
+			const lc = (gl as WebGLRenderingContext).getExtension?.(
+				'WEBGL_lose_context'
+			);
+			lc?.loseContext?.();
+			return true;
+		} catch {
+			return false;
+		}
+	}
+	const hasWebGL =
+		typeof document === 'undefined' ? true : detectWebGL();
+
+	// 3D pane gating: any WebGL context is enough for Plotly's
+	// scatter3d to TRY to render. If the trace then fails because
+	// of a missing extension, Plotly shows its own error overlay
+	// (we can't pre-empt that without a full render attempt).
+	// OHBM mode is small enough that we never gate it.
+	$: show3dPane = mode === 'ohbm' || hasWebGL;
+
+	// Auto-rotate default policy:
+	//   - OHBM mode (per-community ~3k-point scatter): on by default
+	//     — the dataset is small enough that continuous
+	//     `Plotly.relayout({ 'scene.camera.eye': ... })` is cheap.
+	//   - atlas / neuroscape mode (461k-point scatter3d): on by
+	//     default on DESKTOP, off on MOBILE width. Sustained
+	//     scatter3d rotation at 461k points on a mobile GPU is the
+	//     observed cause of `webglcontextlost` revocations — the
+	//     browser yanks the GL context under thermal / memory
+	//     pressure and Plotly's gl-vis then overlays "WebGL not
+	//     supported" even though the context was fine seconds
+	//     earlier. Default off on mobile avoids the steady GPU
+	//     stress; the user can opt in via the rotate button.
+	let autoRotate =
+		mode === 'ohbm'
+			? true
+			: typeof window === 'undefined'
+				? true
+				: window.innerWidth >= mobileBreakpoint;
 	let rotateFrame: number | null = null;
 	let rotateAngle = 0;
 
@@ -200,6 +263,57 @@
 			lc?.loseContext?.();
 		}
 		el.innerHTML = '';
+	}
+
+	/**
+	 * Svelte `use:` action that hooks the actual DOM unmount.
+	 *
+	 * `bind:this` is unreliable for cleanup: when the conditional
+	 * wrapping `<div bind:this={chart3dEl}>` flips false, Svelte
+	 * sets the binding to `null` AND removes the DOM node in the
+	 * same tick. By the time a `$:` reactive observes the null,
+	 * the WebGL canvas is gone and we can't call `loseContext()`
+	 * on it. Actions get the node passed in directly + a `destroy`
+	 * hook called BEFORE the DOM is unlinked — exactly what we
+	 * need for the 3D pane that comes and goes via `show3dPane`.
+	 *
+	 * Side-effects on destroy:
+	 *   1. `Plotly.purge(node)` — release Plotly's internal state.
+	 *   2. Iterate every `<canvas>` child + `loseContext()` on
+	 *      its WebGL context.
+	 *   3. Reset the 3D-specific handler flags so the next mount
+	 *      goes through the full init path. If we left them at
+	 *      `true`, a remount would short-circuit listener
+	 *      attachment and rotation init.
+	 */
+	function chartCleanupAction(node: HTMLDivElement) {
+		return {
+			destroy() {
+				if (plotly) {
+					try {
+						plotly.purge(node);
+					} catch {
+						/* purge on already-purged node is a no-op */
+					}
+				}
+				for (const canvas of Array.from(node.querySelectorAll('canvas'))) {
+					const gl =
+						(canvas as HTMLCanvasElement).getContext?.('webgl2') ??
+						(canvas as HTMLCanvasElement).getContext?.('webgl');
+					const lc = gl?.getExtension?.('WEBGL_lose_context');
+					lc?.loseContext?.();
+				}
+				node.innerHTML = '';
+				// Reset 3D-specific state so a future remount goes
+				// through fresh init. Don't touch 2D state.
+				handlers3dAttached = false;
+				atlas3dHandlersAttached = false;
+				chart3dInitialized = false;
+				currentEye3D = null;
+				rotateAngle = 0;
+				stopRotate();
+			}
+		};
 	}
 	function purgeCharts() {
 		destroyChart(chart2dEl);
@@ -1097,6 +1211,18 @@
 					unselected: { marker: { opacity: Math.max(opacity * 4, 0.2) } }
 			  }
 			: {};
+		// Backdrop hover TOOLTIP is intentionally off (461k-point
+		// hover hit-test on scattergl is the documented latency
+		// hotspot — community.plotly.com confirms lasso/hover both
+		// walk a hit-test structure that scales with point count).
+		// We use `hoverinfo: 'none'` here, NOT `'skip'`: the docs
+		// at plotly.com/javascript/reference/scatter/#scatter-
+		// hoverinfo are explicit — `'none'` suppresses the tooltip
+		// but still fires `plotly_click` + `plotly_selected`,
+		// whereas `'skip'` silently drops those events too. We need
+		// the click event so a tap on a backdrop point opens its
+		// inline detail panel. The overlay (3k OHBM points) keeps
+		// its hover tooltip below.
 		const backdropTrace: Record<string, unknown> = {
 			type: 'scattergl' as const,
 			mode: 'markers' as const,
@@ -1110,8 +1236,7 @@
 				line: { width: 0 },
 				...(bdr.symbol ? { symbol: bdr.symbol } : {})
 			},
-			hovertemplate: '%{text}<extra></extra>',
-			text: bdr.hoverText,
+			hoverinfo: 'none',
 			showlegend: false,
 			customdata: bdr.customdata,
 			...backdropSelectedConfig
@@ -1251,6 +1376,12 @@
 			autosize: true,
 			margin: { l: 0, r: 0, t: 0, b: 0 },
 			hovermode: 'closest' as const,
+			// `spikedistance: 0` disables Plotly's spike-finding loop
+			// — a documented perf cliff on scattergl at 100k+ points
+			// (plotly.js#5927, bisected to the spike-distance hover
+			// pass). We don't draw spikes on the atlas chart, so this
+			// turns off pure overhead. Big hover/pan latency win.
+			spikedistance: 0,
 			dragmode: 'lasso' as const,
 			paper_bgcolor: c.paper,
 			plot_bgcolor: c.plot,
@@ -1513,6 +1644,28 @@
 			.react(el, traces, layout, config)
 			.then(() => {
 				chart3dInitialized = true;
+				// `webglcontextlost` — handle gracefully. Sustained
+				// 3D rotation at 461k points on a mobile GPU can hit
+				// thermal / memory pressure and the browser revokes
+				// the context. Plotly's default behaviour overlays a
+				// misleading "WebGL not supported" message. We stop
+				// rotation immediately + set `plotlyError` so the
+				// component renders our own message instead. Re-
+				// attaching is safe: the action fires the listener on
+				// every canvas Plotly creates on this chart div.
+				for (const canvas of Array.from(el.querySelectorAll('canvas'))) {
+					canvas.addEventListener(
+						'webglcontextlost',
+						(ev) => {
+							ev.preventDefault();
+							stopRotate();
+							autoRotate = false;
+							plotlyError =
+								'GPU temporarily paused (WebGL context lost — typically thermal or memory pressure on the device). Refresh to try again.';
+						},
+						{ once: true }
+					);
+				}
 				if (atlas3dHandlersAttached) {
 					ensureRotate();
 					return;
@@ -1864,28 +2017,49 @@
 		</div>
 	</header>
 
-	<div class="charts" data-testid="umap-chart-wrap">
+	<div class="charts" data-testid="umap-chart-wrap" class:two-up={show3dPane}>
 		<figure class="chart-card">
 			<figcaption>2D <span class="caption-aside">{mobile ? 'tap to filter by community' : 'lasso to filter'}</span></figcaption>
 			<div bind:this={chart2dEl} class="chart" data-testid="umap-chart-2d"></div>
 		</figure>
-		<figure class="chart-card">
-			<figcaption>
-				3D
-				<span class="caption-aside">
-					<button
-						type="button"
-						on:click={toggleRotate}
-						class="rotate-btn"
-						aria-pressed={autoRotate}
-						data-testid="umap-rotate-toggle"
-					>
-						{autoRotate ? '⏸ pause' : '▶ rotate'}
-					</button>
-				</span>
-			</figcaption>
-			<div bind:this={chart3dEl} class="chart chart-3d" data-testid="umap-chart-3d"></div>
-		</figure>
+		{#if show3dPane}
+			<figure class="chart-card">
+				<figcaption>
+					3D
+					<span class="caption-aside">
+						<button
+							type="button"
+							on:click={toggleRotate}
+							class="rotate-btn"
+							aria-pressed={autoRotate}
+							data-testid="umap-rotate-toggle"
+						>
+							{autoRotate ? '⏸ pause' : '▶ rotate'}
+						</button>
+					</span>
+				</figcaption>
+				<div
+				bind:this={chart3dEl}
+				use:chartCleanupAction
+				class="chart chart-3d"
+				data-testid="umap-chart-3d"
+			></div>
+			</figure>
+		{:else if mode !== 'ohbm'}
+			<!-- 3D pane hidden because no WebGL context is available
+			     (locked-down kiosk browsers, outdated drivers, etc.).
+			     Plotly itself can sometimes display a similar message
+			     AFTER attempting to render if a required GL extension
+			     is missing despite WebGL working — those cases need a
+			     different browser. The 2D pane carries the full
+			     functionality (lasso, focus halo, click-to-detail). -->
+			<aside class="three-d-skipped" data-testid="umap-3d-skipped">
+				<p>
+					3D view requires WebGL — this browser doesn't expose it.
+					Try a different browser if you'd like the 3D scatter.
+				</p>
+			</aside>
+		{/if}
 	</div>
 
 	{#if plotlyError || cellError}
@@ -1947,10 +2121,26 @@
 		gap: 0.75rem;
 		grid-template-columns: 1fr;
 	}
+	/* `.two-up` is applied when both 2D + 3D panes will render —
+	   only then do we move to side-by-side at ≥880 px. Single-pane
+	   mode (mobile / no WebGL2) keeps the 2D pane at full width on
+	   every viewport. */
 	@media (min-width: 880px) {
-		.charts {
+		.charts.two-up {
 			grid-template-columns: 1fr 1fr;
 		}
+	}
+	.three-d-skipped {
+		margin: 0;
+		padding: 0.6rem 0.8rem;
+		border: 1px dashed var(--border);
+		border-radius: 6px;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		background: var(--bg-subtle);
+	}
+	.three-d-skipped p {
+		margin: 0;
 	}
 	.chart-card {
 		margin: 0;
