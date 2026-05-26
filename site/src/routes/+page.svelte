@@ -527,12 +527,20 @@
 	})();
 	// Result-list filters — the same facets plus the lasso. Browse
 	// panel narrows to lassoed ids when the lasso is active.
+	//
+	// The "active lasso" decision is GLOBAL across both kinds — if
+	// the user lassoes a region containing ONLY NeuroScape points
+	// (zero OHBM overlay points fell inside), the OHBM result-list
+	// must collapse to empty rather than fall through to "show all
+	// OHBM" (the prior bug). The reverse holds for an OHBM-only
+	// lasso region: NeuroScape rows collapse to empty.
+	$: anyLassoActive = atlasLassoOhbmSet.size + atlasLassoNeuroSet.size > 0;
 	$: filteredBackdrop = (() => {
-		if (atlasLassoNeuroSet.size === 0) return scatterBackdrop;
+		if (!anyLassoActive) return scatterBackdrop;
 		return scatterBackdrop.filter((p) => atlasLassoNeuroSet.has(p.pubmed_id));
 	})();
 	$: filteredOverlay = (() => {
-		if (atlasLassoOhbmSet.size === 0) return scatterOverlay;
+		if (!anyLassoActive) return scatterOverlay;
 		return scatterOverlay.filter((p) => atlasLassoOhbmSet.has(p.poster_id));
 	})();
 
@@ -703,11 +711,11 @@
 	// Base sources after lasso (the lasso is global — affects every
 	// facet).
 	$: lassoBackdropPoints = (() => {
-		if (atlasLassoNeuroSet.size === 0) return atlasBackdrop;
+		if (!anyLassoActive) return atlasBackdrop;
 		return atlasBackdrop.filter((p) => atlasLassoNeuroSet.has(p.pubmed_id));
 	})();
 	$: lassoOverlayPoints = (() => {
-		if (atlasLassoOhbmSet.size === 0) return atlasOverlayPoints;
+		if (!anyLassoActive) return atlasOverlayPoints;
 		return atlasOverlayPoints.filter((p) => atlasLassoOhbmSet.has(p.poster_id));
 	})();
 	// Sites counts (atlas-root) — apply cluster filter, exclude self.
