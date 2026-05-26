@@ -212,7 +212,13 @@ def _load_cached(
         ) from exc
 
     try:
-        embedded = np.load(entry["embedded"])
+        # ``allow_pickle=False`` is numpy's default since 1.16.3
+        # (CVE-2019-6446); set it explicitly to document that
+        # embedded.npy is plain float data and to harden against any
+        # future numpy default flip — a tampered cache entry that
+        # smuggled a pickled object would otherwise execute arbitrary
+        # code at load time.
+        embedded = np.load(entry["embedded"], allow_pickle=False)
     except Exception as exc:
         raise UmapCacheError(
             f"UMAP cached embedded array at {entry['embedded']!s} is unreadable: {exc}",
@@ -251,12 +257,17 @@ def _persist_cache(
     entry["dir"].mkdir(parents=True, exist_ok=True)
 
     def _atomic_write_bytes(target: Path, payload: bytes) -> None:
+        # Close the raw fd immediately and use Path.write_bytes for the
+        # actual write. Wrapping the fd via os.fdopen would leak it if
+        # the wrapper itself raised before taking ownership (rare under
+        # memory pressure but real); the explicit close-then-write
+        # pattern has no such window.
         fd, tmp_path = tempfile.mkstemp(
             prefix=f".{target.name}.", suffix=".tmp", dir=str(entry["dir"])
         )
+        os.close(fd)
         try:
-            with os.fdopen(fd, "wb") as fh:
-                fh.write(payload)
+            Path(tmp_path).write_bytes(payload)
             os.replace(tmp_path, target)
         except Exception:
             Path(tmp_path).unlink(missing_ok=True)
