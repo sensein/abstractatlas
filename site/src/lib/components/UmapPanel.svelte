@@ -1428,40 +1428,51 @@
 		// only the inline detail panel as the signal).
 		const focus3d = atlasFocusCoords(focusKind, focusId, backdrop, overlay, true);
 		if (focus3d) {
-			// Two-marker halo in 3D to match the 2D pattern. scatter3d
-			// marker.size scales differently from scattergl — sizes are
-			// in canvas pixels not data units — so the outer "aura"
-			// here uses a larger filled translucent sphere + the inner
-			// ring stays a sharp magenta stroke for the precise anchor.
+			// 3-axis crosshair centered on the focused point. Three
+			// perpendicular line segments (one per UMAP axis) in the
+			// conventional RGB axis-colour mapping — easier to read at
+			// any camera angle than a filled marker, and crucially the
+			// actual data point underneath stays visible (a filled
+			// sphere occluded it). Each segment is ±1 UMAP unit long
+			// from the point's coordinates; line width 5 keeps the
+			// cross visible from a distance.
+			const cx = focus3d.x;
+			const cy = focus3d.y;
+			const cz = focus3d.z ?? 0;
+			const halfArm = 1.0;
+			// X-axis arm — red.
 			traces.push({
 				type: 'scatter3d' as const,
-				mode: 'markers' as const,
-				x: [focus3d.x],
-				y: [focus3d.y],
-				z: [focus3d.z ?? 0],
-				name: 'focus-aura',
-				marker: {
-					size: 26,
-					color: 'rgba(255,0,255,0.20)',
-					line: { color: 'rgba(255,0,255,0.45)', width: 1 },
-					symbol: 'circle'
-				},
+				mode: 'lines' as const,
+				x: [cx - halfArm, cx + halfArm],
+				y: [cy, cy],
+				z: [cz, cz],
+				name: 'focus-x',
+				line: { color: '#ff4444', width: 5 },
 				hoverinfo: 'skip' as const,
 				showlegend: false
 			});
+			// Y-axis arm — green.
 			traces.push({
 				type: 'scatter3d' as const,
-				mode: 'markers' as const,
-				x: [focus3d.x],
-				y: [focus3d.y],
-				z: [focus3d.z ?? 0],
-				name: 'focus',
-				marker: {
-					size: 16,
-					color: 'rgba(255,0,255,0.35)',
-					line: { color: '#ff00ff', width: 5 },
-					symbol: 'circle'
-				},
+				mode: 'lines' as const,
+				x: [cx, cx],
+				y: [cy - halfArm, cy + halfArm],
+				z: [cz, cz],
+				name: 'focus-y',
+				line: { color: '#33cc33', width: 5 },
+				hoverinfo: 'skip' as const,
+				showlegend: false
+			});
+			// Z-axis arm — blue.
+			traces.push({
+				type: 'scatter3d' as const,
+				mode: 'lines' as const,
+				x: [cx, cx],
+				y: [cy, cy],
+				z: [cz - halfArm, cz + halfArm],
+				name: 'focus-z',
+				line: { color: '#4488ff', width: 5 },
 				hoverinfo: 'skip' as const,
 				showlegend: false
 			});
