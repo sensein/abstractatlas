@@ -125,6 +125,11 @@
 
 	let chart2dEl: HTMLDivElement | null = null;
 	let chart3dEl: HTMLDivElement | null = null;
+	// `webglcontextlost` flag for the 3D chart. When true, our
+	// custom overlay covers the chart area + a CSS rule hides
+	// Plotly's red "WebGL not supported" SVG underneath. Cleared
+	// when the chart is unmounted / remounted.
+	let chart3dContextLost = false;
 	let cellShard: CellShard | null = null;
 	let topicsShard: TopicShard | null = null;
 	let cellLoading = false;
@@ -309,6 +314,7 @@
 				handlers3dAttached = false;
 				atlas3dHandlersAttached = false;
 				chart3dInitialized = false;
+				chart3dContextLost = false;
 				currentEye3D = null;
 				rotateAngle = 0;
 				stopRotate();
@@ -829,12 +835,14 @@
 			}
 		}
 		const colours = points.map((p) => clusters.get(p.cluster_id)?.colour_hex ?? '#9c9c9c');
-		const hoverText = points.map(
-			(p) =>
-				`<b>${atlasEscape(p.title)}</b><br>${p.year} · ${atlasEscape(
-					clusters.get(p.cluster_id)?.title ?? `Cluster ${p.cluster_id}`
-				)}`
-		);
+		// `hoverText` was a 461k-element array of long HTML strings
+		// (title + cluster name per point) used by Plotly's hover
+		// tooltip. Now that `hoverinfo: 'none'` is set on the
+		// backdrop trace (the tooltip is suppressed to kill the
+		// hit-test perf cliff on mobile), allocating this string
+		// array on every render is pure waste. Dropped — the
+		// overlay trace (3k OHBM points) still computes its own
+		// hoverText since it does show tooltips.
 		const customdata = points.map((p) => ({ kind: 'neuroscape', id: p.pubmed_id }));
 		const symbol = useShapes ? points.map((p) => atlasShape2D(p.cluster_id)) : undefined;
 		// In 2D lasso mode the unselected backdrop stays VISIBLE so
@@ -852,6 +860,18 @@
 					unselected: { marker: { opacity: Math.max(opacity * 4, 0.2) } }
 			  }
 			: {};
+		// Backdrop hover tooltip is INTENTIONALLY off on both 2D and
+		// 3D — the per-frame hit-test on 461k points is the
+		// dominant interaction-cost contributor (plotly.js community
+		// forum: lasso/hover both walk a hit-test structure that
+		// scales with point count). On 3D specifically, sustained
+		// hover hit-tests during orbit / zoom drive the GPU into
+		// thermal pressure → `webglcontextlost`.
+		// `hoverinfo: 'none'` (NOT `'skip'`) suppresses the tooltip
+		// without disabling `plotly_click` / `plotly_selected`
+		// events — clicks still open the inline detail panel via
+		// `customdata`. The 3,240-point OHBM overlay keeps its
+		// tooltip (light, useful for the small dataset).
 		if (is3d) {
 			return {
 				type: 'scatter3d' as const,
@@ -867,8 +887,7 @@
 					line: { width: 0 },
 					...(useShapes ? { symbol: points.map((p) => atlasShape3D(p.cluster_id)) } : {})
 				},
-				hovertemplate: '%{text}<extra></extra>',
-				text: hoverText,
+				hoverinfo: 'none' as const,
 				showlegend: false,
 				customdata,
 				...selectedConfig
@@ -881,8 +900,7 @@
 			y,
 			name: 'NeuroScape backdrop',
 			marker: { size: 3, color: colours, opacity, line: { width: 0 }, ...(symbol ? { symbol } : {}) },
-			hovertemplate: '%{text}<extra></extra>',
-			text: hoverText,
+			hoverinfo: 'none' as const,
 			showlegend: false,
 			customdata,
 			...selectedConfig
@@ -1062,7 +1080,10 @@
 		x: number[];
 		y: number[];
 		colours: string[];
-		hoverText: string[];
+		/** Optional — only the overlay (3k OHBM rows) computes
+		 *  this; the 461k backdrop has `hoverinfo: 'none'` and
+		 *  skips the allocation entirely. */
+		hoverText?: string[];
 		customdata: Array<{ kind: string; id: number }>;
 		symbol?: string[];
 	};
@@ -1091,16 +1112,14 @@
 		if (cached2dBackdropArrays && cached2dBackdropKey === key) {
 			return cached2dBackdropArrays;
 		}
+		// Backdrop has `hoverinfo: 'none'` on its trace — skip the
+		// 461k `hoverText` allocation. Was the single biggest
+		// per-render cost in `getAtlasBackdropArrays` (each entry
+		// is a long HTML string with title + cluster title).
 		cached2dBackdropArrays = {
 			x: points.map((p) => (p.umap_2d ?? [0, 0])[0]),
 			y: points.map((p) => (p.umap_2d ?? [0, 0])[1]),
 			colours: points.map((p) => clusters.get(p.cluster_id)?.colour_hex ?? '#9c9c9c'),
-			hoverText: points.map(
-				(p) =>
-					`<b>${atlasEscape(p.title)}</b><br>${p.year} · ${atlasEscape(
-						clusters.get(p.cluster_id)?.title ?? `Cluster ${p.cluster_id}`
-					)}`
-			),
 			customdata: points.map((p) => ({ kind: 'neuroscape', id: p.pubmed_id })),
 			symbol: useShapes ? points.map((p) => atlasShape2D(p.cluster_id)) : undefined
 		};
@@ -1403,6 +1422,41 @@
 		(api as unknown as { react: (...args: unknown[]) => Promise<unknown> })
 			.react(el, traces, layout, config)
 			.then(() => {
+				// Seed the cached range from the chart's resolved
+				// `_fullLayout` if we haven't captured it yet.
+				// `plotly_relayout` does NOT fire for initial-render
+				// autorange computation — so without this seed, the
+				// FIRST facet toggle (or any data change before the
+				// user has panned/zoomed) falls into the
+				// `xRange === null` branch, omits `autorange: false`,
+				// and Plotly re-autoranges to the new data — looking
+				// like a "view reset". Reading `_fullLayout.{x,y}axis
+				// .range` after react() gives us the actual rendered
+				// bounds; caching them means subsequent renders pass
+				// them through explicitly with `autorange: false`.
+				if (!current2dXRange) {
+					const fl = (el as unknown as { _fullLayout?: {
+						xaxis?: { range?: [number, number] };
+						yaxis?: { range?: [number, number] };
+					} })._fullLayout;
+					const xr = fl?.xaxis?.range;
+					const yr = fl?.yaxis?.range;
+					if (
+						Array.isArray(xr) &&
+						typeof xr[0] === 'number' &&
+						typeof xr[1] === 'number'
+					) {
+						current2dXRange = [xr[0], xr[1]];
+						current2dXSpan = Math.abs(xr[1] - xr[0]);
+					}
+					if (
+						Array.isArray(yr) &&
+						typeof yr[0] === 'number' &&
+						typeof yr[1] === 'number'
+					) {
+						current2dYRange = [yr[0], yr[1]];
+					}
+				}
 				// Re-apply zoom-aware opacity after EVERY react. The
 				// backdrop trace's `marker.opacity` is rebuilt to the
 				// base value (e.g. 0.05) on every render, which would
@@ -1412,9 +1466,6 @@
 				//      (`xRange` set) — use that as the current span.
 				//   2. The user was already zoomed in / out manually
 				//      (`current2dXSpan > 0`) — preserve their state.
-				// First render before any handler fires falls through
-				// to the base opacity, which is correct for the
-				// default autorange view.
 				const reapplySpan = xRange
 					? Math.abs(xRange[1] - xRange[0])
 					: current2dXSpan > 0
@@ -1645,14 +1696,20 @@
 			.then(() => {
 				chart3dInitialized = true;
 				// `webglcontextlost` — handle gracefully. Sustained
-				// 3D rotation at 461k points on a mobile GPU can hit
-				// thermal / memory pressure and the browser revokes
-				// the context. Plotly's default behaviour overlays a
-				// misleading "WebGL not supported" message. We stop
-				// rotation immediately + set `plotlyError` so the
-				// component renders our own message instead. Re-
-				// attaching is safe: the action fires the listener on
-				// every canvas Plotly creates on this chart div.
+				// scatter3d interaction at 461k points on a mobile
+				// GPU hits thermal / memory pressure and the browser
+				// revokes the context. Plotly's default response is
+				// to overlay a red "WebGL is not supported" rectangle
+				// INSIDE the chart div via its own SVG / DOM. We flip
+				// `chart3dContextLost = true` so:
+				//   1. Our positioned overlay (a flexbox over the
+				//      `.chart-3d` div) renders the actual cause +
+				//      a meaningful next action.
+				//   2. A scoped CSS rule hides Plotly's red SVG
+				//      rectangle underneath ours.
+				//   3. We stop rotation and clear autoRotate so any
+				//      browser-restored context isn't immediately
+				//      re-stressed.
 				for (const canvas of Array.from(el.querySelectorAll('canvas'))) {
 					canvas.addEventListener(
 						'webglcontextlost',
@@ -1660,8 +1717,7 @@
 							ev.preventDefault();
 							stopRotate();
 							autoRotate = false;
-							plotlyError =
-								'GPU temporarily paused (WebGL context lost — typically thermal or memory pressure on the device). Refresh to try again.';
+							chart3dContextLost = true;
 						},
 						{ once: true }
 					);
@@ -2038,12 +2094,37 @@
 						</button>
 					</span>
 				</figcaption>
+				<div class="chart-3d-wrap" class:context-lost={chart3dContextLost}>
 				<div
-				bind:this={chart3dEl}
-				use:chartCleanupAction
-				class="chart chart-3d"
-				data-testid="umap-chart-3d"
-			></div>
+					bind:this={chart3dEl}
+					use:chartCleanupAction
+					class="chart chart-3d"
+					data-testid="umap-chart-3d"
+				></div>
+				{#if chart3dContextLost}
+					<aside
+						class="chart-3d-context-lost-overlay"
+						data-testid="umap-3d-context-lost"
+						role="alert"
+					>
+						<strong>GPU paused</strong>
+						<p>
+							The 3D scatter exhausted the WebGL context — usually
+							thermal or memory pressure on the device. Common on
+							mobile after sustained orbit or rotation of a large
+							scatter.
+						</p>
+						<button
+							type="button"
+							class="chart-3d-context-lost-retry"
+							on:click={() => location.reload()}
+							data-testid="umap-3d-context-lost-retry"
+						>
+							Refresh page to retry
+						</button>
+					</aside>
+				{/if}
+			</div>
 			</figure>
 		{:else if mode !== 'ohbm'}
 			<!-- 3D pane hidden because no WebGL context is available
@@ -2190,6 +2271,56 @@
 	}
 	.chart-3d {
 		height: clamp(280px, 45vh, 480px);
+	}
+	.chart-3d-wrap {
+		position: relative;
+	}
+	/* When the WebGL context is lost, Plotly draws a red SVG
+	   rectangle ("WebGL is not supported") inside the chart div.
+	   Hide every SVG + canvas child while our overlay is up so the
+	   visitor sees only our message — not Plotly's misleading one
+	   underneath. */
+	.chart-3d-wrap.context-lost .chart-3d > * {
+		visibility: hidden;
+	}
+	.chart-3d-context-lost-overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 1rem 1.25rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		text-align: center;
+		color: var(--text);
+	}
+	.chart-3d-context-lost-overlay strong {
+		font-size: 1rem;
+		color: var(--accent);
+	}
+	.chart-3d-context-lost-overlay p {
+		margin: 0;
+		max-width: 28rem;
+		font-size: 0.85rem;
+		line-height: 1.4;
+		color: var(--text-muted);
+	}
+	.chart-3d-context-lost-retry {
+		all: unset;
+		cursor: pointer;
+		margin-top: 0.4rem;
+		padding: 0.4rem 0.85rem;
+		border-radius: 4px;
+		background: var(--accent);
+		color: var(--accent-text);
+		font-size: 0.85rem;
+	}
+	.chart-3d-context-lost-retry:hover {
+		filter: brightness(1.05);
 	}
 	.status,
 	.error {
