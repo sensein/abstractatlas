@@ -216,6 +216,8 @@
 		last2dFocusKey = '';
 		last2dUirev = 'atlas-2d';
 		current2dXSpan = 0;
+		current2dXRange = null;
+		current2dYRange = null;
 		// Drop the 2D array cache so post-bfcache restore renders
 		// build fresh references that match the (purged-then-reborn)
 		// chart's internal data buffers. Stale cached arrays could
@@ -881,13 +883,16 @@
 	// `data2dFullSpan` cache is the corpus' full x-extent, computed
 	// once when the parquet finishes loading.
 	let data2dFullSpan = 0;
-	// Live x-span of the 2D chart's current viewport. Updated by the
-	// `plotly_relayout` handler on every pan / zoom / autorange
-	// change. Used by the focus-zoom logic to decide whether to snap
-	// the camera in (when the user is at default / zoomed out) or to
-	// leave the existing zoom alone (when the user has already
-	// manually zoomed closer than the focus-snap target).
+	// Live x-span + actual x/y ranges of the 2D chart's current
+	// viewport. Updated by the `plotly_relayout` handler on every
+	// pan / zoom / autorange change. The span drives the focus-zoom
+	// decision (snap or stay); the explicit ranges get replayed into
+	// subsequent renders' layouts so a fresh `Plotly.react` call
+	// after a non-snap (e.g. clicking another point at the same
+	// zoom) doesn't reset to autorange.
 	let current2dXSpan = 0;
+	let current2dXRange: [number, number] | null = null;
+	let current2dYRange: [number, number] | null = null;
 	// Re-cache the full x-span whenever the backdrop dataset arrives
 	// or changes (parquet load, mode swap). Cheap one-pass scan.
 	$: data2dFullSpan = computeAtlasFullSpan(backdropPoints);
@@ -1211,12 +1216,18 @@
 		const userWiderThanFocus =
 			current2dXSpan === 0 || current2dXSpan > FOCUS_WINDOW_SPAN;
 		const shouldZoomToFocus = focus2d && focusChanged2d && userWiderThanFocus;
+		// Either the new focus-snap window (when we're snapping), or
+		// the user's current explicit zoom range (when we're NOT
+		// snapping but the user has manually zoomed in / panned).
+		// Without this, the bare `xaxis: { ... }` layout would let
+		// Plotly's default autorange:true kick in on the next react
+		// call — and the user's zoom would visibly snap back out.
 		const xRange = shouldZoomToFocus
 			? [focus2d.x - ZOOM_HALF_SPAN, focus2d.x + ZOOM_HALF_SPAN]
-			: null;
+			: current2dXRange;
 		const yRange = shouldZoomToFocus
 			? [focus2d.y - ZOOM_HALF_SPAN, focus2d.y + ZOOM_HALF_SPAN]
-			: null;
+			: current2dYRange;
 		// uirevision is STICKY — only bumps when we actually want to
 		// override the user's zoom. Otherwise we reuse the previous
 		// render's uirev so Plotly preserves the user's manual
@@ -1331,13 +1342,24 @@
 					// (drag-zoom vs programmatic relayout). Handle both.
 					let xMin: unknown = ev['xaxis.range[0]'];
 					let xMax: unknown = ev['xaxis.range[1]'];
-					const arr = ev['xaxis.range'] as unknown[] | undefined;
-					if (typeof xMin !== 'number' && Array.isArray(arr)) {
-						xMin = arr[0];
-						xMax = arr[1];
+					const xArr = ev['xaxis.range'] as unknown[] | undefined;
+					if (typeof xMin !== 'number' && Array.isArray(xArr)) {
+						xMin = xArr[0];
+						xMax = xArr[1];
+					}
+					let yMin: unknown = ev['yaxis.range[0]'];
+					let yMax: unknown = ev['yaxis.range[1]'];
+					const yArr = ev['yaxis.range'] as unknown[] | undefined;
+					if (typeof yMin !== 'number' && Array.isArray(yArr)) {
+						yMin = yArr[0];
+						yMax = yArr[1];
 					}
 					if (typeof xMin === 'number' && typeof xMax === 'number') {
 						current2dXSpan = Math.abs(xMax - xMin);
+						current2dXRange = [xMin, xMax];
+						if (typeof yMin === 'number' && typeof yMax === 'number') {
+							current2dYRange = [yMin, yMax];
+						}
 						applyAtlasZoomOpacity(
 							api as PlotlyApi,
 							el as HTMLDivElement,
@@ -1346,8 +1368,12 @@
 						);
 					} else if (ev['xaxis.autorange'] === true) {
 						// User double-clicked to reset axes → autorange
-						// ON → back to the base opacity (full corpus).
+						// ON → back to the base opacity (full corpus)
+						// and clear the cached ranges so the next render
+						// lets Plotly autorange too.
 						current2dXSpan = data2dFullSpan;
+						current2dXRange = null;
+						current2dYRange = null;
 						applyAtlasZoomOpacity(
 							api as PlotlyApi,
 							el as HTMLDivElement,
