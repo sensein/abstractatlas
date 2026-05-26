@@ -150,11 +150,20 @@
 		if (typeof document === 'undefined') return true;
 		try {
 			const c = document.createElement('canvas');
-			return !!(
+			const gl =
 				c.getContext('webgl2') ||
 				c.getContext('webgl') ||
-				c.getContext('experimental-webgl')
+				c.getContext('experimental-webgl');
+			if (!gl) return false;
+			// Release the probe's context immediately so we don't
+			// consume one of the browser's ~8-16 origin-wide WebGL
+			// context slots just to answer a yes/no question. Same
+			// pattern as `destroyChart` uses for the real charts.
+			const lc = (gl as WebGLRenderingContext).getExtension?.(
+				'WEBGL_lose_context'
 			);
+			lc?.loseContext?.();
+			return true;
 		} catch {
 			return false;
 		}
@@ -236,6 +245,57 @@
 			lc?.loseContext?.();
 		}
 		el.innerHTML = '';
+	}
+
+	/**
+	 * Svelte `use:` action that hooks the actual DOM unmount.
+	 *
+	 * `bind:this` is unreliable for cleanup: when the conditional
+	 * wrapping `<div bind:this={chart3dEl}>` flips false, Svelte
+	 * sets the binding to `null` AND removes the DOM node in the
+	 * same tick. By the time a `$:` reactive observes the null,
+	 * the WebGL canvas is gone and we can't call `loseContext()`
+	 * on it. Actions get the node passed in directly + a `destroy`
+	 * hook called BEFORE the DOM is unlinked — exactly what we
+	 * need for the 3D pane that comes and goes via `show3dPane`.
+	 *
+	 * Side-effects on destroy:
+	 *   1. `Plotly.purge(node)` — release Plotly's internal state.
+	 *   2. Iterate every `<canvas>` child + `loseContext()` on
+	 *      its WebGL context.
+	 *   3. Reset the 3D-specific handler flags so the next mount
+	 *      goes through the full init path. If we left them at
+	 *      `true`, a remount would short-circuit listener
+	 *      attachment and rotation init.
+	 */
+	function chartCleanupAction(node: HTMLDivElement) {
+		return {
+			destroy() {
+				if (plotly) {
+					try {
+						plotly.purge(node);
+					} catch {
+						/* purge on already-purged node is a no-op */
+					}
+				}
+				for (const canvas of Array.from(node.querySelectorAll('canvas'))) {
+					const gl =
+						(canvas as HTMLCanvasElement).getContext?.('webgl2') ??
+						(canvas as HTMLCanvasElement).getContext?.('webgl');
+					const lc = gl?.getExtension?.('WEBGL_lose_context');
+					lc?.loseContext?.();
+				}
+				node.innerHTML = '';
+				// Reset 3D-specific state so a future remount goes
+				// through fresh init. Don't touch 2D state.
+				handlers3dAttached = false;
+				atlas3dHandlersAttached = false;
+				chart3dInitialized = false;
+				currentEye3D = null;
+				rotateAngle = 0;
+				stopRotate();
+			}
+		};
 	}
 	function purgeCharts() {
 		destroyChart(chart2dEl);
@@ -1938,7 +1998,12 @@
 						</button>
 					</span>
 				</figcaption>
-				<div bind:this={chart3dEl} class="chart chart-3d" data-testid="umap-chart-3d"></div>
+				<div
+				bind:this={chart3dEl}
+				use:chartCleanupAction
+				class="chart chart-3d"
+				data-testid="umap-chart-3d"
+			></div>
 			</figure>
 		{:else if mode !== 'ohbm'}
 			<!-- 3D pane hidden because no WebGL context is available
