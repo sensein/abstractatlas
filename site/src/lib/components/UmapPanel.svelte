@@ -133,40 +133,41 @@
 	let viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
 	let mobile = viewportWidth < mobileBreakpoint;
 
-	// scatter3d in Plotly 3.x silently requires WebGL2 (the
-	// regl-gl3d / gl-scatter3d stack uses WebGL2-only features
-	// like vertex array objects). Some mobile Chrome variants
-	// — Samsung Internet on older Android, certain WebView
-	// embeddings, browser-in-app shells — ship WebGL1 only and
-	// fail the scatter3d render with a cryptic "this needs
-	// WebGL" message even though basic WebGL works. Detect
-	// upfront so we can (a) skip mounting the 3D pane on
-	// mobile (where it's marginally useful anyway), and (b)
-	// show a clearer message than Plotly's default error.
-	function detectWebGL2(): boolean {
-		if (typeof document === 'undefined') return true; // SSR
+	// Plotly probes `webgl2` first then falls back to `webgl` and
+	// `experimental-webgl`; WebGL2 is NOT a strict requirement.
+	// The "this needs WebGL" error a user can still see on some
+	// mobile Chrome variants happens AFTER context creation
+	// succeeds — typically a missing extension Plotly's gl-vis /
+	// regl stack relies on (e.g. `OES_vertex_array_object`,
+	// `OES_element_index_uint`). A pre-flight `canvas.getContext`
+	// can't catch those — only Plotly's own runtime can.
+	//
+	// What we CAN gate on: a working WebGL context at all. That
+	// covers the genuinely-no-WebGL case (locked-down kiosks,
+	// outdated drivers) without false-negatives on mobile WebGL1
+	// browsers that work fine.
+	function detectWebGL(): boolean {
+		if (typeof document === 'undefined') return true;
 		try {
 			const c = document.createElement('canvas');
-			return !!c.getContext('webgl2');
+			return !!(
+				c.getContext('webgl2') ||
+				c.getContext('webgl') ||
+				c.getContext('experimental-webgl')
+			);
 		} catch {
 			return false;
 		}
 	}
-	const hasWebGL2 =
-		typeof document === 'undefined' ? true : detectWebGL2();
+	const hasWebGL =
+		typeof document === 'undefined' ? true : detectWebGL();
 
-	// 3D pane gating:
-	//   - OHBM mode (~3k per-community scatter) — keep 3D on all
-	//     viewports; works on mobile WebGL1 and the dataset is
-	//     small.
-	//   - atlas / neuroscape mode (461k scatter3d) — gated on
-	//     WebGL2 availability ONLY. Mobile WebGL2-capable browsers
-	//     (modern Chrome/Safari/Firefox Android, Safari iOS 15+)
-	//     get the full 3D pane. The visitor has already opted in
-	//     via the "Show map" toggle (off-by-default on mobile per
-	//     the admonition), so the explicit hide-on-mobile was
-	//     redundantly protective.
-	$: show3dPane = mode === 'ohbm' || hasWebGL2;
+	// 3D pane gating: any WebGL context is enough for Plotly's
+	// scatter3d to TRY to render. If the trace then fails because
+	// of a missing extension, Plotly shows its own error overlay
+	// (we can't pre-empt that without a full render attempt).
+	// OHBM mode is small enough that we never gate it.
+	$: show3dPane = mode === 'ohbm' || hasWebGL;
 
 	let autoRotate = true;
 	let rotateFrame: number | null = null;
@@ -1132,6 +1133,15 @@
 					unselected: { marker: { opacity: Math.max(opacity * 4, 0.2) } }
 			  }
 			: {};
+		// Backdrop hover is INTENTIONALLY off. The 461k-point hover
+		// hit-test on scattergl is the documented latency hotspot
+		// (plotly.js community forum: lasso/hover both walk a
+		// hit-test structure that scales with point count). Skipping
+		// hover here makes pan / zoom / lasso feel fluid; the
+		// overlay (3k OHBM points) keeps its hover tooltip below.
+		// `customdata` is retained because the click handler reads
+		// it to open the inline detail panel — click-to-focus is a
+		// cheap point pick, not a hover hit-test.
 		const backdropTrace: Record<string, unknown> = {
 			type: 'scattergl' as const,
 			mode: 'markers' as const,
@@ -1145,8 +1155,7 @@
 				line: { width: 0 },
 				...(bdr.symbol ? { symbol: bdr.symbol } : {})
 			},
-			hovertemplate: '%{text}<extra></extra>',
-			text: bdr.hoverText,
+			hoverinfo: 'skip',
 			showlegend: false,
 			customdata: bdr.customdata,
 			...backdropSelectedConfig
@@ -1286,6 +1295,12 @@
 			autosize: true,
 			margin: { l: 0, r: 0, t: 0, b: 0 },
 			hovermode: 'closest' as const,
+			// `spikedistance: 0` disables Plotly's spike-finding loop
+			// — a documented perf cliff on scattergl at 100k+ points
+			// (plotly.js#5927, bisected to the spike-distance hover
+			// pass). We don't draw spikes on the atlas chart, so this
+			// turns off pure overhead. Big hover/pan latency win.
+			spikedistance: 0,
 			dragmode: 'lasso' as const,
 			paper_bgcolor: c.paper,
 			plot_bgcolor: c.plot,
@@ -1923,16 +1938,16 @@
 				<div bind:this={chart3dEl} class="chart chart-3d" data-testid="umap-chart-3d"></div>
 			</figure>
 		{:else if mode !== 'ohbm'}
-			<!-- 3D pane hidden because the browser lacks WebGL 2.
-			     Some Chrome-based mobile shells (Samsung Internet
-			     on older Android, in-app WebView embeddings) ship
-			     WebGL 1 only, and Plotly 3.x's scatter3d silently
-			     fails on them with a generic "needs WebGL" error.
-			     The 2D pane carries the full functionality
-			     (lasso, focus halo, click-to-detail). -->
+			<!-- 3D pane hidden because no WebGL context is available
+			     (locked-down kiosk browsers, outdated drivers, etc.).
+			     Plotly itself can sometimes display a similar message
+			     AFTER attempting to render if a required GL extension
+			     is missing despite WebGL working — those cases need a
+			     different browser. The 2D pane carries the full
+			     functionality (lasso, focus halo, click-to-detail). -->
 			<aside class="three-d-skipped" data-testid="umap-3d-skipped">
 				<p>
-					3D view requires WebGL 2 — this browser doesn't expose it.
+					3D view requires WebGL — this browser doesn't expose it.
 					Try a different browser if you'd like the 3D scatter.
 				</p>
 			</aside>
