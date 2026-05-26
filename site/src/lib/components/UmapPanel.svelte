@@ -176,10 +176,34 @@
 	// at ~16 contexts/origin) and producing visible lag on the new
 	// page. We re-render on pageshow if the page is bfcache-restored.
 	let renderToken = 0;
+	/**
+	 * Force-release a Plotly chart's WebGL context. `Plotly.purge`
+	 * alone doesn't always destroy the underlying gl-vis canvas
+	 * (plotly.js#2852, #6365): the canvas element survives in the
+	 * div, holding its WebGL context open. Browsers cap origin-wide
+	 * GL contexts (~16 in Chrome), so toggling hide/show on the
+	 * 461k-point scatter3d a few times exhausts the pool. Explicitly
+	 * iterating canvas children + calling `loseContext()` releases
+	 * the context immediately; then clearing innerHTML wipes any
+	 * remaining DOM bookkeeping Plotly held.
+	 */
+	function destroyChart(el: HTMLDivElement | null) {
+		if (!el) return;
+		if (plotly) plotly.purge(el);
+		// Iterate ALL canvases (Plotly creates several — 2D scattergl
+		// uses one, scatter3d uses one + an HUD canvas).
+		for (const canvas of Array.from(el.querySelectorAll('canvas'))) {
+			const gl =
+				(canvas as HTMLCanvasElement).getContext?.('webgl2') ??
+				(canvas as HTMLCanvasElement).getContext?.('webgl');
+			const lc = gl?.getExtension?.('WEBGL_lose_context');
+			lc?.loseContext?.();
+		}
+		el.innerHTML = '';
+	}
 	function purgeCharts() {
-		if (!plotly) return;
-		if (chart2dEl) plotly.purge(chart2dEl);
-		if (chart3dEl) plotly.purge(chart3dEl);
+		destroyChart(chart2dEl);
+		destroyChart(chart3dEl);
 		handlers2dAttached = false;
 		handlers3dAttached = false;
 		atlas2dHandlersAttached = false;
@@ -209,7 +233,18 @@
 	}
 	function onPageShow(ev: PageTransitionEvent) {
 		if (!ev.persisted) return;
-		// bfcache restore — charts were purged in pagehide, re-render.
+		// bfcache restore. Belt-and-braces reset before re-render:
+		// pagehide should have purged the charts already, but a race
+		// can leave latent rAF callbacks or stale `currentEye3D` /
+		// `rotateAngle` that produce a visible camera jolt on the
+		// next ensureRotate tick. Re-purge + reset the rotation state
+		// so the chart inits from a clean slate. The parquet itself
+		// is held in the Cache API (see `data_package/cache.ts`), so
+		// the re-render reads from cache — no network hit.
+		stopRotate();
+		purgeCharts();
+		rotateAngle = 0;
+		currentEye3D = null;
 		renderToken += 1;
 	}
 
