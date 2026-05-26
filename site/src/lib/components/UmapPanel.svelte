@@ -178,7 +178,25 @@
 	// OHBM mode is small enough that we never gate it.
 	$: show3dPane = mode === 'ohbm' || hasWebGL;
 
-	let autoRotate = true;
+	// Auto-rotate default policy:
+	//   - OHBM mode (per-community ~3k-point scatter): on by default
+	//     — the dataset is small enough that continuous
+	//     `Plotly.relayout({ 'scene.camera.eye': ... })` is cheap.
+	//   - atlas / neuroscape mode (461k-point scatter3d): on by
+	//     default on DESKTOP, off on MOBILE width. Sustained
+	//     scatter3d rotation at 461k points on a mobile GPU is the
+	//     observed cause of `webglcontextlost` revocations — the
+	//     browser yanks the GL context under thermal / memory
+	//     pressure and Plotly's gl-vis then overlays "WebGL not
+	//     supported" even though the context was fine seconds
+	//     earlier. Default off on mobile avoids the steady GPU
+	//     stress; the user can opt in via the rotate button.
+	let autoRotate =
+		mode === 'ohbm'
+			? true
+			: typeof window === 'undefined'
+				? true
+				: window.innerWidth >= mobileBreakpoint;
 	let rotateFrame: number | null = null;
 	let rotateAngle = 0;
 
@@ -1626,6 +1644,28 @@
 			.react(el, traces, layout, config)
 			.then(() => {
 				chart3dInitialized = true;
+				// `webglcontextlost` — handle gracefully. Sustained
+				// 3D rotation at 461k points on a mobile GPU can hit
+				// thermal / memory pressure and the browser revokes
+				// the context. Plotly's default behaviour overlays a
+				// misleading "WebGL not supported" message. We stop
+				// rotation immediately + set `plotlyError` so the
+				// component renders our own message instead. Re-
+				// attaching is safe: the action fires the listener on
+				// every canvas Plotly creates on this chart div.
+				for (const canvas of Array.from(el.querySelectorAll('canvas'))) {
+					canvas.addEventListener(
+						'webglcontextlost',
+						(ev) => {
+							ev.preventDefault();
+							stopRotate();
+							autoRotate = false;
+							plotlyError =
+								'GPU temporarily paused (WebGL context lost — typically thermal or memory pressure on the device). Refresh to try again.';
+						},
+						{ once: true }
+					);
+				}
 				if (atlas3dHandlersAttached) {
 					ensureRotate();
 					return;
