@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<script>
+			// Theme boot — runs before any rendering to avoid FOUC.
+			// Resolves `light` | `dark` | `auto` from localStorage and sets
+			// data-theme on <html> + the CSS color-scheme so native form
+			// controls + scrollbars adopt the right palette immediately.
+			(function () {
+				try {
+					var raw = localStorage.getItem('ohbm2026.ui.theme.v1');
+					var choice = raw === 'light' || raw === 'dark' || raw === 'auto' ? raw : 'auto';
+					var effective =
+						choice === 'auto'
+							? window.matchMedia('(prefers-color-scheme: dark)').matches
+								? 'dark'
+								: 'light'
+							: choice;
+					document.documentElement.setAttribute('data-theme', effective);
+					document.documentElement.style.colorScheme = effective;
+				} catch (e) {
+					// localStorage might be unavailable; default to system pref.
+					document.documentElement.setAttribute(
+						'data-theme',
+						window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+					);
+				}
+			})();
+		</script>
+		<!-- Google tag (gtag.js) — measurement id G-5LQ42EDHPF.
+		     Gated to skip PR-preview deployments so we don't pollute the
+		     production analytics with bot + reviewer traffic. PR previews
+		     live under /pr-<N>/ on the same gh-pages host; production is
+		     the bare-root + /ohbm2026/ + /neuroscape/ subpaths. -->
+		<script>
+			(function () {
+				try {
+					var p = window.location.pathname || '';
+					if (/^\/pr-\d+\//.test(p)) return;
+				} catch (e) {
+					return;
+				}
+				var s = document.createElement('script');
+				s.async = true;
+				s.src = 'https://www.googletagmanager.com/gtag/js?id=G-5LQ42EDHPF';
+				document.head.appendChild(s);
+				window.dataLayer = window.dataLayer || [];
+				function gtag() { window.dataLayer.push(arguments); }
+				window.gtag = gtag;
+				gtag('js', new Date());
+				gtag('config', 'G-5LQ42EDHPF');
+			})();
+		</script>
+		<link href="/pr-45/ohbm2026/_app/immutable/entry/start.B7l3pl4D.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/DUMBaAxl.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/B1nrzDZt.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/Bncu9upV.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/entry/app.YauQJUgR.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/BcOfMrCR.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/B_zOW6w2.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/BmZDk6VL.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/BN2SbDcR.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/nodes/0.B6Q2kNs8.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/Y5f5Gvaa.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/BlBQ8KBy.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/rlxi2XEE.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/CskuTx5k.js" rel="modulepreload">
+		<link href="/pr-45/ohbm2026/_app/immutable/chunks/DPXedgNA.js" rel="modulepreload">
+		
+		<link href="/pr-45/ohbm2026/_app/immutable/assets/0.CYWQR7h5.css" rel="stylesheet">
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">
+			<script>
+				{
+					__sveltekit_hswdis = {
+						base: "/pr-45/ohbm2026",
+						assets: "/pr-45/ohbm2026"
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("/pr-45/ohbm2026/_app/immutable/entry/start.B7l3pl4D.js"),
+						import("/pr-45/ohbm2026/_app/immutable/entry/app.YauQJUgR.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element);
+					});
+				}
+			</script>
+		</div>
+	</body>
+</html>
