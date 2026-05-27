@@ -29,6 +29,30 @@
 				}
 			})();
 		</script>
+		<!-- Google tag (gtag.js) — measurement id G-5LQ42EDHPF.
+		     Gated to skip PR-preview deployments so we don't pollute the
+		     production analytics with bot + reviewer traffic. PR previews
+		     live under /pr-<N>/ on the same gh-pages host; production is
+		     the bare-root + /ohbm2026/ + /neuroscape/ subpaths. -->
+		<script>
+			(function () {
+				try {
+					var p = window.location.pathname || '';
+					if (/^\/pr-\d+\//.test(p)) return;
+				} catch (e) {
+					return;
+				}
+				var s = document.createElement('script');
+				s.async = true;
+				s.src = 'https://www.googletagmanager.com/gtag/js?id=G-5LQ42EDHPF';
+				document.head.appendChild(s);
+				window.dataLayer = window.dataLayer || [];
+				function gtag() { window.dataLayer.push(arguments); }
+				window.gtag = gtag;
+				gtag('js', new Date());
+				gtag('config', 'G-5LQ42EDHPF');
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
