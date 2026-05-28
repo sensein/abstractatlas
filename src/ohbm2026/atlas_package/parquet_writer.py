@@ -83,6 +83,44 @@ def _manifest_table(manifest_json: dict[str, Any]) -> pa.Table:
     )
 
 
+def _cluster_centroids_table(
+    cluster_centroids: Mapping[int, np.ndarray],
+    cluster_counts: Mapping[int, int],
+) -> pa.Table:
+    """Spec 019 — cluster-centroid table inside neuroscape.parquet.
+
+    Schema: `cluster_id INT16, centroid_vector LIST<FLOAT32, 384>,
+    member_count INT32`. Sorted by cluster_id ASC. The browser scores
+    the embedded query against these centroids before any range-fetch
+    into neuroscape_vectors.parquet (5-step pipeline, Step 2).
+    """
+    if not cluster_centroids:
+        # Defensive: an empty centroid table is allowed (corresponds to
+        # --no-semantic-index builds) but produces an empty table to
+        # keep the schema readable by the browser.
+        return pa.table(
+            {
+                "cluster_id": pa.array([], type=pa.int16()),
+                "centroid_vector": pa.array([], type=pa.list_(pa.float32(), 384)),
+                "member_count": pa.array([], type=pa.int32()),
+            }
+        )
+    ordered = sorted(cluster_centroids.keys())
+    return pa.table(
+        {
+            "cluster_id": pa.array(ordered, type=pa.int16()),
+            "centroid_vector": pa.array(
+                [cluster_centroids[c].astype(np.float32).tolist() for c in ordered],
+                type=pa.list_(pa.float32(), 384),
+            ),
+            "member_count": pa.array(
+                [int(cluster_counts.get(c, 0)) for c in ordered],
+                type=pa.int32(),
+            ),
+        }
+    )
+
+
 def _articles_table(
     articles: Sequence[ArticleHeader],
     embedded_2d: np.ndarray,
@@ -307,8 +345,17 @@ def write_neuroscape_parquet(
     knn: KnnResult,
     titles_index_bin: bytes,
     titles_index_meta: Mapping[str, Any],
+    cluster_centroids: Mapping[int, np.ndarray] | None = None,
 ) -> None:
-    """Emit ``neuroscape.parquet`` per contracts/parquet-schemas.md."""
+    """Emit ``neuroscape.parquet`` per contracts/parquet-schemas.md.
+
+    Spec 019: ``cluster_centroids`` is an OPTIONAL additional table
+    (one per cluster, FP32 centroid + member_count) that, when present,
+    drives the browser's query→cluster routing step. Defaults to None
+    so existing Stage-15 callers (and `--no-semantic-index` builds)
+    don't have to thread it through; the table is omitted from the
+    parquet entries in that case.
+    """
 
     manifest_json = {
         "schema_version": "neuroscape.v1",
@@ -316,6 +363,7 @@ def write_neuroscape_parquet(
         "n_articles": len(articles),
         "n_clusters": len(clusters),
         "k_neighbors": int(knn.nearest_pmids.shape[1]) if knn.nearest_pmids.size else 0,
+        "has_cluster_centroids": cluster_centroids is not None and len(cluster_centroids) > 0,
     }
     entries: list[tuple[str, bytes]] = [
         ("manifest", _to_inner_parquet_bytes(_manifest_table(manifest_json))),
@@ -335,6 +383,13 @@ def write_neuroscape_parquet(
             json.dumps(dict(titles_index_meta), sort_keys=True).encode(),
         ),
     ]
+    if cluster_centroids is not None and len(cluster_centroids) > 0:
+        entries.append(
+            (
+                "cluster_centroids",
+                _to_inner_parquet_bytes(_cluster_centroids_table(cluster_centroids, cluster_counts)),
+            )
+        )
     _write_outer(out_path, entries)
 
 
