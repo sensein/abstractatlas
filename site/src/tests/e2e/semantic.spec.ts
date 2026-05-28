@@ -66,31 +66,49 @@ test.describe('US1: /neuroscape/ semantic search', () => {
 	test('typing a lexical-match query produces a non-empty result list', async ({ page }) => {
 		const input = page.getByTestId('search-input');
 		await input.fill('memory');
-		// The result list updates reactively; wait a beat for Svelte
-		// to settle then verify at least one row appears.
-		await page.waitForTimeout(800);
+		// The 461k-article parquet streams over several seconds; poll
+		// the result-row count until non-zero (up to 60s on CI) rather
+		// than racing a fixed wait against the load.
 		const rows = page.getByTestId('neuroscape-result-row');
-		const count = await rows.count();
-		expect(count).toBeGreaterThan(0);
+		await expect
+			.poll(() => rows.count(), { timeout: 60_000, intervals: [500, 1_000, 2_000] })
+			.toBeGreaterThan(0);
 	});
 
 	test('FR-008: detail panel opens with same data-testid markers for any row click', async ({
 		page
 	}) => {
+		// Per-test timeout extension: the 461k-article parquet stream
+		// keeps the result list reflowing for ~30-60s on CI; the
+		// default 30s test timeout isn't enough for "wait for stable
+		// list → click → assert panel".
+		test.setTimeout(120_000);
 		const input = page.getByTestId('search-input');
 		await input.fill('memory');
-		await page.waitForTimeout(800);
+		// Wait until the result count stops changing — two consecutive
+		// reads with the same value mean the streaming load + filter
+		// recomputation have settled.
+		let previous = -1;
+		await expect
+			.poll(
+				async () => {
+					const cur = await page.getByTestId('neuroscape-result-row').count();
+					if (cur === 0) return 'empty';
+					if (cur === previous) return 'stable';
+					previous = cur;
+					return 'changing';
+				},
+				{ timeout: 90_000, intervals: [1_000, 2_000, 3_000] }
+			)
+			.toBe('stable');
 		const firstRow = page.getByTestId('neuroscape-result-row').first();
-		if ((await firstRow.count()) === 0) test.skip();
-		await firstRow.click();
-		// The detail panel may render under a different test-id on
-		// /neuroscape/ vs. /ohbm2026/; FR-008 requires the panel
-		// reachable via consistent path — accept either
-		// `neuroscape-detail-panel` or the inline detail card.
-		const panel = page
-			.locator('[data-testid*="detail"]')
-			.first();
-		await expect(panel).toBeVisible({ timeout: 5000 });
+		await firstRow.click({ force: true });
+		// The detail panel may render under different test-ids
+		// (`neuroscape-detail-panel`, `ohbm2026-detail-panel`,
+		// inline detail cards). FR-008 just requires the panel reach
+		// a visible state via the existing per-subsite path.
+		const panel = page.locator('[data-testid*="detail"]').first();
+		await expect(panel).toBeVisible({ timeout: 15_000 });
 	});
 
 	// Below: semantic-only assertions. These require the deployed
