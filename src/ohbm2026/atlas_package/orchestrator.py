@@ -312,8 +312,12 @@ def build_atlas_package(cfg: AtlasBuildConfig) -> dict[str, Any]:
         # from the bytes in neuroscape_vectors.parquet (INV-001 +
         # data-model.md §1 build-side invariant).
         for cv in vectors_result.clusters:
-            deq = cv.vectors_int8.astype(np.float32) / max(vectors_result.scale, 1e-12)
-            mean = deq.mean(axis=0)
+            # The mean is L2-renormalised immediately below, so dividing
+            # the INT8 rows by `vectors_result.scale` first is mathematically
+            # redundant (per-row scaling cancels in the unit-norm step).
+            # Skipping it saves a float32 allocation + per-element div across
+            # the cluster (Gemini review on PR #47).
+            mean = cv.vectors_int8.astype(np.float32).mean(axis=0)
             n = float(np.linalg.norm(mean))
             cluster_centroids[cv.cluster_id] = (mean / (n if n != 0.0 else 1.0)).astype(np.float32)
         # Flatten the per-cluster vectors back to a single corpus-wide

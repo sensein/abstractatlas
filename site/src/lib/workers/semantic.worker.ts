@@ -25,7 +25,6 @@ env.allowLocalModels = false;
 env.useBrowserCache = true;
 
 let extractor: FeatureExtractionPipeline | null = null;
-let mode: 'ohbm2026' | 'neuroscape' | null = null;
 // OHBM 2026 single-matrix state.
 let corpus: Int8Array | null = null;
 let dim = 384;
@@ -104,10 +103,8 @@ self.addEventListener('message', async (e: MessageEvent<InMsg>) => {
 				dim = msg.dim;
 				invScale = msg.scale > 0 ? 1 / msg.scale : 1;
 				if (msg.corpus === 'ohbm2026') {
-					mode = 'ohbm2026';
 					corpus = new Int8Array(msg.vectors);
 				} else {
-					mode = 'neuroscape';
 					clusterVectors.clear();
 					clusterPubmedIds.clear();
 				}
@@ -228,6 +225,3 @@ self.addEventListener('message', async (e: MessageEvent<InMsg>) => {
 		post({ type: 'error', message: (err as Error).message });
 	}
 });
-
-// Silence unused warnings when only the legacy path is exercised.
-void mode;

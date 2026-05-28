@@ -242,15 +242,17 @@ class NeuroscapeRanker {
 			const candidates = this.knnExpandFromSeeds(seeds);
 			const candidateList: Array<{ id: bigint; cluster_id: number }> = [];
 			const knnDistanceFallback: Map<bigint, number> = new Map();
-			let capHit = false;
 			for (const id of candidates) {
 				const cid = this.cfg.pubmedToCluster.get(id);
 				if (cid === undefined) continue;
 				// Ensure this neighbour's cluster is loaded for re-ranking,
-				// subject to FR-024 cap.
+				// subject to FR-024 cap. The cap-exceeded signal itself
+				// is surfaced via onCapExceeded inside ensureClusterLoaded;
+				// here we just route un-loaded candidates to the KNN-
+				// distance fallback path so they still appear in the result
+				// list (FR-024 fallback contract).
 				const status = await this.ensureClusterLoaded(cid, hooks);
 				if (status === 'cap-exceeded') {
-					capHit = true;
 					// Record a KNN-distance fallback score for this row;
 					// we'll still surface it but with score_source='knn-distance'.
 					for (const seed of seeds) {
@@ -293,7 +295,6 @@ class NeuroscapeRanker {
 				.slice(0, topK);
 
 			this.setState('ready', hooks);
-			void capHit; // surfaced via onCapExceeded already
 			return result;
 		} catch (err) {
 			this.setState('error', hooks);
