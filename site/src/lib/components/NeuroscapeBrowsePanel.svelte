@@ -9,7 +9,8 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { base } from '$app/paths';
-	import { normalize } from '$lib/filter';
+	import { normalize, parseQuery, type ParsedClause } from '$lib/filter';
+	import { parseIdOperator } from '$lib/goto_poster';
 	import { cartStore, cartNeuroPubmedIds } from '$lib/stores/cart';
 	import CartIconButton from '$lib/components/CartIconButton.svelte';
 
@@ -36,17 +37,76 @@
 
 	let limit = 100;
 
+	// Spec 019 / FR-025 — operator-aware lexical filter that mirrors
+	// the OHBM 2026 SearchBar syntax:
+	//   - implicit-AND multi-word over the title
+	//   - "exact phrase" matches a contiguous token sequence
+	//   - -foo / -"phrase" exclude any title containing the term
+	//   - word OR word: union of two AND-groups
+	//   - id:N → exact pubmed_id lookup
+	// Substring semantics over normalised text (NFD-fold + lowercase).
+	function clauseMatches(haystack: string, clause: ParsedClause): boolean {
+		if (clause.kind === 'word') {
+			return haystack.includes(clause.word);
+		}
+		// kind === 'phrase' — match all phrase words as a contiguous
+		// substring (joined by single spaces). Mirrors how the OHBM
+		// 2026 SearchBar phrase clause is treated at the lexical layer.
+		const needle = clause.words.join(' ');
+		return haystack.includes(needle);
+	}
 	$: filtered = (() => {
-		if (!query.trim()) {
+		const trimmed = (query ?? '').trim();
+		if (!trimmed) {
 			return [...articles].sort((a, b) => b.year - a.year || a.pubmed_id - b.pubmed_id);
 		}
-		const needle = normalize(query);
+		// id:N short-circuit — return the single matching article (or
+		// none) by pubmed_id; ignores the rest of the query per
+		// Stage 14's id-operator semantics on /ohbm2026/.
+		const idPayload = parseIdOperator(trimmed);
+		if (idPayload !== null) {
+			const numeric = Number(idPayload);
+			if (!Number.isFinite(numeric)) return [];
+			return articles.filter((a) => a.pubmed_id === numeric);
+		}
+		const parsed = parseQuery(trimmed);
+		if (parsed.groups.length === 0) return [];
 		const scored: Array<{ a: Article; score: number }> = [];
 		for (const a of articles) {
 			const hay = normalize(a.title);
-			const idx = hay.indexOf(needle);
-			if (idx === -1) continue;
-			scored.push({ a, score: idx });
+			// Group semantics: OR between groups; AND between clauses
+			// within a group. A negate clause excludes any row whose
+			// title contains the term.
+			let groupMatch = false;
+			for (const group of parsed.groups) {
+				let allClausesPass = true;
+				for (const clause of group.clauses) {
+					const hit = clauseMatches(hay, clause);
+					if (clause.negate ? hit : !hit) {
+						allClausesPass = false;
+						break;
+					}
+				}
+				if (allClausesPass) {
+					groupMatch = true;
+					break;
+				}
+			}
+			if (!groupMatch) continue;
+			// Ranking score: position of the first positive clause's
+			// match in the title (lower = better — earlier-in-title
+			// hits feel more "central" to the user's intent).
+			let firstHitIdx = Number.MAX_SAFE_INTEGER;
+			for (const group of parsed.groups) {
+				for (const clause of group.clauses) {
+					if (clause.negate) continue;
+					const probe =
+						clause.kind === 'word' ? clause.word : clause.words.join(' ');
+					const idx = hay.indexOf(probe);
+					if (idx >= 0 && idx < firstHitIdx) firstHitIdx = idx;
+				}
+			}
+			scored.push({ a, score: firstHitIdx });
 		}
 		scored.sort((x, y) => x.score - y.score || y.a.year - x.a.year);
 		return scored.map((s) => s.a);

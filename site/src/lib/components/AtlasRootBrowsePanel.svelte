@@ -14,7 +14,7 @@
 -->
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
-	import { normalize } from '$lib/filter';
+	import { normalize, parseQuery, type ParsedClause } from '$lib/filter';
 	import { cartStore, cartOhbmPosterIds, cartNeuroPubmedIds } from '$lib/stores/cart';
 	import CartIconButton from '$lib/components/CartIconButton.svelte';
 
@@ -59,76 +59,126 @@
 				subline: string;
 		  };
 
+	// Spec 019 / FR-025 / FR-026 — operator-aware cross-conference filter:
+	//   - implicit-AND multi-word over titles in BOTH corpora
+	//   - "exact phrase" + -negation + word OR word work across both
+	//   - id:N matches `poster_id` (OHBM) OR `pubmed_id` (NeuroScape) —
+	//     parallel lookup; both matching rows surface if both exist
+	function clauseMatches(haystack: string, clause: ParsedClause): boolean {
+		if (clause.kind === 'word') return haystack.includes(clause.word);
+		return haystack.includes(clause.words.join(' '));
+	}
+	function passesParsedQuery(
+		haystack: string,
+		parsed: { groups: { clauses: ParsedClause[] }[] }
+	): boolean {
+		for (const group of parsed.groups) {
+			let allPass = true;
+			for (const clause of group.clauses) {
+				const hit = clauseMatches(haystack, clause);
+				if (clause.negate ? hit : !hit) {
+					allPass = false;
+					break;
+				}
+			}
+			if (allPass) return true;
+		}
+		return false;
+	}
+	function bestPositiveHitIndex(
+		haystack: string,
+		parsed: { groups: { clauses: ParsedClause[] }[] }
+	): number {
+		let best = Number.MAX_SAFE_INTEGER;
+		for (const group of parsed.groups) {
+			for (const clause of group.clauses) {
+				if (clause.negate) continue;
+				const probe = clause.kind === 'word' ? clause.word : clause.words.join(' ');
+				const idx = haystack.indexOf(probe);
+				if (idx >= 0 && idx < best) best = idx;
+			}
+		}
+		return best;
+	}
+
 	$: filtered = (() => {
-		const needle = query.trim() ? normalize(query) : '';
+		const trimmed = (query ?? '').trim();
 		const out: Array<{ row: Row; score: number; tie: number }> = [];
 
-		for (const o of overlayPoints) {
-			if (needle) {
-				const hay = normalize(o.title);
-				const idx = hay.indexOf(needle);
-				const pidStr = String(o.poster_id);
-				const pidIdx = pidStr.indexOf(query.trim());
-				if (idx === -1 && pidIdx === -1) continue;
-				const score = idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
-				out.push({
-					row: {
-						kind: 'ohbm2026',
-						id: o.poster_id,
-						title: o.title,
-						cluster_id: o.nearest_cluster_id,
-						subline: `OHBM 2026 · #${o.poster_id}`
-					},
-					score,
-					tie: -o.poster_id
-				});
-			} else {
-				out.push({
-					row: {
-						kind: 'ohbm2026',
-						id: o.poster_id,
-						title: o.title,
-						cluster_id: o.nearest_cluster_id,
-						subline: `OHBM 2026 · #${o.poster_id}`
-					},
-					score: -1,
-					tie: o.poster_id
-				});
+		// id:N short-circuit (FR-026) — match across BOTH corpora in parallel.
+		// The id: prefix is parsed from the raw query; if present, return
+		// every overlay/backdrop row whose id matches.
+		const idMatch = trimmed.match(/^id:(\d+)$/i);
+		if (idMatch) {
+			const wanted = Number(idMatch[1]);
+			for (const o of overlayPoints) {
+				if (o.poster_id === wanted) {
+					out.push({
+						row: {
+							kind: 'ohbm2026',
+							id: o.poster_id,
+							title: o.title,
+							cluster_id: o.nearest_cluster_id,
+							subline: `OHBM 2026 · #${o.poster_id}`
+						},
+						score: 0,
+						tie: 0
+					});
+				}
 			}
+			for (const a of backdropPoints) {
+				if (a.pubmed_id === wanted) {
+					out.push({
+						row: {
+							kind: 'neuroscape',
+							id: a.pubmed_id,
+							title: a.title,
+							cluster_id: a.cluster_id,
+							subline: `NeuroScape · PMID ${a.pubmed_id} · ${a.year}`
+						},
+						score: 0,
+						tie: 1
+					});
+				}
+			}
+			out.sort((x, y) => x.tie - y.tie);
+			return out.map((s) => s.row);
+		}
+
+		const parsed = trimmed ? parseQuery(trimmed) : null;
+
+		for (const o of overlayPoints) {
+			const row: Row = {
+				kind: 'ohbm2026',
+				id: o.poster_id,
+				title: o.title,
+				cluster_id: o.nearest_cluster_id,
+				subline: `OHBM 2026 · #${o.poster_id}`
+			};
+			if (!parsed) {
+				out.push({ row, score: -1, tie: o.poster_id });
+				continue;
+			}
+			const hay = normalize(o.title);
+			if (!passesParsedQuery(hay, parsed)) continue;
+			out.push({ row, score: bestPositiveHitIndex(hay, parsed), tie: -o.poster_id });
 		}
 
 		for (const a of backdropPoints) {
-			if (needle) {
-				const hay = normalize(a.title);
-				const idx = hay.indexOf(needle);
-				const pmidStr = String(a.pubmed_id);
-				const pmidIdx = pmidStr.indexOf(query.trim());
-				if (idx === -1 && pmidIdx === -1) continue;
-				const score = idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
-				out.push({
-					row: {
-						kind: 'neuroscape',
-						id: a.pubmed_id,
-						title: a.title,
-						cluster_id: a.cluster_id,
-						subline: `NeuroScape · PMID ${a.pubmed_id} · ${a.year}`
-					},
-					score,
-					tie: -a.year
-				});
-			} else {
-				out.push({
-					row: {
-						kind: 'neuroscape',
-						id: a.pubmed_id,
-						title: a.title,
-						cluster_id: a.cluster_id,
-						subline: `NeuroScape · PMID ${a.pubmed_id} · ${a.year}`
-					},
-					score: -a.year,
-					tie: a.pubmed_id
-				});
+			const row: Row = {
+				kind: 'neuroscape',
+				id: a.pubmed_id,
+				title: a.title,
+				cluster_id: a.cluster_id,
+				subline: `NeuroScape · PMID ${a.pubmed_id} · ${a.year}`
+			};
+			if (!parsed) {
+				out.push({ row, score: -a.year, tie: a.pubmed_id });
+				continue;
 			}
+			const hay = normalize(a.title);
+			if (!passesParsedQuery(hay, parsed)) continue;
+			out.push({ row, score: bestPositiveHitIndex(hay, parsed), tie: -a.year });
 		}
 
 		out.sort((x, y) => x.score - y.score || x.tie - y.tie);
