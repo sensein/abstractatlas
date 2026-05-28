@@ -272,23 +272,23 @@ class NeuroscapeRanker {
 				candidateList.filter((c) => !knnDistanceFallback.has(c.id)),
 				qv
 			);
-			const result: RankedHit[] = cosineScored
-				.map((s) => ({
+			const cosineHits: RankedHit[] = cosineScored.map((s) => ({
+				corpus: 'neuroscape' as Corpus,
+				id: s.id,
+				cluster_id: this.cfg.pubmedToCluster.get(s.id) ?? null,
+				cosine: s.cosine,
+				score_source: 'cosine'
+			}));
+			const knnHits: RankedHit[] = Array.from(knnDistanceFallback.entries()).map(
+				([id, score]) => ({
 					corpus: 'neuroscape' as Corpus,
-					id: s.id,
-					cluster_id: this.cfg.pubmedToCluster.get(s.id) ?? null,
-					cosine: s.cosine,
-					score_source: 'cosine' as const
-				}))
-				.concat(
-					Array.from(knnDistanceFallback.entries()).map(([id, score]) => ({
-						corpus: 'neuroscape' as Corpus,
-						id,
-						cluster_id: this.cfg.pubmedToCluster.get(id) ?? null,
-						cosine: score,
-						score_source: 'knn-distance' as const
-					}))
-				)
+					id,
+					cluster_id: this.cfg.pubmedToCluster.get(id) ?? null,
+					cosine: score,
+					score_source: 'knn-distance'
+				})
+			);
+			const result: RankedHit[] = [...cosineHits, ...knnHits]
 				.sort((a, b) => b.cosine - a.cosine)
 				.slice(0, topK);
 

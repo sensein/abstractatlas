@@ -55,8 +55,9 @@ function makeBaseCfg(overrides: Partial<RankerConfig> = {}): RankerConfig {
 				{ id: 100n, cosine: 0.9 },
 				{ id: 101n, cosine: 0.85 }
 			]),
-			rerank: vi.fn(async (candidates) =>
-				candidates.map((c, i) => ({ id: c.id, cosine: 0.9 - i * 0.1 }))
+			rerank: vi.fn(
+				async (candidates: Array<{ id: bigint; cluster_id: number }>) =>
+					candidates.map((c, i) => ({ id: c.id, cosine: 0.9 - i * 0.1 }))
 			)
 		},
 		fetchClusterVectors: vi.fn(async () => ({

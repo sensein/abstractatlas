@@ -719,6 +719,54 @@ async function readSiblingStateKey(url: string): Promise<string | null> {
 }
 
 /**
+ * Spec 019 / T024 — range-fetch one cluster's vectors from
+ * `neuroscape_vectors.parquet`. Uses hyparquet's `asyncBufferFromUrl`
+ * + predicate-pushdown on `cluster_id` so only the matching row groups
+ * cross the network.
+ *
+ * Returned arrays are BigInt64Array (pubmed_ids) + Int8Array (vectors
+ * as a flat `[N * 384]` byte buffer). The ranker
+ * (`$lib/search/neuroscape_ranker`) transfers them to the worker via
+ * `loadCluster`.
+ */
+export async function loadClusterVectors(
+	url: string,
+	clusterId: number
+): Promise<{ pubmed_ids: BigInt64Array; vectors: Int8Array }> {
+	const file = await asyncBufferFromUrl({ url });
+	// hyparquet supports `filter` for predicate pushdown via row-group
+	// stats. The parquet writer (semantic_index.py) sorts rows by
+	// cluster_id so row groups have non-overlapping cluster_id ranges,
+	// and `filter: { column: 'cluster_id', value: clusterId }` skips
+	// every row group whose min/max range doesn't include clusterId.
+	const rows = (await parquetReadObjects({
+		file,
+		compressors,
+		utf8: false,
+		// @ts-expect-error hyparquet's TS type for `filter` doesn't yet
+		// list the column-equality form, but the runtime accepts it.
+		filter: { column: 'cluster_id', value: clusterId }
+	})) as Array<{
+		cluster_id?: number;
+		pubmed_id?: bigint | number;
+		minilm_vector?: Uint8Array;
+	}>;
+	const matched = rows.filter((r) => Number(r.cluster_id) === clusterId);
+	const n = matched.length;
+	const pubmed_ids = new BigInt64Array(n);
+	const vectors = new Int8Array(n * 384);
+	for (let i = 0; i < n; i++) {
+		const r = matched[i];
+		pubmed_ids[i] =
+			typeof r.pubmed_id === 'bigint' ? r.pubmed_id : BigInt(r.pubmed_id ?? 0);
+		const v = r.minilm_vector;
+		if (!v || v.length !== 384) continue;
+		vectors.set(new Int8Array(v.buffer, v.byteOffset, v.byteLength), i * 384);
+	}
+	return { pubmed_ids, vectors };
+}
+
+/**
  * Verify that the sibling parquets currently published match what
  * `atlas.parquet` was built against. Returns `{ok: true}` on match,
  * `{ok: false, drift: [...]}` on any mismatch / fetch error so the
