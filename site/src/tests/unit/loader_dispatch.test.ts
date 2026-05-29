@@ -302,6 +302,37 @@ describe('loader atlas-root dispatch (T042)', () => {
 		expect(await loadClusterCentroidsFromNeuroscape()).toBeNull();
 	});
 
+	it('range-fetches the FULL articles identity table from the sibling neuroscape.parquet (spec 019 atlas-root count fix)', async () => {
+		// atlas.parquet ships no corpus list; atlas-root must range-fetch the
+		// single source-of-truth `articles` table from the neuroscape sibling
+		// so the result-list count + lexical search cover the whole ~461k
+		// corpus (regression: the coords-split dropped neuroscape_backdrop_full,
+		// collapsing the count from ~461k to ~53k).
+		__innerByName = {
+			articles: [
+				{ pubmed_id: 100, title: 'Memory consolidation', year: 2020, cluster_id: 0 },
+				{ pubmed_id: 101, title: 'Attention networks', year: 2021, cluster_id: 1 },
+				{ pubmed_id: 102, title: 'Cortical thickness', year: 2022, cluster_id: 0 }
+			]
+		};
+		__outerNames = ['clusters', 'articles', 'coords', 'backdrop_decimated'];
+
+		vi.stubEnv('VITE_DATA_PACKAGE_URL_NEUROSCAPE', 'https://example.test/neuroscape.parquet');
+
+		const { loadArticlesFromNeuroscape } = await import('$lib/data_package/loader');
+		const articles = await loadArticlesFromNeuroscape();
+		expect(articles).not.toBeNull();
+		expect(articles!.length).toBe(3);
+		expect(articles!.map((a) => a.pubmed_id)).toEqual([100, 101, 102]);
+		expect(articles![0].title).toBe('Memory consolidation');
+	});
+
+	it('returns null from loadArticlesFromNeuroscape when the sibling URL is unset', async () => {
+		vi.stubEnv('VITE_DATA_PACKAGE_URL_NEUROSCAPE', '');
+		const { loadArticlesFromNeuroscape } = await import('$lib/data_package/loader');
+		expect(await loadArticlesFromNeuroscape()).toBeNull();
+	});
+
 	it('leaves ai_provenance keys null when the manifest carries no enrichment attribution', async () => {
 		__innerByName = {
 			manifest: [

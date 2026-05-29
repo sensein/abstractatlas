@@ -965,6 +965,41 @@ export async function loadBackdropDecimatedFromNeuroscape(): Promise<Array<
 }
 
 /**
+ * Spec 019 follow-up — range-fetch the FULL `articles` identity table from
+ * the sibling `neuroscape.parquet` for atlas-root's result list + search
+ * index. atlas.parquet deliberately ships no corpus list (only manifest +
+ * ohbm_overlay); the landing scatter renders from the decimated 50k
+ * backdrop, but the result-list count + lexical search must cover the whole
+ * ~461k corpus (the prior atlas.parquet carried a `neuroscape_backdrop_full`
+ * table; the coords-split refactor dropped it, regressing the atlas-root
+ * count from ~461k to ~53k). This restores the full corpus WITHOUT
+ * re-duplicating it into atlas.parquet: we range-fetch the single
+ * source-of-truth `articles` table (identity only — pubmed_id, title, year,
+ * cluster_id; geometry stays in the separate `coords` table we never pull
+ * here) via the same row_group_size=1 predicate-pushdown trick. Returns
+ * `null` when the sibling URL is unset or the table is absent (older build);
+ * the caller then keeps the decimated 50k list and logs loudly (CA-006).
+ */
+export async function loadArticlesFromNeuroscape(): Promise<Array<
+	Record<string, unknown>
+> | null> {
+	const url = neuroscapeSiblingUrl();
+	if (!url) return null;
+	const file = await asyncBufferFromUrl({ url });
+	const outer = (await parquetReadObjects({
+		file,
+		compressors,
+		utf8: false,
+		filter: { table_name: { $eq: 'articles' } }
+	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
+	const match = outer.find((r) => r.table_name === 'articles');
+	if (!match?.table_bytes) return null;
+	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
+	if (rows.length === 0) return null;
+	return rows;
+}
+
+/**
  * Verify that the sibling parquets currently published match what
  * `atlas.parquet` was built against. Returns `{ok: true}` on match,
  * `{ok: false, drift: [...]}` on any mismatch / fetch error so the

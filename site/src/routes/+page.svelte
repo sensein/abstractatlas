@@ -85,6 +85,7 @@
 		loadClusterCentroidsFromNeuroscape,
 		loadClustersFromNeuroscape,
 		loadBackdropDecimatedFromNeuroscape,
+		loadArticlesFromNeuroscape,
 		verifyAtlasSiblingDrift,
 		type AtlasDriftEntry
 	} from '$lib/data_package/loader';
@@ -511,6 +512,17 @@
 	// overlayPoints list stays empty (the OHBM 2026 overlay only
 	// renders on the bare-root cross-conference page).
 	let atlasBackdrop: AtlasBackdropPoint[] = [];
+	// Spec 019 follow-up — the LIST + search corpus, decoupled from the
+	// SCATTER source (`atlasBackdrop`). On /neuroscape/ both are the same
+	// full 461k articles array (atlasBackdrop carries coords there). On
+	// atlas-root they diverge: `atlasBackdrop` is the decimated 50k landing
+	// scatter (carries umap coords, range-fetched from `backdrop_decimated`),
+	// while `listCorpus` is the FULL ~461k identity table (no coords),
+	// range-fetched from the sibling `articles` table so the result-list count
+	// + lexical search cover the whole corpus rather than just the 50k sample.
+	// Without this split atlas-root's no-query count regressed to ~53k
+	// (50k decimated + 3.2k OHBM overlay) instead of the full corpus.
+	let listCorpus: AtlasBackdropPoint[] = [];
 	let atlasOverlayPoints: AtlasOverlayPoint[] = [];
 	let atlasClusters: AtlasClusterRow[] = [];
 	// T046 + T047 — selection state for the slide-in detail panel
@@ -539,7 +551,16 @@
 
 	// O(1) lookup maps built whenever the atlas data lands.
 	$: atlasOverlayById = new Map(atlasOverlayPoints.map((p) => [p.poster_id, p]));
+	// `atlasBackdropById` keys the SCATTER points (decimated on atlas-root,
+	// full on /neuroscape/) — used for point-click → detail panel + focus.
 	$: atlasBackdropById = new Map(atlasBackdrop.map((p) => [p.pubmed_id, p]));
+	// `listCorpusById` keys the LIST/search corpus (full ~461k on both
+	// surfaces). The KNN-fallback seed scorer reads year + neighbour graph
+	// from here; on /neuroscape/ this is the same array as atlasBackdrop (so
+	// the neighbour graph is present), on atlas-root it's the identity-only
+	// articles table (no graph → KNN fallback yields nothing, ranker drives
+	// semantic search).
+	$: listCorpusById = new Map(listCorpus.map((p) => [p.pubmed_id, p]));
 	$: atlasClustersById = new Map(
 		atlasClusters.map((c) => [c.cluster_id, { cluster_id: c.cluster_id, title: c.title, colour_hex: c.colour_hex }])
 	);
@@ -556,7 +577,7 @@
 	// root cause of the laggy-typing report. Shares the exact OHBM operator +
 	// typo-tolerance semantics (consistent across all three sites).
 	$: titleSearchIndex = buildTitleIndex(
-		atlasBackdrop,
+		listCorpus,
 		(a) => a.pubmed_id,
 		(a) => a.title
 	);
@@ -582,6 +603,26 @@
 			return true;
 		});
 	})();
+	// Spec 019 follow-up — facet-filtered FULL corpus for the RESULT LIST.
+	// Mirrors scatterBackdrop's facet logic but over `listCorpus` (461k) so
+	// the list count reflects the whole corpus, not the 50k scatter sample.
+	// Filter deps are inlined (not factored into a helper) because Svelte's
+	// reactive dependency tracking only sees variables referenced directly in
+	// the `$:` block — a helper call would hide `filterShowNeuro`/year/cluster
+	// from the dependency graph and the list would stop reacting to facets.
+	$: listFacetFiltered = (() => {
+		if (SITE_MODE === 'atlas-root' && !filterShowNeuro) return [];
+		const yLo = filterMinYear ?? yearBounds.lo;
+		const yHi = filterMaxYear ?? yearBounds.hi;
+		const needsYear = SITE_MODE === 'neuroscape';
+		const needsCluster = filterClusterIds.size > 0;
+		if (!needsYear && !needsCluster) return listCorpus;
+		return listCorpus.filter((p) => {
+			if (needsYear && (p.year < yLo || p.year > yHi)) return false;
+			if (needsCluster && !filterClusterIds.has(p.cluster_id)) return false;
+			return true;
+		});
+	})();
 	$: scatterOverlay = (() => {
 		if (SITE_MODE !== 'atlas-root' || !filterShowOhbm) return [] as AtlasOverlayPoint[];
 		if (filterClusterIds.size === 0) return atlasOverlayPoints;
@@ -598,7 +639,12 @@
 	// lasso region: NeuroScape rows collapse to empty.
 	$: anyLassoActive = atlasLassoOhbmSet.size + atlasLassoNeuroSet.size > 0;
 	$: filteredBackdrop = (() => {
-		if (!anyLassoActive) return scatterBackdrop;
+		// No lasso → the RESULT LIST shows the full facet-filtered corpus
+		// (461k on atlas-root, not the 50k scatter sample). With a lasso
+		// active, only points the user actually drew over are listable, and
+		// those are the rendered scatter points (decimated on atlas-root) — so
+		// the lasso narrows the SCATTER set, not the full corpus.
+		if (!anyLassoActive) return listFacetFiltered;
 		return scatterBackdrop.filter((p) => atlasLassoNeuroSet.has(p.pubmed_id));
 	})();
 	// Spec 019 / FR-002 — KNN-expansion semantic search on /neuroscape/
@@ -619,7 +665,22 @@
 	// ranker drops in via the existing $lib/search/neuroscape_ranker
 	// scaffolding when the production parquet ships.
 	const SEMANTIC_SEED_LIMIT = 25;
-	const SEMANTIC_TOP_N = 60;
+	// Display cap on semantic-only rows. Raised from 60 → 250: a single
+	// routed cluster (or the KNN-expansion fan-out) routinely holds far more
+	// than 60 genuinely-related articles, and capping at 60 made semantic
+	// search "show very few matches" (the reported regression). The cosine-
+	// distance threshold below is the real relevance gate; this cap is just a
+	// sanity bound on list length / render cost.
+	const SEMANTIC_TOP_N = 250;
+	// Relevance gate (cosine DISTANCE = 1 − cosine; lower = more similar).
+	// Semantic-only rows with a distance above this are dropped, so the user
+	// gets "a lot more matches subject to a distance threshold" (their exact
+	// ask) rather than the whole routed cluster padded with unrelated titles.
+	// 0.80 (cosine ≥ 0.20) is deliberately lenient for MiniLM title
+	// embeddings — tightened later if visual review shows weak matches
+	// leaking in. Applied to BOTH the cluster-routed ranker result and the
+	// KNN-graph fallback so the bound is consistent across both paths.
+	const SEMANTIC_MAX_DISTANCE = 0.8;
 	// KNN-only fallback. Used whenever the full cluster-routed ranker
 	// isn't initialised (`rankerReady === false`) — e.g. the vectors
 	// sidecar URL isn't configured for this deploy. Selection between
@@ -658,7 +719,7 @@
 		const scored: { id: number; exact: number; year: number }[] = [];
 		for (const [id, cnt] of seedCounts) {
 			if (!facetSet.has(id)) continue;
-			const a = atlasBackdropById.get(id);
+			const a = listCorpusById.get(id);
 			if (!a) continue;
 			scored.push({ id, exact: cnt, year: a.year });
 		}
@@ -671,7 +732,7 @@
 		// distance across all seeds.
 		const seedSet = new Set(seedIds);
 		const semanticOnly = new Map<number, number>();
-		const articleById = atlasBackdropById;
+		const articleById = listCorpusById;
 		for (const seed of seedIds) {
 			const a = articleById.get(seed);
 			if (!a?.nearest_pubmed_ids || !a?.nearest_distances) continue;
@@ -683,8 +744,10 @@
 				if (prev === undefined || d < prev) semanticOnly.set(nb, d);
 			}
 		}
-		// Trim to top-N by ascending distance.
-		const sorted = Array.from(semanticOnly.entries()).sort((x, y) => x[1] - y[1]);
+		// Apply the relevance gate, then trim to top-N by ascending distance.
+		const sorted = Array.from(semanticOnly.entries())
+			.filter(([, d]) => d <= SEMANTIC_MAX_DISTANCE)
+			.sort((x, y) => x[1] - y[1]);
 		return new Map(sorted.slice(0, SEMANTIC_TOP_N));
 	})();
 	// Spec 019 / FR-002 — full cluster-routed ranker invocation. When the
@@ -727,7 +790,14 @@
 			// the value and surface it as `d=` on the ✨ badge. Storing cosine
 			// here would invert the sort order and mislabel the badge whenever
 			// the ranker path is active.
-			for (const h of hits) m.set(Number(h.id), 1 - h.cosine);
+			// Apply the same cosine-distance relevance gate as the KNN
+			// fallback so a routed cluster padded with weakly-related members
+			// doesn't flood the list — the user wanted "a lot more matches
+			// subject to a distance threshold", not the whole cluster.
+			for (const h of hits) {
+				const d = 1 - h.cosine;
+				if (d <= SEMANTIC_MAX_DISTANCE) m.set(Number(h.id), d);
+			}
 			neuroscapeRankerHits = m;
 			rankerErrored = false;
 		} catch (err) {
@@ -1169,6 +1239,12 @@
 					return;
 				}
 				atlasBackdrop = backdropRows as unknown as AtlasBackdropPoint[];
+				// Seed the LIST/search corpus with the decimated 50k so the
+				// result list renders immediately on first paint; the FULL
+				// ~461k identity table is range-fetched in the background below
+				// and swapped in when ready (progressive enhancement — the
+				// no-query count ticks 53k → full once the articles land).
+				listCorpus = backdropRows as unknown as AtlasBackdropPoint[];
 				atlasOverlayPoints = overlayShard.points;
 				atlasClusters = clustersRows as unknown as AtlasClusterRow[];
 				// Publish title lookups so the unifying cart drawer can
@@ -1211,6 +1287,46 @@
 				void verifyAtlasSiblingDrift(manifest).then((result) => {
 					if (!result.ok) atlasDrift = result.drift;
 				});
+				// Background upgrade: range-fetch the FULL ~461k `articles`
+				// identity table from the sibling so the result-list count +
+				// lexical search cover the whole corpus (not just the 50k
+				// scatter sample). Fire-and-forget so the scatter's first paint
+				// isn't blocked on this ~20 MB fetch. On failure we keep the
+				// decimated 50k list and log loudly (CA-006) — never silently
+				// pretend the corpus is only 50k.
+				void loadArticlesFromNeuroscape()
+					.then((rows) => {
+						if (!rows || rows.length === 0) {
+							console.warn(
+								'atlas-root: full `articles` table unavailable from the NeuroScape sibling — result list limited to the decimated 50k backdrop.'
+							);
+							return;
+						}
+						listCorpus = rows as unknown as AtlasBackdropPoint[];
+						// Widen the cart's NeuroScape title lookup to the full
+						// corpus now that we have every title (was seeded with
+						// the 50k decimated set above).
+						const fullNeuroMap = new Map<
+							number,
+							{ title: string; year?: number; cluster_title?: string }
+						>();
+						const clusterTitleById2 = new Map<number, string>();
+						for (const c of atlasClusters) clusterTitleById2.set(c.cluster_id, c.title);
+						for (const p of listCorpus) {
+							fullNeuroMap.set(p.pubmed_id, {
+								title: p.title,
+								year: p.year,
+								cluster_title: clusterTitleById2.get(p.cluster_id)
+							});
+						}
+						neuroscapeTitleLookup.set(fullNeuroMap);
+					})
+					.catch((err) => {
+						console.warn(
+							'atlas-root: full `articles` range-fetch failed; result list limited to the decimated 50k backdrop:',
+							err
+						);
+					});
 			} else if (SITE_MODE === 'neuroscape') {
 				const articlesShard = pkg.get('data/neuroscape/articles.json') as
 					| { articles: AtlasBackdropPoint[] }
@@ -1225,8 +1341,12 @@
 				}
 				// neuroscape.parquet doesn't ship a pre-decimated row group;
 				// keep the full 461k articles for search + result-list,
-				// decimate at scatter-render time below.
+				// decimate at scatter-render time below. On /neuroscape/ the
+				// scatter source (atlasBackdrop, carries coords from the
+				// coords→articles join) and the list/search corpus (listCorpus)
+				// are the SAME array — only atlas-root splits them.
 				atlasBackdrop = articlesShard.articles;
+				listCorpus = articlesShard.articles;
 				atlasOverlayPoints = [];
 				atlasClusters = clustersShard.clusters;
 				// /neuroscape/ publishes only the neuroscape title

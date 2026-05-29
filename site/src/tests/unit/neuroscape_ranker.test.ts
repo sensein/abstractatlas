@@ -135,6 +135,40 @@ describe('NeuroscapeRanker — 5-step pipeline (T013)', () => {
 		);
 	});
 
+	it('returns up to topK hits from a large routed cluster — count is topK-driven, not hard-capped (atlas-root semantic-match fix)', async () => {
+		// Regression for complaint #2 ("under a semantic match it should match a
+		// lot more"): on atlas-root the KNN graph is empty, so the routed
+		// cluster's brute-force IS the candidate set. With seedCount =
+		// max(topK, 3) the cluster can fill the whole topK list. Earlier the UI
+		// hard-capped the panel at 60 rows; the ranker itself must honour topK.
+		const N = 120;
+		const ids = Array.from({ length: N }, (_, i) => BigInt(1000 + i));
+		const pubmedToCluster = new Map<bigint, number>(ids.map((id) => [id, 0]));
+		const cfg = makeBaseCfg({
+			knnIndex: new Map<bigint, KnnEntry>(), // atlas-root: no neighbour graph
+			pubmedToCluster,
+			worker: {
+				...makeBaseCfg().worker,
+				encodeQuery: vi.fn(async () => new Float32Array([1, 0, 0, 0])),
+				// Brute-force returns the requested seedCount hits.
+				bruteForceCluster: vi.fn(async (_cid: number, _qv: Float32Array, topK: number) =>
+					ids.slice(0, topK).map((id, i) => ({ id, cosine: 0.99 - i * 0.001 }))
+				),
+				rerank: vi.fn(async (candidates: Array<{ id: bigint; cluster_id: number }>) =>
+					candidates.map((c, i) => ({ id: c.id, cosine: 0.99 - i * 0.001 }))
+				)
+			} as WorkerLike
+		});
+		const r = new NeuroscapeRanker(cfg);
+		const hits = await r.searchNeuroscape(parsedFromText('memory consolidation'), 100);
+		// Far more than the old hard cap of 60; bounded by topK=100.
+		expect(hits.length).toBe(100);
+		expect(hits.length).toBeGreaterThan(60);
+		// All sourced from cosine re-rank (no KNN-distance fallback when the
+		// single routed cluster covers every candidate).
+		expect(hits.every((h) => h.score_source === 'cosine')).toBe(true);
+	});
+
 	it('keeps the default 3 seeds when a KNN graph IS resident', async () => {
 		const cfg = makeBaseCfg();
 		const r = new NeuroscapeRanker(cfg);
