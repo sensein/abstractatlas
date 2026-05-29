@@ -1959,6 +1959,19 @@
 	// new one piles on top.
 	let rotateGen = 0;
 
+	// gl-plot3d's internal Scene (gd._fullLayout.scene._scene). Its
+	// setCamera/getCamera work in the same normalized space as the
+	// layout `scene.camera` attribute; setCamera drives the gl camera
+	// directly so gl-plot3d's own render loop does a plain GL redraw,
+	// skipping Plotly's full relayout reconciliation. That's what makes
+	// rotation smooth on the 461k-point scatter instead of ~2s/frame.
+	type XYZ = { x: number; y: number; z: number };
+	interface GlScene {
+		setCamera?: (c: { eye: XYZ; center: XYZ; up: XYZ }) => void;
+		getCamera?: () => { eye?: XYZ; center?: XYZ; up?: XYZ } | undefined;
+	}
+	let glRotateWarned = false;
+
 	function ensureRotate() {
 		stopRotate();
 		if (!autoRotate || !plotly || !chart3dEl) return;
@@ -1981,23 +1994,74 @@
 		}
 		rotateGen += 1;
 		const myGen = rotateGen;
+
+		// Resolve gl-plot3d's internal Scene once. `setCamera` is the
+		// cheap path; if the private API isn't there we degrade (loudly,
+		// once) to Plotly.relayout so rotation still works, just slowly.
+		const glScene =
+			(chart3dEl as unknown as { _fullLayout?: { scene?: { _scene?: GlScene } } })._fullLayout
+				?.scene?._scene ?? null;
+		let useGlCamera = !!(glScene && typeof glScene.setCamera === 'function');
+		// Orbit defaults; overridden by the live camera's center/up so we
+		// only spin the eye and leave the look-at target / up vector alone.
+		const center: XYZ = { x: 0, y: 0, z: 0 };
+		const up: XYZ = { x: 0, y: 0, z: 1 };
+		if (useGlCamera && glScene && typeof glScene.getCamera === 'function') {
+			try {
+				const cur = glScene.getCamera();
+				if (cur?.center) Object.assign(center, cur.center);
+				if (cur?.up) Object.assign(up, cur.up);
+			} catch {
+				/* keep orbit defaults */
+			}
+		}
+		if (!useGlCamera && !glRotateWarned) {
+			glRotateWarned = true;
+			console.warn(
+				'UmapPanel: gl-plot3d internal camera unavailable — rotation falls back to Plotly.relayout (slow on large scatters).'
+			);
+		}
+
+		const relayoutEye = (eye: XYZ) => {
+			try {
+				(
+					plotly as unknown as {
+						relayout: (el: HTMLDivElement, p: unknown) => Promise<unknown>;
+					}
+				).relayout(chart3dEl as HTMLDivElement, { 'scene.camera.eye': eye });
+			} catch {
+				/* no-op */
+			}
+		};
+
 		const step = () => {
 			if (myGen !== rotateGen) return; // a newer ensureRotate / stopRotate replaced us
 			if (!autoRotate || !plotly || !chart3dEl) return;
 			rotateAngle += 0.004;
-			const eye = {
+			const eye: XYZ = {
 				x: r * Math.cos(rotateAngle),
 				y: r * Math.sin(rotateAngle),
 				z
 			};
 			currentEye3D = eye;
-			try {
-				(plotly as unknown as { relayout: (el: HTMLDivElement, p: unknown) => Promise<unknown> }).relayout(
-					chart3dEl,
-					{ 'scene.camera.eye': eye }
-				);
-			} catch {
-				/* no-op */
+			if (useGlCamera && glScene) {
+				try {
+					glScene.setCamera!({ eye, center, up });
+					// Mirror the eye into Plotly's stored layout so a later
+					// data-driven Plotly.react (facet filtering) resumes from
+					// this orbit position instead of snapping to the default.
+					const gd = chart3dEl as unknown as {
+						layout?: { scene?: { camera?: { eye?: XYZ } } };
+						_fullLayout?: { scene?: { camera?: { eye?: XYZ } } };
+					};
+					if (gd.layout?.scene?.camera) gd.layout.scene.camera.eye = { ...eye };
+					if (gd._fullLayout?.scene?.camera) gd._fullLayout.scene.camera.eye = { ...eye };
+				} catch {
+					useGlCamera = false; // degrade for the remaining frames
+					relayoutEye(eye);
+				}
+			} else {
+				relayoutEye(eye);
 			}
 			if (myGen !== rotateGen) return;
 			rotateFrame = requestAnimationFrame(step);
