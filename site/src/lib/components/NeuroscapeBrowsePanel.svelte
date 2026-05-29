@@ -265,6 +265,7 @@
 					class="ns-row-link"
 					on:click={() => onShowOnAtlas(a)}
 					data-testid="neuroscape-result-row"
+					data-pubmed-id={a.pubmed_id}
 				>
 					<div class="ns-row-head">
 						<span class="ns-pmid">PMID {a.pubmed_id}</span>

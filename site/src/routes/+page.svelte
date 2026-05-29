@@ -72,9 +72,24 @@
 	import {
 		loadDataPackage,
 		getDataPackageUrl,
+		getNeuroscapeVectorsUrl,
+		loadVectorsManifest,
+		loadClusterVectors,
 		verifyAtlasSiblingDrift,
 		type AtlasDriftEntry
 	} from '$lib/data_package/loader';
+	import { loadClusterCentroids } from '$lib/shards';
+	// Spec 019 / FR-002 — full cluster-routed semantic ranker. Wired in
+	// when the `neuroscape_vectors.parquet` sidecar URL is configured;
+	// otherwise the page keeps the KNN-only fallback below.
+	import {
+		initRanker,
+		searchNeuroscape,
+		expandSearchDepth as rankerExpandSearchDepth,
+		defaultSemanticWorker,
+		type RankerState,
+		type KnnEntry
+	} from '$lib/search/neuroscape_ranker';
 
 	// Shapes the AtlasUmapPanel expects. Defined here (not imported
 	// from the .svelte component) because Svelte's type re-export
@@ -121,6 +136,19 @@
 	// in the SiteHeader can open it from any subsite.
 	let semanticScores: Map<number, number> | null = null;
 	let semanticQuerySerial = 0;
+	// Spec 019 — full cluster-routed ranker wiring (FR-002 / T028
+	// follow-up). `rankerReady` flips true once initRanker has run with
+	// the production centroids + worker; until then the page uses the
+	// KNN-only `neuroscapeKnnHits` fallback. `neuroscapeRankerHits` holds
+	// the most recent async ranker result (pubmed_id → cosine).
+	let rankerReady = false;
+	let rankerState: RankerState | null = null;
+	let rankerCapExceeded = false;
+	let neuroscapeRankerHits: Map<number, number> = new Map();
+	let neuroscapeRankerSerial = 0;
+	// Bumped by the "Expand search depth" affordance to force the ranker
+	// async block to re-run after `expandSearchDepth()` lifts the cap.
+	let rankerDepthBump = 0;
 	let showFacets = false; // mobile drawer state; desktop always-shown
 	let cellShard: CellShard | null = null;
 	let cellTopics: TopicShard | null = null;
@@ -559,7 +587,11 @@
 	// scaffolding when the production parquet ships.
 	const SEMANTIC_SEED_LIMIT = 25;
 	const SEMANTIC_TOP_N = 60;
-	$: neuroscapeSemanticHits = (() => {
+	// KNN-only fallback. Used whenever the full cluster-routed ranker
+	// isn't initialised (`rankerReady === false`) — e.g. the vectors
+	// sidecar URL isn't configured for this deploy. Selection between
+	// this and the ranker result happens in `neuroscapeSemanticHits`.
+	$: neuroscapeKnnHits = (() => {
 		if (!$semanticEnabled) return new Map<number, number>();
 		const q = ($debouncedSearchQuery ?? '').trim().toLowerCase();
 		if (q.length < 3) return new Map<number, number>();
@@ -599,6 +631,57 @@
 		const sorted = Array.from(semanticOnly.entries()).sort((x, y) => x[1] - y[1]);
 		return new Map(sorted.slice(0, SEMANTIC_TOP_N));
 	})();
+	// Spec 019 / FR-002 — full cluster-routed ranker invocation. When the
+	// ranker is initialised, run the embed→route→range-fetch→top-3→KNN-
+	// expand→re-rank pipeline (async, off the main thread via the
+	// semantic worker) and stash the result in `neuroscapeRankerHits`.
+	// Serial-number guard discards stale responses when the user types
+	// faster than the worker resolves. Falls through to the KNN-only
+	// fallback by leaving `neuroscapeRankerHits` empty on any short query
+	// or non-ranker mode.
+	$: (async (_q: string, _on: boolean, _ready: boolean, _depth: number) => {
+		if (!_ready || !_on) {
+			neuroscapeRankerHits = new Map();
+			rankerCapExceeded = false;
+			return;
+		}
+		if (SITE_MODE !== 'neuroscape' && SITE_MODE !== 'atlas-root') return;
+		const trimmed = (_q ?? '').trim();
+		if (trimmed.length < 3) {
+			neuroscapeRankerHits = new Map();
+			return;
+		}
+		const my = ++neuroscapeRankerSerial;
+		try {
+			const parsed = parseQuery(trimmed);
+			const hits = await searchNeuroscape(parsed, SEMANTIC_TOP_N, {
+				onState: (s) => {
+					if (my === neuroscapeRankerSerial) rankerState = s;
+				},
+				onCapExceeded: () => {
+					if (my === neuroscapeRankerSerial) rankerCapExceeded = true;
+				},
+				onError: (e) => console.warn('neuroscape ranker error:', e)
+			});
+			if (my !== neuroscapeRankerSerial) return;
+			const m = new Map<number, number>();
+			for (const h of hits) m.set(Number(h.id), h.cosine);
+			neuroscapeRankerHits = m;
+		} catch (err) {
+			if (my === neuroscapeRankerSerial) {
+				console.warn('neuroscape ranker query failed:', err);
+				neuroscapeRankerHits = new Map();
+			}
+		}
+	})($debouncedSearchQuery, $semanticEnabled, rankerReady, rankerDepthBump);
+	// Selection: prefer the full ranker when it's initialised; otherwise
+	// the KNN-only fallback. Both are pubmed_id → score Maps consumed
+	// identically by NeuroscapeBrowsePanel / AtlasRootBrowsePanel.
+	$: neuroscapeSemanticHits = rankerReady ? neuroscapeRankerHits : neuroscapeKnnHits;
+	// True while the ranker pipeline is mid-flight (any non-terminal
+	// state) — drives the "searching…" toggle hint.
+	$: rankerBusy =
+		rankerState !== null && rankerState !== 'ready' && rankerState !== 'idle' && rankerState !== 'error';
 	$: filteredOverlay = (() => {
 		if (!anyLassoActive) return scatterOverlay;
 		return scatterOverlay.filter((p) => atlasLassoOhbmSet.has(p.poster_id));
@@ -865,6 +948,76 @@
 	// (CPU-bound, no byte progress) doesn't look frozen on fast links.
 	let atlasPhase: 'connecting' | 'downloading' | 'parsing' | 'ready' = 'connecting';
 
+	/**
+	 * Spec 019 / FR-002 — initialise the full cluster-routed semantic
+	 * ranker once the NeuroScape articles + clusters are in memory.
+	 *
+	 * Runs in the background (never blocks first paint) and is a no-op
+	 * unless ALL of these are present:
+	 *   - `VITE_DATA_PACKAGE_URL_NEUROSCAPE_VECTORS` (the INT8 sidecar),
+	 *   - a `cluster_centroids` table in the loaded parquet,
+	 *   - articles carrying `cluster_id` + the k=20 neighbour graph.
+	 * Any missing piece leaves `rankerReady=false` and the page falls
+	 * back to the KNN-only `neuroscapeKnnHits` path — no thrown error,
+	 * no broken search.
+	 *
+	 * The maps (pubmed→cluster, pubmed→KNN) are built from the already-
+	 * loaded `atlasBackdrop` rows rather than re-reading the parquet.
+	 */
+	async function initNeuroscapeRanker() {
+		if (SITE_MODE !== 'neuroscape' && SITE_MODE !== 'atlas-root') return;
+		if (rankerReady) return;
+		const vectorsUrl = getNeuroscapeVectorsUrl();
+		if (!vectorsUrl) return; // KNN-only fallback
+		try {
+			const [manifest, centroids] = await Promise.all([
+				loadVectorsManifest(vectorsUrl),
+				loadClusterCentroids()
+			]);
+			if (!manifest || !centroids || centroids.length === 0) return;
+			// Build the pubmed→cluster + pubmed→KNN maps from the in-memory
+			// articles. atlas-root's backdrop rows don't carry neighbours,
+			// so its knnIndex stays empty — the ranker still routes +
+			// brute-forces + re-ranks; only the KNN-expansion step yields
+			// nothing extra there (acceptable: atlas-root search is a
+			// cross-conference convenience, not the primary surface).
+			const pubmedToCluster = new Map<bigint, number>();
+			const knnIndex = new Map<bigint, KnnEntry>();
+			for (const a of atlasBackdrop) {
+				const pid = BigInt(a.pubmed_id);
+				pubmedToCluster.set(pid, a.cluster_id);
+				if (a.nearest_pubmed_ids && a.nearest_distances) {
+					knnIndex.set(pid, {
+						pubmed_id: pid,
+						nearest_pubmed_ids: a.nearest_pubmed_ids.map((n) => BigInt(n)),
+						nearest_distances: a.nearest_distances
+					});
+				}
+			}
+			const worker = await defaultSemanticWorker({
+				dim: manifest.dim,
+				scale: manifest.scale
+			});
+			initRanker({
+				worker,
+				fetchClusterVectors: (clusterId: number) => loadClusterVectors(vectorsUrl, clusterId),
+				centroids: centroids.map((c) => ({
+					cluster_id: c.cluster_id,
+					centroid_vector: c.centroid_vector
+				})),
+				pubmedToCluster,
+				knnIndex
+			});
+			rankerReady = true;
+		} catch (err) {
+			// Loud-but-non-fatal: the page keeps the KNN fallback. Log so
+			// the failure is visible in the console rather than silently
+			// degrading semantic quality.
+			console.warn('neuroscape ranker init failed; using KNN fallback:', err);
+			rankerReady = false;
+		}
+	}
+
 	async function loadAtlasData() {
 		if (SITE_MODE === 'ohbm2026') return;
 		if (atlasLoading || atlasBackdrop.length > 0) return;
@@ -990,6 +1143,10 @@
 				}
 				neuroscapeTitleLookup.set(neuroMap);
 			}
+			// Kick off the full cluster-routed ranker in the background
+			// once the articles + clusters are in memory. Non-blocking;
+			// no-op when the vectors sidecar URL is unset.
+			void initNeuroscapeRanker();
 		} catch (err) {
 			atlasError = `failed to load atlas data: ${(err as Error)?.message ?? String(err)}`;
 		} finally {
@@ -1214,12 +1371,10 @@
 				     always visible via the .layout grid). -->
 				<!-- Spec 019 / FR-001 — ✨ Semantic toggle on atlas-root +
 				     /neuroscape/, parity with the same control on
-				     /ohbm2026/ (lines 1449+ below in the OHBM branch).
-				     Click flips the shared `semanticEnabled` store; the
-				     ranker invocation (searchNeuroscape) wires in a
-				     follow-up slice — for now the toggle is a visible
-				     parity marker + state hookup so the next PR can wire
-				     the ranker without touching the toggle component. -->
+				     /ohbm2026/ (OHBM branch below). Click flips the shared
+				     `semanticEnabled` store; when the vectors sidecar is
+				     configured this drives the full cluster-routed ranker
+				     (searchNeuroscape), otherwise the KNN-only fallback. -->
 				<button
 					type="button"
 					class="control-toggle"
@@ -1227,12 +1382,31 @@
 					on:click={() => semanticEnabled.toggle()}
 					aria-pressed={$semanticEnabled}
 					title={$semanticEnabled
-						? 'Semantic search is ON (cluster-routed ranker wiring lands in follow-up; toggle preserved for cross-surface parity)'
+						? rankerReady
+							? rankerBusy
+								? 'Semantic search is ON — searching…'
+								: 'Semantic search is ON — cluster-routed ranker active'
+							: 'Semantic search is ON — related-article (KNN) mode'
 						: 'Semantic search is OFF — click to enable'}
 					data-testid="toggle-semantic"
 				>
 					✨ Semantic
 				</button>
+				{#if $semanticEnabled && rankerCapExceeded}
+					<button
+						type="button"
+						class="control-toggle"
+						on:click={() => {
+							rankerExpandSearchDepth();
+							rankerCapExceeded = false;
+							rankerDepthBump++;
+						}}
+						title="More clusters are relevant than the per-query cap allows. Expand to search them too."
+						data-testid="expand-search-depth"
+					>
+						↧ Expand search depth
+					</button>
+				{/if}
 				<button
 					type="button"
 					class="control-toggle mobile-only"

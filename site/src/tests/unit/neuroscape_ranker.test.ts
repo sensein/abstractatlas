@@ -6,9 +6,10 @@
  * data. Each test injects canned worker responses + asserts ranker
  * orchestration behaviour.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	NeuroscapeRanker,
+	defaultSemanticWorker,
 	type RankerConfig,
 	type RankerHooks,
 	type WorkerLike,
@@ -223,6 +224,163 @@ describe('NeuroscapeRanker — cluster cap (T014, FR-024)', () => {
 		r.expandSearchDepth();
 		await r.searchNeuroscape(parsedFromText('second'), 5);
 		expect(fetched).toContain(1);
+	});
+});
+
+// ── defaultSemanticWorker adapter (T028 / FR-002) ──────────────────────
+//
+// The adapter bridges the abstract `WorkerLike` (bigint ids,
+// Float32Array) to the concrete semantic.worker.ts postMessage protocol
+// (string ids on the wire, ArrayBuffer payloads). We stub `globalThis.
+// Worker` with a fake that scripts the worker side of each message so we
+// can assert the boundary conversions without a real Web Worker.
+
+const DIM = 4;
+
+type Listener = (e: { data: unknown }) => void;
+
+/** Fake Worker that echoes the documented semantic.worker.ts replies. */
+class FakeSemanticWorker {
+	static last: FakeSemanticWorker | null = null;
+	private msgListeners = new Set<Listener>();
+	private errListeners = new Set<(e: unknown) => void>();
+	/** Toggle: make the next 'encode-query' reply with an id-targeted error
+	 *  instead of a vector. */
+	failNextEncodeWith: string | null = null;
+	/** Toggle: emit a global (no-id) error on the next postMessage. */
+	emitGlobalError: string | null = null;
+
+	constructor(
+		public url: unknown,
+		public opts: unknown
+	) {
+		FakeSemanticWorker.last = this;
+	}
+
+	addEventListener(type: string, fn: Listener | ((e: unknown) => void)) {
+		if (type === 'message') this.msgListeners.add(fn as Listener);
+		else if (type === 'error') this.errListeners.add(fn as (e: unknown) => void);
+	}
+	removeEventListener(type: string, fn: Listener | ((e: unknown) => void)) {
+		if (type === 'message') this.msgListeners.delete(fn as Listener);
+		else if (type === 'error') this.errListeners.delete(fn as (e: unknown) => void);
+	}
+	private emit(data: unknown) {
+		for (const fn of [...this.msgListeners]) fn({ data });
+	}
+
+	postMessage(msg: Record<string, unknown>, _transfer?: unknown[]) {
+		const type = msg.type as string;
+		queueMicrotask(() => {
+			if (this.emitGlobalError) {
+				const reason = this.emitGlobalError;
+				this.emitGlobalError = null;
+				this.emit({ type: 'error', message: reason });
+				return;
+			}
+			switch (type) {
+				case 'init':
+					this.emit({ type: 'ready' });
+					return;
+				case 'encode-query': {
+					if (this.failNextEncodeWith) {
+						const reason = this.failNextEncodeWith;
+						this.failNextEncodeWith = null;
+						this.emit({ type: 'error', id: msg.id, reason });
+						return;
+					}
+					const v = new Float32Array(DIM).fill(0.5);
+					this.emit({ type: 'query-encoded', id: msg.id, query_vector: v.buffer });
+					return;
+				}
+				case 'load-cluster':
+					this.emit({ type: 'cluster-loaded', cluster_id: msg.cluster_id });
+					return;
+				case 'evict-cluster':
+					this.emit({ type: 'cluster-evicted', cluster_id: msg.cluster_id });
+					return;
+				case 'brute-force':
+					this.emit({
+						type: 'brute-force-hits',
+						id: msg.id,
+						cluster_id: msg.cluster_id,
+						hits: [
+							{ id: '100', cosine: 0.9 },
+							{ id: '101', cosine: 0.8 }
+						]
+					});
+					return;
+				case 'rerank':
+					this.emit({
+						type: 'reranked',
+						id: msg.id,
+						hits: [{ id: '100', cosine: 0.95 }]
+					});
+					return;
+			}
+		});
+	}
+}
+
+describe('defaultSemanticWorker adapter (T028 / FR-002)', () => {
+	beforeEach(() => {
+		vi.stubGlobal('Worker', FakeSemanticWorker as unknown as typeof Worker);
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		FakeSemanticWorker.last = null;
+	});
+
+	it('resolves only after the worker posts ready, then bridges the protocol', async () => {
+		const worker = await defaultSemanticWorker({ dim: DIM, scale: 439.258 });
+		// init handshake delivered the ready event; the fake recorded the
+		// init message's dim + scale.
+		expect(FakeSemanticWorker.last).not.toBeNull();
+
+		// encodeQuery → Float32Array of the right dimensionality.
+		const qv = await worker.encodeQuery('memory consolidation');
+		expect(qv).toBeInstanceOf(Float32Array);
+		expect(qv.length).toBe(DIM);
+
+		// bruteForceCluster → string ids on the wire become bigint.
+		const hits = await worker.bruteForceCluster(2, qv, 3);
+		expect(hits.map((h) => h.id)).toEqual([100n, 101n]);
+		expect(typeof hits[0].id).toBe('bigint');
+
+		// rerank likewise bigint-converts.
+		const reranked = await worker.rerank([{ id: 100n, cluster_id: 2 }], qv);
+		expect(reranked[0].id).toBe(100n);
+
+		// load/evict resolve void.
+		await expect(
+			worker.loadCluster(2, new Int8Array(DIM * 2), new BigInt64Array([100n, 101n]))
+		).resolves.toBeUndefined();
+		await expect(worker.evictCluster(2)).resolves.toBeUndefined();
+	});
+
+	it('correlates concurrent encode-query replies by id', async () => {
+		const worker = await defaultSemanticWorker({ dim: DIM, scale: 1 });
+		const [a, b] = await Promise.all([
+			worker.encodeQuery('one'),
+			worker.encodeQuery('two')
+		]);
+		expect(a.length).toBe(DIM);
+		expect(b.length).toBe(DIM);
+	});
+
+	it('an id-targeted worker error rejects only that pending call', async () => {
+		const worker = await defaultSemanticWorker({ dim: DIM, scale: 1 });
+		FakeSemanticWorker.last!.failNextEncodeWith = 'cluster_not_loaded';
+		await expect(worker.encodeQuery('boom')).rejects.toThrow(/cluster_not_loaded/);
+		// A subsequent call still works (the adapter didn't tear down).
+		const qv = await worker.encodeQuery('recover');
+		expect(qv.length).toBe(DIM);
+	});
+
+	it('a global (no-id) worker error rejects all in-flight calls', async () => {
+		const worker = await defaultSemanticWorker({ dim: DIM, scale: 1 });
+		FakeSemanticWorker.last!.emitGlobalError = 'worker crashed';
+		await expect(worker.encodeQuery('hang?')).rejects.toThrow(/worker crashed/);
 	});
 });
 

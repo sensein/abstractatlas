@@ -329,6 +329,216 @@ export function expandSearchDepth(): void {
 /** Exported for tests. */
 export { NeuroscapeRanker };
 
+// ── Default production worker adapter ────────────────────────────────
+//
+// Bridges the abstract `WorkerLike` (bigint ids, Float32Array vectors)
+// to the concrete semantic.worker.ts postMessage protocol (string ids
+// on the wire, ArrayBuffer payloads). The worker is constructed INSIDE
+// the factory (not at module top level) so vitest's node import of this
+// module doesn't try to spin up a Worker.
+
+type PendingResolver = { resolve: (v: unknown) => void; reject: (e: Error) => void };
+
+/** Return a transferable ArrayBuffer that exactly spans the typed
+ *  array. Avoids shipping a larger backing buffer (or a wrong-offset
+ *  view) to the worker, which reconstructs the typed array over the
+ *  whole buffer. */
+function wholeBuffer(arr: ArrayBufferView): ArrayBuffer {
+	if (arr.byteOffset === 0 && arr.byteLength === arr.buffer.byteLength) {
+		return arr.buffer as ArrayBuffer;
+	}
+	return arr.buffer.slice(arr.byteOffset, arr.byteOffset + arr.byteLength) as ArrayBuffer;
+}
+
+/** Lazily construct + init the real semantic worker in NeuroScape mode
+ *  and expose it through the `WorkerLike` contract. Resolves once the
+ *  worker has loaded the model and posted `ready`. */
+export async function defaultSemanticWorker(opts: {
+	dim: number;
+	scale: number;
+}): Promise<WorkerLike> {
+	const worker = new Worker(new URL('../workers/semantic.worker.ts', import.meta.url), {
+		type: 'module'
+	});
+
+	// init handshake — independent listeners so an init crash rejects
+	// instead of hanging.
+	await new Promise<void>((resolve, reject) => {
+		const onMsg = (e: MessageEvent) => {
+			if ((e.data as { type?: string })?.type === 'ready') {
+				cleanup();
+				resolve();
+			}
+		};
+		const onErr = (e: Event) => {
+			cleanup();
+			reject(new Error(`semantic worker init failed: ${(e as ErrorEvent).message ?? 'unknown'}`));
+		};
+		const cleanup = () => {
+			worker.removeEventListener('message', onMsg);
+			worker.removeEventListener('error', onErr);
+		};
+		worker.addEventListener('message', onMsg);
+		worker.addEventListener('error', onErr);
+		worker.postMessage({ type: 'init', corpus: 'neuroscape', dim: opts.dim, scale: opts.scale });
+	});
+
+	const pending = new Map<string, PendingResolver>();
+	let counter = 0;
+	const nextId = () => `q${counter++}`;
+
+	const rejectAll = (err: Error) => {
+		for (const [, p] of pending) p.reject(err);
+		pending.clear();
+	};
+
+	worker.addEventListener('message', (e: MessageEvent) => {
+		const msg = e.data as {
+			type: string;
+			id?: string;
+			cluster_id?: number;
+			query_vector?: ArrayBuffer;
+			hits?: Array<{ id: string; cosine: number }>;
+			reason?: string;
+			message?: string;
+		};
+		switch (msg.type) {
+			case 'query-encoded': {
+				const p = pending.get(`enc:${msg.id}`);
+				if (p) {
+					pending.delete(`enc:${msg.id}`);
+					p.resolve(new Float32Array(msg.query_vector as ArrayBuffer));
+				}
+				return;
+			}
+			case 'brute-force-hits': {
+				const p = pending.get(`bf:${msg.id}`);
+				if (p) {
+					pending.delete(`bf:${msg.id}`);
+					p.resolve(msg.hits ?? []);
+				}
+				return;
+			}
+			case 'reranked': {
+				const p = pending.get(`rr:${msg.id}`);
+				if (p) {
+					pending.delete(`rr:${msg.id}`);
+					p.resolve(msg.hits ?? []);
+				}
+				return;
+			}
+			case 'cluster-loaded': {
+				const p = pending.get(`load:${msg.cluster_id}`);
+				if (p) {
+					pending.delete(`load:${msg.cluster_id}`);
+					p.resolve(undefined);
+				}
+				return;
+			}
+			case 'cluster-evicted': {
+				const p = pending.get(`evict:${msg.cluster_id}`);
+				if (p) {
+					pending.delete(`evict:${msg.cluster_id}`);
+					p.resolve(undefined);
+				}
+				return;
+			}
+			case 'error': {
+				const detail = msg.reason ?? msg.message ?? 'unknown';
+				// Targeted error: a brute-force against an unloaded cluster
+				// carries the request id. Reject just that promise.
+				if (typeof msg.id === 'string') {
+					for (const prefix of ['bf', 'enc', 'rr']) {
+						const key = `${prefix}:${msg.id}`;
+						const p = pending.get(key);
+						if (p) {
+							pending.delete(key);
+							p.reject(new Error(`semantic worker error: ${detail}`));
+							return;
+						}
+					}
+				}
+				// Global (no-id) error — reject everything so callers don't
+				// hang awaiting a reply that will never come.
+				rejectAll(new Error(`semantic worker error: ${detail}`));
+				return;
+			}
+		}
+	});
+	worker.addEventListener('error', (e: Event) => {
+		rejectAll(new Error(`semantic worker crashed: ${(e as ErrorEvent).message ?? 'unknown'}`));
+	});
+
+	return {
+		encodeQuery(query: string): Promise<Float32Array> {
+			const id = nextId();
+			return new Promise<Float32Array>((resolve, reject) => {
+				pending.set(`enc:${id}`, { resolve: resolve as (v: unknown) => void, reject });
+				worker.postMessage({ type: 'encode-query', query, id });
+			});
+		},
+		bruteForceCluster(clusterId, queryVector, topK) {
+			const id = nextId();
+			// COPY the query vector — it's reused across brute-force +
+			// rerank in one search, so we must not transfer (neuter) it.
+			const buf = queryVector.slice().buffer;
+			return new Promise<Array<{ id: bigint; cosine: number }>>((resolve, reject) => {
+				pending.set(`bf:${id}`, {
+					resolve: (v) =>
+						resolve(
+							(v as Array<{ id: string; cosine: number }>).map((h) => ({
+								id: BigInt(h.id),
+								cosine: h.cosine
+							}))
+						),
+					reject
+				});
+				worker.postMessage(
+					{ type: 'brute-force', cluster_id: clusterId, query_vector: buf, topK, id },
+					[buf]
+				);
+			});
+		},
+		rerank(candidates, queryVector) {
+			const id = nextId();
+			const buf = queryVector.slice().buffer;
+			const wire = candidates.map((c) => ({ id: c.id.toString(), cluster_id: c.cluster_id }));
+			return new Promise<Array<{ id: bigint; cosine: number }>>((resolve, reject) => {
+				pending.set(`rr:${id}`, {
+					resolve: (v) =>
+						resolve(
+							(v as Array<{ id: string; cosine: number }>).map((h) => ({
+								id: BigInt(h.id),
+								cosine: h.cosine
+							}))
+						),
+					reject
+				});
+				worker.postMessage({ type: 'rerank', candidates: wire, query_vector: buf, id }, [buf]);
+			});
+		},
+		loadCluster(clusterId, vectors, pubmedIds) {
+			// TRANSFER the cluster buffers — single-use, freshly decoded
+			// from the parquet by the loader.
+			const vBuf = wholeBuffer(vectors);
+			const pBuf = wholeBuffer(pubmedIds);
+			return new Promise<void>((resolve, reject) => {
+				pending.set(`load:${clusterId}`, { resolve: () => resolve(), reject });
+				worker.postMessage(
+					{ type: 'load-cluster', cluster_id: clusterId, vectors: vBuf, pubmedIds: pBuf },
+					[vBuf, pBuf]
+				);
+			});
+		},
+		evictCluster(clusterId) {
+			return new Promise<void>((resolve, reject) => {
+				pending.set(`evict:${clusterId}`, { resolve: () => resolve(), reject });
+				worker.postMessage({ type: 'evict-cluster', cluster_id: clusterId });
+			});
+		}
+	};
+}
+
 /** Turn a ParsedQuery back into an operator-stripped string the
  *  worker's encoder can embed. Mirrors the existing
  *  $lib/filter::queryForSemantic path so semantic vs. lexical

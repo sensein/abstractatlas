@@ -130,18 +130,56 @@ test.describe('US1: /neuroscape/ semantic search', () => {
 	});
 
 	// Below: semantic-only assertions. These require the deployed
-	// parquet to have been built with `--semantic-index`. PR-preview
-	// CI may skip the index step for speed; the test then skips.
-	test.skip(
-		'semantic toggle surfaces ✨-badged hits for zero-lexical-match queries',
-		async () => {
-			// Placeholder until production deploy runs with semantic
-			// index. The assertion shape, when enabled:
-			//   1. Click the ✨ Semantic toggle
-			//   2. Type "sleep memory consolidation hippocampus"
-			//   3. Within 10s, at least one row carries the ✨ badge
-			//      AND the row's pubmed_id is NOT in the lexical-only
-			//      hit set for the same query.
-		}
-	);
+	// site to ship the INT8 vectors sidecar (spec 019 cluster-routed
+	// ranker — `VITE_DATA_PACKAGE_URL_NEUROSCAPE_VECTORS` set at build
+	// time). PR-preview CI leaves that var unset to keep previews cheap
+	// (~170 MB sidecar), so the ranker silently falls back to KNN-only
+	// and no ✨-badged semantic-only rows are produced. Gate on an
+	// explicit runtime signal: prod-e2e sets NEUROSCAPE_VECTORS_DEPLOYED=1
+	// (the production deploy ships the sidecar); everywhere else the
+	// test skips rather than asserting against a fallback that can't
+	// satisfy it.
+	test('semantic toggle surfaces ✨-badged hits for zero-lexical-match queries', async ({
+		page
+	}) => {
+		test.skip(
+			!process.env.NEUROSCAPE_VECTORS_DEPLOYED,
+			'INT8 vectors sidecar not deployed (cluster-routed ranker unavailable) — KNN fallback cannot produce semantic-only rows'
+		);
+		test.setTimeout(180_000);
+
+		// A multi-term conceptual query whose exact phrase is unlikely to
+		// appear verbatim in NeuroScape titles, so any matching rows must
+		// come from the semantic ranker rather than lexical title search.
+		const query = 'sleep memory consolidation hippocampus';
+
+		// 1. Capture the lexical-only hit set FIRST (toggle OFF) so we can
+		//    prove the semantic pass surfaces rows the lexical pass missed.
+		const input = page.getByTestId('search-input');
+		await input.fill(query);
+		await page.waitForTimeout(1_500); // debounce + filter recompute
+		const lexicalPmids = new Set(
+			await page
+				.getByTestId('neuroscape-result-row')
+				.evaluateAll((rows) => rows.map((r) => r.getAttribute('data-pubmed-id') ?? ''))
+		);
+
+		// 2. Enable semantic search.
+		await page.getByTestId('toggle-semantic').click();
+
+		// 3. Within the budget, at least one row must carry the ✨
+		//    semantic-only badge. The badge is only rendered for rows the
+		//    ranker surfaced that the lexical pass did not (FR-008 markup).
+		const badge = page.getByTestId('semantic-only-badge').first();
+		await expect(badge).toBeVisible({ timeout: 60_000 });
+
+		// 4. The badged row's pubmed_id must NOT be in the lexical-only set.
+		const badgedRow = page
+			.getByTestId('neuroscape-result-row')
+			.filter({ has: page.getByTestId('semantic-only-badge') })
+			.first();
+		const semanticPmid = await badgedRow.getAttribute('data-pubmed-id');
+		expect(semanticPmid).toBeTruthy();
+		expect(lexicalPmids.has(semanticPmid ?? '')).toBe(false);
+	});
 });

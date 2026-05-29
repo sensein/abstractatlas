@@ -31,7 +31,7 @@
  * them into the Stage-6 envelope shape the UI expects.
  */
 
-import { parquetReadObjects, asyncBufferFromUrl } from 'hyparquet';
+import { parquetReadObjects, asyncBufferFromUrl, parquetMetadataAsync } from 'hyparquet';
 import { fetchParquetCached, prefetchInBackground } from './cache';
 import { compressors } from 'hyparquet-compressors';
 import { SITE_MODE } from '$lib/site_mode';
@@ -77,6 +77,25 @@ export function getDataPackageUrl(): string | null {
 	const url = pickRawUrl();
 	if (!url) return null;
 	return normaliseDropboxUrl(url);
+}
+
+/**
+ * Spec 019 — URL of `neuroscape_vectors.parquet`, the per-cluster INT8
+ * sidecar that drives the full cluster-routed semantic ranker (steps
+ * 3-6 of contracts/search-ranking-pipeline.md). Resolved from
+ * `VITE_DATA_PACKAGE_URL_NEUROSCAPE_VECTORS` and run through the same
+ * Dropbox CORS/range normalisation as the primary parquet.
+ *
+ * Returns `null` when unset — the caller then leaves the full ranker
+ * uninitialised and the UI falls back to the KNN-only semantic path
+ * (which needs only the k=20 graph already in `neuroscape.parquet`).
+ */
+export function getNeuroscapeVectorsUrl(): string | null {
+	const raw = (import.meta.env.VITE_DATA_PACKAGE_URL_NEUROSCAPE_VECTORS ?? null) as
+		| string
+		| null;
+	if (!raw) return null;
+	return normaliseDropboxUrl(raw);
 }
 
 /**
@@ -776,6 +795,43 @@ export async function loadClusterVectors(
 		vectors.set(new Int8Array(v.buffer, v.byteOffset, v.byteLength), i * 384);
 	}
 	return { pubmed_ids, vectors };
+}
+
+/** Spec 019 — quantisation + drift metadata read from the
+ *  `neuroscape_vectors.parquet` footer (file-level `manifest_json`
+ *  key/value metadata written by semantic_index.py). */
+export interface VectorsManifest {
+	/** Single global INT8 scale: int8 = round(float * scale). The worker
+	 *  dequantises with invScale = 1/scale during cosine scoring. */
+	scale: number;
+	/** Embedding dimensionality (384 for MiniLM-L6-v2). */
+	dim: number;
+	/** sha256 of the corpus-side model file — pinned for the R-010
+	 *  matched-pair drift gate. */
+	model_sha256: string | null;
+}
+
+/**
+ * Spec 019 — read the vectors sidecar's quantisation manifest from its
+ * Parquet footer. hyparquet's `parquetMetadataAsync` issues only the
+ * tail Range request(s) needed for the footer, so this costs a few KB,
+ * not the full ~170 MB file. Returns `null` when the URL is unset or
+ * the footer carries no `manifest_json` (older build) — the caller
+ * treats that as "full ranker unavailable" and keeps the KNN fallback.
+ */
+export async function loadVectorsManifest(url: string): Promise<VectorsManifest | null> {
+	const file = await asyncBufferFromUrl({ url });
+	const meta = await parquetMetadataAsync(file);
+	const kv = meta.key_value_metadata ?? [];
+	const entry = kv.find((e) => e.key === 'manifest_json');
+	if (!entry?.value) return null;
+	const m = JSON.parse(entry.value) as {
+		scale?: number;
+		vector_dim?: number;
+		model_sha256?: string;
+	};
+	if (typeof m.scale !== 'number' || typeof m.vector_dim !== 'number') return null;
+	return { scale: m.scale, dim: m.vector_dim, model_sha256: m.model_sha256 ?? null };
 }
 
 /**
