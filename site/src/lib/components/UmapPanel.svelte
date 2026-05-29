@@ -1960,15 +1960,23 @@
 	let rotateGen = 0;
 
 	// gl-plot3d's internal Scene (gd._fullLayout.scene._scene). Its
-	// setCamera/getCamera work in the same normalized space as the
-	// layout `scene.camera` attribute; setCamera drives the gl camera
-	// directly so gl-plot3d's own render loop does a plain GL redraw,
-	// skipping Plotly's full relayout reconciliation. That's what makes
-	// rotation smooth on the 461k-point scatter instead of ~2s/frame.
+	// `setViewport(sceneLayout)` applies `sceneLayout.camera` straight to
+	// the gl camera and triggers gl-plot3d's own render loop — a plain GL
+	// redraw that skips Plotly's full relayout reconciliation. That's what
+	// keeps rotation smooth on the 461k-point scatter instead of ~2s/frame
+	// (measured: ~0.01ms/setViewport vs ~2000ms/relayout). NOTE: the method
+	// is `setViewport`, NOT `setCamera` — this Plotly/gl-plot3d build exposes
+	// only `setViewport` + `getCamera` on the Scene, and `setViewport` takes
+	// the SCENE LAYOUT object (with a `.camera` field), not a bare camera.
 	type XYZ = { x: number; y: number; z: number };
+	type SceneCamera = { eye: XYZ; center: XYZ; up: XYZ; projection?: { type: string } };
 	interface GlScene {
-		setCamera?: (c: { eye: XYZ; center: XYZ; up: XYZ }) => void;
-		getCamera?: () => { eye?: XYZ; center?: XYZ; up?: XYZ } | undefined;
+		setViewport?: (layout: {
+			camera: SceneCamera;
+			aspectratio?: XYZ;
+			aspectmode?: string;
+		}) => void;
+		getCamera?: () => (SceneCamera & { projection?: { type: string } }) | undefined;
 	}
 	let glRotateWarned = false;
 
@@ -1995,22 +2003,34 @@
 		rotateGen += 1;
 		const myGen = rotateGen;
 
-		// Resolve gl-plot3d's internal Scene once. `setCamera` is the
-		// cheap path; if the private API isn't there we degrade (loudly,
-		// once) to Plotly.relayout so rotation still works, just slowly.
-		const glScene =
+		// Resolve gl-plot3d's internal Scene + its live layout once.
+		// `setViewport` is the cheap path; if the private API isn't there we
+		// degrade (loudly, once) to Plotly.relayout so rotation still works,
+		// just slowly.
+		const sceneLayout =
 			(chart3dEl as unknown as { _fullLayout?: { scene?: { _scene?: GlScene } } })._fullLayout
-				?.scene?._scene ?? null;
-		let useGlCamera = !!(glScene && typeof glScene.setCamera === 'function');
+				?.scene ?? null;
+		const glScene = sceneLayout?._scene ?? null;
+		let useGlCamera = !!(glScene && typeof glScene.setViewport === 'function');
 		// Orbit defaults; overridden by the live camera's center/up so we
 		// only spin the eye and leave the look-at target / up vector alone.
 		const center: XYZ = { x: 0, y: 0, z: 0 };
 		const up: XYZ = { x: 0, y: 0, z: 1 };
+		let projection: { type: string } = { type: 'perspective' };
+		// Preserve the live aspect so setViewport doesn't reset the box shape.
+		const aspectratio: XYZ = { x: 1, y: 1, z: 1 };
+		let aspectmode = 'cube';
+		if (sceneLayout) {
+			const sl = sceneLayout as unknown as { aspectratio?: XYZ; aspectmode?: string };
+			if (sl.aspectratio) Object.assign(aspectratio, sl.aspectratio);
+			if (typeof sl.aspectmode === 'string') aspectmode = sl.aspectmode;
+		}
 		if (useGlCamera && glScene && typeof glScene.getCamera === 'function') {
 			try {
 				const cur = glScene.getCamera();
 				if (cur?.center) Object.assign(center, cur.center);
 				if (cur?.up) Object.assign(up, cur.up);
+				if (cur?.projection) projection = cur.projection;
 			} catch {
 				/* keep orbit defaults */
 			}
@@ -2046,7 +2066,13 @@
 			currentEye3D = eye;
 			if (useGlCamera && glScene) {
 				try {
-					glScene.setCamera!({ eye, center, up });
+					// Cheap GL-only camera move via the Scene's `setViewport`
+					// (takes the scene layout, not a bare camera).
+					glScene.setViewport!({
+						camera: { eye, center, up, projection },
+						aspectratio,
+						aspectmode
+					});
 					// Mirror the eye into Plotly's stored layout so a later
 					// data-driven Plotly.react (facet filtering) resumes from
 					// this orbit position instead of snapping to the default.
