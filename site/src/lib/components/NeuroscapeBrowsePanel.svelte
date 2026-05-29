@@ -78,18 +78,26 @@
 			return articles.filter((a) => a.pubmed_id === numeric);
 		}
 		const res = searchIndex ? searchTitleIndex(searchIndex, trimmed) : null;
-		if (!res || res.ids.size === 0) return [];
 		// res.ids span the FULL corpus; narrow to the facet-filtered set
 		// (`articleById`) and rank by exact-token count desc (consistent with
-		// /ohbm2026/'s exactness ranking), then year desc.
+		// /ohbm2026/'s exactness ranking), then year desc. A zero-row lexical
+		// result must NOT short-circuit here: an exact-phrase query like
+		// "corpus callosum disorders" has no adjacent-token title yet still
+		// has valid KNN-expanded semantic hits, so fall through to the
+		// semantic augmentation below with an empty lexical set.
 		const scored: Array<{ a: Article; exact: number }> = [];
-		for (const id of res.ids) {
-			const a = articleById.get(id);
-			if (!a) continue;
-			scored.push({ a, exact: res.exactness.get(id) ?? 0 });
+		if (res) {
+			for (const id of res.ids) {
+				const a = articleById.get(id);
+				if (!a) continue;
+				scored.push({ a, exact: res.exactness.get(id) ?? 0 });
+			}
+			scored.sort(
+				(x, y) => y.exact - x.exact || y.a.year - x.a.year || x.a.pubmed_id - y.a.pubmed_id
+			);
 		}
-		scored.sort((x, y) => y.exact - x.exact || y.a.year - x.a.year || x.a.pubmed_id - y.a.pubmed_id);
 		const lexicalHits = scored.map((s) => s.a);
+		if (lexicalHits.length === 0 && semanticHits.size === 0) return [];
 		// Spec 019 / FR-002 — augment with KNN-expanded semantic candidates.
 		// semanticHits maps pubmed_id → KNN distance from the nearest lexical
 		// seed; append the ones NOT already in the lexical set (they get the
