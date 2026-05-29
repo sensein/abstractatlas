@@ -593,8 +593,8 @@
 	// this and the ranker result happens in `neuroscapeSemanticHits`.
 	$: neuroscapeKnnHits = (() => {
 		if (!$semanticEnabled) return new Map<number, number>();
-		const q = ($debouncedSearchQuery ?? '').trim().toLowerCase();
-		if (q.length < 3) return new Map<number, number>();
+		const raw = ($debouncedSearchQuery ?? '').trim();
+		if (raw.length < 3) return new Map<number, number>();
 		if (SITE_MODE !== 'neuroscape' && SITE_MODE !== 'atlas-root') {
 			return new Map<number, number>();
 		}
@@ -608,7 +608,12 @@
 		// (desc) then year (desc). This loose seed is plenty to drive KNN
 		// expansion; the BrowsePanel's full operator + typo path handles
 		// exact ranking downstream.
-		const queryTokens = tokenizeForIndex(q);
+		//
+		// Route through queryForSemantic() so the seed honours the same
+		// operator handling as the real ranker: quote/OR operators are
+		// dropped and negated clauses excluded (no positive-seed leak from
+		// a `-term`). Quotes therefore don't force a literal phrase here.
+		const queryTokens = tokenizeForIndex(queryForSemantic(parseQuery(raw)));
 		if (queryTokens.length === 0) return new Map<number, number>();
 		const scored: { id: number; matches: number; year: number }[] = [];
 		for (const a of filteredBackdrop) {
