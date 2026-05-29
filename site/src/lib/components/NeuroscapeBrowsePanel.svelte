@@ -9,13 +9,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { base } from '$app/paths';
-	import {
-		damerauLevenshtein,
-		normalize,
-		parseQuery,
-		tokenizeForIndex,
-		type ParsedClause
-	} from '$lib/filter';
+	import { searchTitleIndex, type InvertedIndex } from '$lib/filter';
 	import { parseIdOperator } from '$lib/goto_poster';
 	import { cartStore, cartNeuroPubmedIds } from '$lib/stores/cart';
 	import CartIconButton from '$lib/components/CartIconButton.svelte';
@@ -47,6 +41,13 @@
 	 *  the per-article `nearest_pubmed_ids` graph from the current
 	 *  lexical hit set. */
 	export let semanticHits: Map<number, number> = new Map();
+	/** Spec 019 perf — inverted title index over the FULL backdrop corpus,
+	 *  built once by the parent (+page.svelte) and cached by array identity.
+	 *  The per-query filter runs the shared OHBM operator/typo-tolerant search
+	 *  against it (vocabulary lookup) rather than scanning ~461k titles on
+	 *  every keystroke. Required for search; when null the panel renders the
+	 *  unfiltered list. */
+	export let searchIndex: InvertedIndex | null = null;
 
 	const dispatch = createEventDispatcher<{
 		focus: { pubmed_id: number; cluster_id: number };
@@ -54,112 +55,48 @@
 
 	let limit = 100;
 
-	// Spec 019 / FR-025 — operator-aware lexical filter that mirrors
-	// the OHBM 2026 SearchBar syntax:
-	//   - implicit-AND multi-word over the title
-	//   - "exact phrase" matches a contiguous token sequence
-	//   - -foo / -"phrase" exclude any title containing the term
-	//   - word OR word: union of two AND-groups
-	//   - id:N → exact pubmed_id lookup
-	// Word clauses are TYPO-TOLERANT via Damerau-Levenshtein on the
-	// title's tokens (matches OHBM 2026's `lexicalSearch` semantics):
-	// distance ≤ 2 for tokens ≥7 chars, ≤1 for ≥4 chars, exact for
-	// shorter — same threshold ladder the existing /ohbm2026/ search
-	// uses (`filter.ts:lexicalSearch`).
-	function typoMatch(token: string, needle: string): boolean {
-		if (token === needle) return true;
-		// Containment counts (e.g. typing "memry" → "memory"): allow
-		// prefix substring to catch typo-then-extra-suffix shapes.
-		if (needle.length >= 4 && token.includes(needle)) return true;
-		// Length-aware DL budget.
-		const budget = needle.length >= 7 ? 2 : needle.length >= 4 ? 1 : 0;
-		if (budget === 0) return false;
-		// damerauLevenshtein early-exits when distance exceeds budget.
-		return damerauLevenshtein(token, needle, budget) <= budget;
-	}
-	function clauseMatches(
-		haystack: string,
-		haystackTokens: string[],
-		clause: ParsedClause
-	): boolean {
-		if (clause.kind === 'word') {
-			// Token-level typo-tolerant match.
-			for (const t of haystackTokens) {
-				if (typoMatch(t, clause.word)) return true;
-			}
-			return false;
-		}
-		// kind === 'phrase' — exact contiguous-substring match
-		// (phrases are deliberately exact per the OHBM 2026
-		// SearchBar contract — no per-phrase typo budget).
-		return haystack.includes(clause.words.join(' '));
-	}
+	// Spec 019 / FR-025 — operator-aware lexical filter that mirrors the
+	// OHBM 2026 SearchBar syntax (implicit-AND multi-word, "exact phrase",
+	// -foo / -"phrase" exclusion, word OR word, id:N exact lookup). Matching
+	// runs through the shared `searchTitleIndex` against the full-corpus
+	// inverted index built once by the parent — identical typo-tolerance to
+	// /ohbm2026/'s `lexicalSearch`, and fast (vocabulary lookup instead of a
+	// per-keystroke Damerau-Levenshtein scan over all ~461k titles).
+	$: articleById = new Map(articles.map((a) => [a.pubmed_id, a]));
 	$: filtered = (() => {
 		const trimmed = (query ?? '').trim();
 		if (!trimmed) {
 			return [...articles].sort((a, b) => b.year - a.year || a.pubmed_id - b.pubmed_id);
 		}
-		// id:N short-circuit — return the single matching article (or
-		// none) by pubmed_id; ignores the rest of the query per
-		// Stage 14's id-operator semantics on /ohbm2026/.
+		// id:N short-circuit — return the single matching article (or none)
+		// by pubmed_id; ignores the rest of the query per Stage 14's
+		// id-operator semantics on /ohbm2026/.
 		const idPayload = parseIdOperator(trimmed);
 		if (idPayload !== null) {
 			const numeric = Number(idPayload);
 			if (!Number.isFinite(numeric)) return [];
 			return articles.filter((a) => a.pubmed_id === numeric);
 		}
-		const parsed = parseQuery(trimmed);
-		if (parsed.groups.length === 0) return [];
-		const scored: Array<{ a: Article; score: number }> = [];
-		for (const a of articles) {
-			const hay = normalize(a.title);
-			const hayTokens = tokenizeForIndex(a.title);
-			// Group semantics: OR between groups; AND between clauses
-			// within a group. A negate clause excludes any row whose
-			// title contains the term (typo-tolerantly for words,
-			// exactly for phrases).
-			let groupMatch = false;
-			for (const group of parsed.groups) {
-				let allClausesPass = true;
-				for (const clause of group.clauses) {
-					const hit = clauseMatches(hay, hayTokens, clause);
-					if (clause.negate ? hit : !hit) {
-						allClausesPass = false;
-						break;
-					}
-				}
-				if (allClausesPass) {
-					groupMatch = true;
-					break;
-				}
-			}
-			if (!groupMatch) continue;
-			// Ranking score: position of the first positive clause's
-			// match in the title (lower = better — earlier-in-title
-			// hits feel more "central" to the user's intent).
-			let firstHitIdx = Number.MAX_SAFE_INTEGER;
-			for (const group of parsed.groups) {
-				for (const clause of group.clauses) {
-					if (clause.negate) continue;
-					const probe =
-						clause.kind === 'word' ? clause.word : clause.words.join(' ');
-					const idx = hay.indexOf(probe);
-					if (idx >= 0 && idx < firstHitIdx) firstHitIdx = idx;
-				}
-			}
-			scored.push({ a, score: firstHitIdx });
+		const res = searchIndex ? searchTitleIndex(searchIndex, trimmed) : null;
+		if (!res || res.ids.size === 0) return [];
+		// res.ids span the FULL corpus; narrow to the facet-filtered set
+		// (`articleById`) and rank by exact-token count desc (consistent with
+		// /ohbm2026/'s exactness ranking), then year desc.
+		const scored: Array<{ a: Article; exact: number }> = [];
+		for (const id of res.ids) {
+			const a = articleById.get(id);
+			if (!a) continue;
+			scored.push({ a, exact: res.exactness.get(id) ?? 0 });
 		}
-		scored.sort((x, y) => x.score - y.score || y.a.year - x.a.year);
+		scored.sort((x, y) => y.exact - x.exact || y.a.year - x.a.year || x.a.pubmed_id - y.a.pubmed_id);
 		const lexicalHits = scored.map((s) => s.a);
-		// Spec 019 / FR-002 — augment with KNN-expanded semantic
-		// candidates. semanticHits maps pubmed_id → KNN distance from
-		// nearest lexical seed; we filter to articles NOT already in
-		// the lexical set (semantic-only, gets the ✨ badge in the
-		// row template) and append them in graph-distance order.
+		// Spec 019 / FR-002 — augment with KNN-expanded semantic candidates.
+		// semanticHits maps pubmed_id → KNN distance from the nearest lexical
+		// seed; append the ones NOT already in the lexical set (they get the
+		// ✨ badge in the row template), in graph-distance order.
 		if (semanticHits.size === 0) return lexicalHits;
 		const lexicalSet = new Set(lexicalHits.map((a) => a.pubmed_id));
 		const semanticRows: Array<{ a: Article; d: number }> = [];
-		const articleById = new Map(articles.map((a) => [a.pubmed_id, a]));
 		for (const [pmid, d] of semanticHits) {
 			if (lexicalSet.has(pmid)) continue;
 			const a = articleById.get(pmid);

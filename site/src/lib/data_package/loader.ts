@@ -767,16 +767,18 @@ export async function loadClusterVectors(
 	const file = await asyncBufferFromUrl({ url });
 	// hyparquet supports `filter` for predicate pushdown via row-group
 	// stats. The parquet writer (semantic_index.py) sorts rows by
-	// cluster_id so row groups have non-overlapping cluster_id ranges,
-	// and `filter: { column: 'cluster_id', value: clusterId }` skips
-	// every row group whose min/max range doesn't include clusterId.
+	// cluster_id so row groups have non-overlapping cluster_id ranges, and
+	// the MongoDB-style `{ cluster_id: { $eq: clusterId } }` predicate skips
+	// every row group whose min/max range doesn't include clusterId. (Object
+	// keys are column names; the prior `{ column, value }` shape was wrong —
+	// hyparquet read "column"/"value" as the column names and threw
+	// `parquet filter columns not found`, breaking the ranker on every
+	// query.)
 	const rows = (await parquetReadObjects({
 		file,
 		compressors,
 		utf8: false,
-		// @ts-expect-error hyparquet's TS type for `filter` doesn't yet
-		// list the column-equality form, but the runtime accepts it.
-		filter: { column: 'cluster_id', value: clusterId }
+		filter: { cluster_id: { $eq: clusterId } }
 	})) as Array<{
 		cluster_id?: number;
 		pubmed_id?: bigint | number;

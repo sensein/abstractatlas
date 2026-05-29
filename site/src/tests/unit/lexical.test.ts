@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+	buildTitleIndex,
 	damerauLevenshtein,
 	lexicalSearch,
 	parseQuery,
 	queryForSemantic,
+	searchTitleIndex,
 	tokenizeForIndex
 } from '$lib/filter';
 import type { AbstractRecord, AuthorRecord } from '$lib/shards';
@@ -283,5 +285,66 @@ describe('lexicalSearch — OR alternation', () => {
 		// 1001 matches "aging"; 1003 matches the "default mode" phrase
 		// (adjacent in the title "Default mode network in fMRI").
 		expect(r?.ids).toEqual(new Set([1001, 1003]));
+	});
+});
+
+describe('buildTitleIndex + searchTitleIndex (Spec 019 — NeuroScape title search)', () => {
+	const titles = [
+		{ pubmed_id: 10, title: 'Corpus callosum disorders in development' },
+		{ pubmed_id: 11, title: 'Working memory and aging' },
+		{ pubmed_id: 12, title: 'Default mode network in fMRI' },
+		{ pubmed_id: 13, title: 'Memory consolidation during sleep' }
+	];
+	const index = buildTitleIndex(
+		titles,
+		(t) => t.pubmed_id,
+		(t) => t.title
+	);
+
+	it('returns null for an empty query', () => {
+		expect(searchTitleIndex(index, '')).toBeNull();
+		expect(searchTitleIndex(index, '   ')).toBeNull();
+	});
+
+	it('implicit-AND multi-word matches a single title', () => {
+		const r = searchTitleIndex(index, 'corpus callosum disorders');
+		expect(r?.ids).toEqual(new Set([10]));
+	});
+
+	it('single token matches every title containing it', () => {
+		const r = searchTitleIndex(index, 'memory');
+		expect(r?.ids).toEqual(new Set([11, 13]));
+	});
+
+	it('is typo-tolerant via the shared Damerau-Levenshtein ladder', () => {
+		// "memry" (deletion) → "memory"; ≥4-char query, DL budget 1.
+		const r = searchTitleIndex(index, 'memry');
+		expect(r?.ids).toEqual(new Set([11, 13]));
+	});
+
+	it('honors the "exact phrase" operator', () => {
+		const r = searchTitleIndex(index, '"default mode"');
+		expect(r?.hasOperators).toBe(true);
+		expect(r?.ids).toEqual(new Set([12]));
+	});
+
+	it('excludes -negated terms', () => {
+		const r = searchTitleIndex(index, 'memory -aging');
+		expect(r?.ids).toEqual(new Set([13]));
+		expect(r?.negationBlocked.has(11)).toBe(true);
+	});
+
+	it('unions OR groups', () => {
+		const r = searchTitleIndex(index, 'callosum OR sleep');
+		expect(r?.ids).toEqual(new Set([10, 13]));
+	});
+
+	it('caches the index by array identity (same reference returned)', () => {
+		const again = buildTitleIndex(
+			titles,
+			(t) => t.pubmed_id,
+			(t) => t.title
+		);
+		expect(again).toBe(index);
 	});
 });

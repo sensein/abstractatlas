@@ -225,6 +225,7 @@
 			data-testid="search-id-listbox"
 		>
 			{#each result.visible as s, i (s.posterId)}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<li
 					id={`search-id-option-${s.posterId}`}
 					class="id-option"

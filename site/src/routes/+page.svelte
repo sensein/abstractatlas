@@ -15,7 +15,14 @@
 		type TopicShard
 	} from '$lib/shards';
 	import { activeFilters, authorChips, cartOnly, debouncedSearchQuery, focusedAbstract, lassoSelection, searchQuery, selectedCell, showMap } from '$lib/stores/selection';
-	import { lexicalSearch, parseQuery, queryForSemantic, tokenizeForIndex } from '$lib/filter';
+	import {
+		buildTitleIndex,
+		lexicalSearch,
+		parseQuery,
+		queryForSemantic,
+		searchTitleIndex,
+		type InvertedIndex
+	} from '$lib/filter';
 	import { filterByFacets, recomputeFacets, type FacetCellContext } from '$lib/facets';
 	import { normaliseQuery, parseIdOperator } from '$lib/goto_poster';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -146,6 +153,12 @@
 	let rankerCapExceeded = false;
 	let neuroscapeRankerHits: Map<number, number> = new Map();
 	let neuroscapeRankerSerial = 0;
+	// True when the most recent ranker query threw. While set, the
+	// semantic-hit selection degrades to the KNN-only fallback instead of
+	// showing empty results — otherwise a ranker that's "ready" but fails
+	// on every query (e.g. a range-fetch/parquet error) would silently
+	// zero out semantic search. The error is still logged loudly.
+	let rankerErrored = false;
 	// Bumped by the "Expand search depth" affordance to force the ranker
 	// async block to re-run after `expandSearchDepth()` lifts the cap.
 	let rankerDepthBump = 0;
@@ -528,6 +541,23 @@
 		atlasClusters.map((c) => [c.cluster_id, { cluster_id: c.cluster_id, title: c.title, colour_hex: c.colour_hex }])
 	);
 
+	// Spec 019 perf — inverted title index over the FULL backdrop, built
+	// ONCE when the corpus lands. `atlasBackdrop` is stable after load (facet
+	// edits narrow `filteredBackdrop` but never mutate the full array), so the
+	// ~461k-title tokenization runs a single time and is cached by array
+	// identity inside `buildTitleIndex`. Both browse panels and the KNN seed
+	// scorer query this via `searchTitleIndex`, which walks the unique-token
+	// vocabulary (length-prefiltered) instead of running Damerau-Levenshtein
+	// across every title's tokens per keystroke — the brute-force scan was a
+	// ~2s main-thread freeze per query (measured at 461,316 articles) and the
+	// root cause of the laggy-typing report. Shares the exact OHBM operator +
+	// typo-tolerance semantics (consistent across all three sites).
+	$: titleSearchIndex = buildTitleIndex(
+		atlasBackdrop,
+		(a) => a.pubmed_id,
+		(a) => a.title
+	);
+
 	// Filtered point lists threaded into AtlasUmapPanel so the
 	// scatter visibly reflects browse-panel facet state. Empty cluster
 	// set means "all clusters". For neuroscape mode, filterShowOhbm
@@ -613,17 +643,24 @@
 		// operator handling as the real ranker: quote/OR operators are
 		// dropped and negated clauses excluded (no positive-seed leak from
 		// a `-term`). Quotes therefore don't force a literal phrase here.
-		const queryTokens = tokenizeForIndex(queryForSemantic(parseQuery(raw)));
-		if (queryTokens.length === 0) return new Map<number, number>();
-		const scored: { id: number; matches: number; year: number }[] = [];
-		for (const a of filteredBackdrop) {
-			const titleTokens = new Set(tokenizeForIndex(a.title ?? ''));
-			let matches = 0;
-			for (const t of queryTokens) if (titleTokens.has(t)) matches++;
-			if (matches > 0) scored.push({ id: a.pubmed_id, matches, year: a.year });
+		// Seed scoring queries the prebuilt inverted index (built once on the
+		// full corpus) via the shared OHBM search core — vocabulary lookup,
+		// no per-query 461k tokenization. queryForSemantic() strips operators
+		// and negations so a `-term` can't leak a positive seed. Intersecting
+		// the hit set with `filteredBackdrop` keeps the seed set facet-aware.
+		const seedQuery = queryForSemantic(parseQuery(raw));
+		const seedHits = searchTitleIndex(titleSearchIndex, seedQuery);
+		if (!seedHits || seedHits.ids.size === 0) return new Map<number, number>();
+		const facetSet = new Set(filteredBackdrop.map((a) => a.pubmed_id));
+		const scored: { id: number; exact: number; year: number }[] = [];
+		for (const id of seedHits.ids) {
+			if (!facetSet.has(id)) continue;
+			const a = atlasBackdropById.get(id);
+			if (!a) continue;
+			scored.push({ id, exact: seedHits.exactness.get(id) ?? 0, year: a.year });
 		}
 		if (scored.length === 0) return new Map<number, number>();
-		scored.sort((x, y) => y.matches - x.matches || y.year - x.year);
+		scored.sort((x, y) => y.exact - x.exact || y.year - x.year);
 		const seedIds = scored.slice(0, SEMANTIC_SEED_LIMIT).map((s) => s.id);
 		// Walk the KNN graph from each seed. The graph is attached to
 		// each article as `nearest_pubmed_ids` + `nearest_distances`
@@ -631,7 +668,7 @@
 		// distance across all seeds.
 		const seedSet = new Set(seedIds);
 		const semanticOnly = new Map<number, number>();
-		const articleById = new Map(filteredBackdrop.map((a) => [a.pubmed_id, a]));
+		const articleById = atlasBackdropById;
 		for (const seed of seedIds) {
 			const a = articleById.get(seed);
 			if (!a?.nearest_pubmed_ids || !a?.nearest_distances) continue;
@@ -683,17 +720,23 @@
 			const m = new Map<number, number>();
 			for (const h of hits) m.set(Number(h.id), h.cosine);
 			neuroscapeRankerHits = m;
+			rankerErrored = false;
 		} catch (err) {
 			if (my === neuroscapeRankerSerial) {
 				console.warn('neuroscape ranker query failed:', err);
 				neuroscapeRankerHits = new Map();
+				rankerErrored = true;
 			}
 		}
 	})($debouncedSearchQuery, $semanticEnabled, rankerReady, rankerDepthBump);
-	// Selection: prefer the full ranker when it's initialised; otherwise
-	// the KNN-only fallback. Both are pubmed_id → score Maps consumed
-	// identically by NeuroscapeBrowsePanel / AtlasRootBrowsePanel.
-	$: neuroscapeSemanticHits = rankerReady ? neuroscapeRankerHits : neuroscapeKnnHits;
+	// Selection: prefer the full ranker when it's initialised AND its last
+	// query succeeded; otherwise the KNN-only fallback. A ranker that's
+	// "ready" but errors on every query (range-fetch/parquet failure) must
+	// not silently zero out semantic search — it degrades to KNN instead.
+	// Both are pubmed_id → score Maps consumed identically by
+	// NeuroscapeBrowsePanel / AtlasRootBrowsePanel.
+	$: neuroscapeSemanticHits =
+		rankerReady && !rankerErrored ? neuroscapeRankerHits : neuroscapeKnnHits;
 	// True while the ranker pipeline is mid-flight (any non-terminal
 	// state) — drives the "searching…" toggle hint.
 	$: rankerBusy =
@@ -1627,6 +1670,7 @@
 							clustersById={atlasClustersById}
 							query={$debouncedSearchQuery}
 							semanticHits={neuroscapeSemanticHits}
+							searchIndex={titleSearchIndex}
 							on:focus={(ev) => {
 								// Update the URL so deep-link restore + back-button work,
 								// THEN open the detail panel so the inline third pane
@@ -1650,6 +1694,7 @@
 							permalinkFor={atlasPermalink}
 							query={$debouncedSearchQuery}
 							semanticHits={neuroscapeSemanticHits}
+							searchIndex={titleSearchIndex}
 							on:select={(ev) => {
 								onAtlasPointClick(
 									new CustomEvent('pointclick', { detail: ev.detail })
@@ -1943,20 +1988,6 @@
 			border-color: rgba(184, 134, 11, 0.45);
 		}
 	}
-	/* Side-by-side 2D + 3D scatter row, matching OHBM 2026's
-	   UmapPanel layout (2D + 3D side-by-side on desktop, stacked
-	   on mobile). Each pane gets equal width on desktop. */
-	.atlas-umap-row {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1rem;
-		min-height: 24rem;
-	}
-	@media (max-width: 1024px) {
-		.atlas-umap-row {
-			grid-template-columns: 1fr;
-		}
-	}
 	/* `.atlas-map-wrap` hosts the UmapPanel + an absolutely-positioned
 	   loading overlay so the chart frames are visible as soon as the
 	   map toggle flips on, with the loading status floating over them
@@ -2001,62 +2032,6 @@
 		width: min(20rem, 80%);
 		height: 0.45rem;
 	}
-	/* Atlas-home search input — same visual weight as OHBM's
-	   SearchBar (large, full-width-ish, prominent). */
-	.atlas-search {
-		position: relative;
-		display: flex;
-		align-items: center;
-		width: 100%;
-	}
-	.atlas-search input[type='search'] {
-		width: 100%;
-		padding: 0.6rem 2.25rem 0.6rem 0.85rem;
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		background: var(--bg-elevated);
-		color: var(--text);
-		font-size: 1rem;
-	}
-	.atlas-search input[type='search']:focus {
-		outline: 2px solid var(--accent);
-		outline-offset: 1px;
-	}
-	.atlas-search-clear {
-		all: unset;
-		cursor: pointer;
-		position: absolute;
-		right: 0.6rem;
-		font-size: 1.2rem;
-		color: var(--text-muted);
-		padding: 0.1rem 0.4rem;
-		border-radius: 3px;
-	}
-	.atlas-search-clear:hover {
-		background: var(--bg-subtle);
-		color: var(--text);
-	}
-	.visually-hidden {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		border: 0;
-	}
-	.atlas-scatter-placeholder {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 0.75rem;
-		border: 1px dashed var(--border);
-		border-radius: 6px;
-		min-height: 50vh;
-	}
 	.placeholder-text {
 		color: var(--text-muted);
 		margin: 0;
@@ -2064,15 +2039,6 @@
 	.atlas-progress {
 		width: 16rem;
 		height: 0.6rem;
-	}
-	.neuroscape-tag {
-		color: var(--text-muted);
-		font-size: 0.85rem;
-		margin-left: auto;
-	}
-	.neuroscape-tag em {
-		font-style: italic;
-		opacity: 0.7;
 	}
 
 	.home {

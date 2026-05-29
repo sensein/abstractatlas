@@ -187,21 +187,16 @@
 	//   - OHBM mode (per-community ~3k-point scatter): on by default
 	//     — the dataset is small enough that continuous
 	//     `Plotly.relayout({ 'scene.camera.eye': ... })` is cheap.
-	//   - atlas / neuroscape mode (461k-point scatter3d): on by
-	//     default on DESKTOP, off on MOBILE width. Sustained
-	//     scatter3d rotation at 461k points on a mobile GPU is the
-	//     observed cause of `webglcontextlost` revocations — the
-	//     browser yanks the GL context under thermal / memory
-	//     pressure and Plotly's gl-vis then overlays "WebGL not
-	//     supported" even though the context was fine seconds
-	//     earlier. Default off on mobile avoids the steady GPU
-	//     stress; the user can opt in via the rotate button.
-	let autoRotate =
-		mode === 'ohbm'
-			? true
-			: typeof window === 'undefined'
-				? true
-				: window.innerWidth >= mobileBreakpoint;
+	//   - atlas / neuroscape mode (461k-point scatter3d): OFF by
+	//     default. Each rotation frame is a full `relayout` on the
+	//     461k-point scene; a longtask probe measured ~2s per frame,
+	//     and the rAF reschedules immediately, so the loop saturates
+	//     the main thread continuously — making the whole UI (typing
+	//     in the search box included) lag. On mobile the same
+	//     sustained GPU stress also triggered `webglcontextlost`
+	//     revocations. Default off everywhere for the big corpus; the
+	//     user can opt in via the rotate button and accept the cost.
+	let autoRotate = mode === 'ohbm';
 	let rotateFrame: number | null = null;
 	let rotateAngle = 0;
 
@@ -2293,7 +2288,7 @@
 	   Hide every SVG + canvas child while our overlay is up so the
 	   visitor sees only our message — not Plotly's misleading one
 	   underneath. */
-	.chart-3d-wrap.context-lost .chart-3d > * {
+	.chart-3d-wrap.context-lost .chart-3d > :global(*) {
 		visibility: hidden;
 	}
 	.chart-3d-context-lost-overlay {

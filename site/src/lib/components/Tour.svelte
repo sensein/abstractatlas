@@ -386,19 +386,21 @@
 	});
 </script>
 
-<style global>
-	.ohbm-shepherd {
+<style>
+	/* Shepherd injects its tour DOM at document.body, outside this
+	   component's scope — these must be :global() to actually apply. */
+	:global(.ohbm-shepherd) {
 		--shepherd-primary: var(--accent, #2c5fa3);
 	}
-	.shepherd-element {
+	:global(.shepherd-element) {
 		border-radius: 6px;
 		max-width: min(28rem, 90vw);
 	}
-	.shepherd-text {
+	:global(.shepherd-text) {
 		font-size: 0.92rem;
 		line-height: 1.55;
 	}
-	.shepherd-button {
+	:global(.shepherd-button) {
 		background: var(--accent);
 		color: var(--accent-text, white);
 		padding: 0.4rem 0.9rem;
@@ -406,7 +408,7 @@
 		border-radius: 4px;
 		margin-right: 0.4rem;
 	}
-	.shepherd-button-secondary {
+	:global(.shepherd-button-secondary) {
 		background: var(--bg-elevated);
 		color: var(--text);
 		border: 1px solid var(--border);
