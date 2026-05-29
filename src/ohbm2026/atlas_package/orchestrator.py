@@ -434,6 +434,7 @@ def build_atlas_package(cfg: AtlasBuildConfig) -> dict[str, Any]:
         ohbm_poster_ids=poster_ids,
         ohbm_titles=titles,
         ohbm_nearest_cluster=nearest_cluster,
+        cluster_centroids=cluster_centroids if cluster_centroids else None,
     )
 
     # 11. Cross-parquet invariant.

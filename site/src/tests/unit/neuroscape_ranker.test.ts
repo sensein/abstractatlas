@@ -120,6 +120,32 @@ describe('NeuroscapeRanker — 5-step pipeline (T013)', () => {
 		);
 	});
 
+	it('brute-forces topK seeds when no KNN graph is resident (atlas-root backdrop)', async () => {
+		// atlas-root ships no neighbour table → knnIndex is empty, so the
+		// KNN-expansion step yields only the seeds themselves. With the
+		// default 3 seeds that would cap results at 3 rows; the ranker must
+		// instead brute-force topK seeds so the routed cluster fills the list.
+		const cfg = makeBaseCfg({ knnIndex: new Map<bigint, KnnEntry>() });
+		const r = new NeuroscapeRanker(cfg);
+		await r.searchNeuroscape(parsedFromText('memory consolidation'), 5);
+		expect(cfg.worker.bruteForceCluster).toHaveBeenCalledWith(
+			expect.any(Number),
+			expect.any(Float32Array),
+			5
+		);
+	});
+
+	it('keeps the default 3 seeds when a KNN graph IS resident', async () => {
+		const cfg = makeBaseCfg();
+		const r = new NeuroscapeRanker(cfg);
+		await r.searchNeuroscape(parsedFromText('memory consolidation'), 5);
+		expect(cfg.worker.bruteForceCluster).toHaveBeenCalledWith(
+			expect.any(Number),
+			expect.any(Float32Array),
+			3
+		);
+	});
+
 	it('emits expected state transitions via onState hook', async () => {
 		const states: string[] = [];
 		const hooks: RankerHooks = {

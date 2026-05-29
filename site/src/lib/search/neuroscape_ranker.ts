@@ -257,9 +257,17 @@ class NeuroscapeRanker {
 				return [];
 			}
 
-			// Step 4: brute-force top-3 within cluster.
+			// Step 4: brute-force seeds within cluster.
+			// Normally 3 seeds then KNN-expand fans out to the broader
+			// candidate set. But when no KNN graph is resident (atlas-root's
+			// backdrop ships no neighbour table), knnExpandFromSeeds yields
+			// only the seeds themselves — so 3 seeds would cap the result at
+			// 3 rows. Brute-force topK seeds directly in that case so the
+			// routed cluster alone can fill the result list.
 			this.setState('brute-force', hooks);
-			const seeds = await this.cfg.worker.bruteForceCluster(routedCluster, qv, TOP_K_SEEDS);
+			const seedCount =
+				this.cfg.knnIndex.size === 0 ? Math.max(topK, TOP_K_SEEDS) : TOP_K_SEEDS;
+			const seeds = await this.cfg.worker.bruteForceCluster(routedCluster, qv, seedCount);
 
 			// Step 5: KNN-expand.
 			this.setState('knn-expand', hooks);

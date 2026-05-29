@@ -132,6 +132,37 @@ describe('loader atlas-root dispatch (T042)', () => {
 		});
 	});
 
+	it('surfaces the atlas.v1 cluster_centroids row as data/neuroscape/cluster_centroids.json (spec 019)', async () => {
+		await runAssertions({
+			innerByName: {
+				manifest: [
+					{
+						manifest_json: JSON.stringify({
+							schema_version: 'atlas.v1',
+							build_info: { state_key: 'atlas1234abcd' },
+							n_overlay_points: 1,
+							n_clusters: 1
+						})
+					}
+				],
+				clusters: [{ cluster_id: 0, title: 'C0' }],
+				neuroscape_backdrop_full: [{ pubmed_id: 100, cluster_id: 0 }],
+				neuroscape_backdrop_decimated: [{ pubmed_id: 100, cluster_id: 0 }],
+				ohbm_overlay: [{ submission_id: 1001, poster_id: 201 }],
+				cross_pointers: [
+					{ point_kind: 'ohbm2026', id: 201, permalink: '/ohbm2026/abstract/201/' }
+				],
+				cluster_centroids: [
+					{ cluster_id: 0, centroid_vector: [0.1, 0.2], member_count: 3 }
+				]
+			},
+			// Emitted under the SAME key the /neuroscape/ branch uses so
+			// loadClusterCentroids() finds it regardless of SITE_MODE.
+			expectedKeys: ['data/manifest.json', 'data/neuroscape/cluster_centroids.json'],
+			notExpectedKeys: ['data/abstracts.json']
+		});
+	});
+
 	it('emits the documented neuroscape envelope keys for schema_version neuroscape.v1', async () => {
 		await runAssertions({
 			innerByName: {

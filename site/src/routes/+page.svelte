@@ -1038,7 +1038,22 @@
 				loadVectorsManifest(vectorsUrl),
 				loadClusterCentroids()
 			]);
-			if (!manifest || !centroids || centroids.length === 0) return;
+			if (!manifest || !centroids || centroids.length === 0) {
+				// CA-006 — never degrade to lexical-only silently. The vectors
+				// sidecar is configured (vectorsUrl present) but the centroid
+				// table is missing from the data package, so the cluster-routed
+				// ranker can't run. On atlas-root this means the data package
+				// predates the spec-019 centroid-in-atlas.parquet fix; rebuild
+				// via `ohbmcli build-atlas-package` and re-upload.
+				console.warn(
+					`neuroscape ranker: vectors sidecar present but cluster centroids ` +
+						`missing (manifest=${!!manifest}, centroids=${centroids?.length ?? 0}) — ` +
+						`semantic search will fall back to KNN-only. Rebuild the data package ` +
+						`so ${SITE_MODE === 'atlas-root' ? 'atlas.parquet' : 'neuroscape.parquet'} ` +
+						`carries the cluster_centroids table.`
+				);
+				return;
+			}
 			// Build the pubmed→cluster + pubmed→KNN maps from the in-memory
 			// articles. atlas-root's backdrop rows don't carry neighbours,
 			// so its knnIndex stays empty — the ranker still routes +

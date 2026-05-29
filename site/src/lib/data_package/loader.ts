@@ -413,6 +413,20 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 				});
 				continue;
 			}
+			if (name === 'cluster_centroids') {
+				// Spec 019 — atlas.parquet duplicates the centroid table so
+				// the cross-conference search bar can route an embedded query
+				// to a cluster (Step 2 of the cluster-routed pipeline) before
+				// range-fetching neuroscape_vectors.parquet. Emit the SAME key
+				// the /neuroscape/ branch uses so loadClusterCentroids() finds
+				// it regardless of SITE_MODE.
+				out.set('data/neuroscape/cluster_centroids.json', {
+					schema_version: 'neuroscape.cluster_centroids.v1',
+					build_info: buildInfo,
+					rows
+				});
+				continue;
+			}
 			// Unknown atlas.v1 outer row — ignore silently (forwards
 			// compatible: future atlas.parquet versions can add tables
 			// without breaking this decoder).
