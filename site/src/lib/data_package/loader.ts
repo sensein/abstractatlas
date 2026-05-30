@@ -126,6 +126,52 @@ export function getCrossSiblingUrls(): string[] {
 	return all.filter((u): u is string => !!u).map(normaliseDropboxUrl);
 }
 
+/**
+ * Spec 019 follow-up (A + B) — warm sibling data for fast cross-subsite
+ * navigation, but ON IDLE and CHEAPLY.
+ *
+ *   A — deferred to `requestIdleCallback` (short `setTimeout` fallback) so the
+ *       sibling fetches don't compete for the connection with THIS page's
+ *       first-paint range-fetches (the cold ~1–2 s/range Dropbox round-trips
+ *       are what makes the landing scatter slow to appear).
+ *   B — the `neuroscape.parquet` sibling (~97 MB) is RANGE-fetched by both
+ *       /neuroscape/ and atlas-root — neither downloads it whole — so warming
+ *       the full file was pure waste. Warm only its first-paint inner tables
+ *       (manifest + clusters + lod0, a few MB) via the shared range reader.
+ *       The /ohbm2026/ + atlas siblings ARE consumed as whole parquets, so
+ *       those keep the full Cache-API warm.
+ */
+function warmSiblingsForCrossNav(): void {
+	if (typeof window === 'undefined') return;
+	const run = () => {
+		const neuroNorm = neuroscapeSiblingUrl();
+		// Only /ohbm2026/ doesn't already range-fetch neuroscape during its own
+		// load, so it's the one mode that must warm the neuroscape first-paint
+		// tables for a future /neuroscape/ or atlas-root jump. (atlas-root and
+		// /neuroscape/ already fetched them, so re-warming there is redundant.)
+		if (SITE_MODE === 'ohbm2026' && neuroNorm) {
+			void readNeuroscapeTableBytes('manifest').catch(() => {});
+			void readNeuroscapeTableBytes('clusters').catch(() => {});
+			void readNeuroscapeTableBytes('backdrop_lod0').catch(() => {});
+		}
+		// Full-GET siblings (/ohbm2026/ + atlas) — warm the whole parquet in the
+		// Cache API. Exclude the neuroscape sibling (range-warmed above; never
+		// consumed whole) so we don't pull its ~97 MB needlessly.
+		const fullSiblings = getCrossSiblingUrls().filter((u) => u !== neuroNorm);
+		if (fullSiblings.length) prefetchInBackground(fullSiblings);
+	};
+	const w = window as Window & {
+		requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+	};
+	// Prefer a genuine idle slot; a generous force-fire timeout (12 s) keeps the
+	// warm OFF the critical first-paint window even on a slow cold load (cold
+	// first paint here is ~6 s — a short timeout would force-fire mid-paint and
+	// re-introduce the bandwidth contention this is meant to avoid). The warm is
+	// purely opportunistic, so waiting longer costs nothing.
+	if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(run, { timeout: 12000 });
+	else setTimeout(run, 8000);
+}
+
 /** Progress callback fired during the parquet HTTP fetch. The
  *  caller can render "Loading… X%" while bytes stream in. `total`
  *  is null when the server doesn't send a Content-Length header
@@ -212,12 +258,11 @@ export function loadDataPackage(
 			await new Promise<void>((r) => setTimeout(r, 0));
 			const result = await parseParquetSingle(bytes);
 			onPhase?.('ready');
-			// Warm the Cache API with the two sibling parquets so any
-			// cross-subsite navigation lands on cache instead of a
-			// cold fetch. Fire-and-forget; skipped on save-data /
-			// slow-2g connections (see cache.ts).
-			const siblings = getCrossSiblingUrls();
-			if (siblings.length) prefetchInBackground(siblings);
+			// Warm sibling data for cross-subsite navigation — on idle (so it
+			// doesn't compete with this page's first paint) and cheaply (the
+			// ~97 MB neuroscape sibling is range-warmed, not full-fetched, since
+			// no subsite downloads it whole). See warmSiblingsForCrossNav (A + B).
+			warmSiblingsForCrossNav();
 			return result;
 		} catch (err) {
 			console.error('[ohbm2026] failed to load data package:', err);
@@ -229,6 +274,8 @@ export function loadDataPackage(
 
 export function resetDataPackageCacheForTests(): void {
 	packageCache = null;
+	_neuroReader = null;
+	_neuroReaderUrl = null;
 }
 
 interface OuterRow {
@@ -731,6 +778,66 @@ function neuroscapeSiblingUrl(): string | null {
 		.replace(/[?&]dl=0(\b|$)/, (m) => m.replace('dl=0', ''));
 }
 
+// ---------------------------------------------------------------------------
+// Spec 019 follow-up (C) — shared sibling reader.
+//
+// Every neuroscape range-fetch (clusters, lod0, manifest, coords, …) used to
+// call `asyncBufferFromUrl` (a file-size request) + `parquetReadObjects` (a
+// footer/metadata parse) INDEPENDENTLY. So the three first-paint reads alone
+// issued 3× the size + 3× the footer round-trips, and on a latency-bound host
+// like Dropbox (≈1–2 s per cold range, even for a few KB) that tripled both
+// the round-trips and the throttling risk. Memoise ONE `AsyncBuffer` + parsed
+// footer per URL so each table read only fetches its own inner row-group; the
+// footer is parsed once and handed to `parquetReadObjects` via its `metadata`
+// option (hyparquet skips the re-parse when given it).
+type NeuroReader = {
+	file: Awaited<ReturnType<typeof asyncBufferFromUrl>>;
+	metadata: Awaited<ReturnType<typeof parquetMetadataAsync>>;
+};
+let _neuroReader: Promise<NeuroReader | null> | null = null;
+let _neuroReaderUrl: string | null = null;
+
+function neuroscapeReader(): Promise<NeuroReader | null> {
+	const url = neuroscapeSiblingUrl();
+	if (!url) {
+		_neuroReader = null;
+		_neuroReaderUrl = null;
+		return Promise.resolve(null);
+	}
+	if (_neuroReader && _neuroReaderUrl === url) return _neuroReader;
+	_neuroReaderUrl = url;
+	_neuroReader = (async () => {
+		const file = await asyncBufferFromUrl({ url });
+		const metadata = await parquetMetadataAsync(file);
+		return { file, metadata };
+	})().catch((err) => {
+		// Don't poison the memo on a transient failure — let the next caller retry.
+		_neuroReader = null;
+		_neuroReaderUrl = null;
+		throw err;
+	});
+	return _neuroReader;
+}
+
+/**
+ * Range-fetch one inner table's BLOB from the sibling `neuroscape.parquet`,
+ * reusing the memoised `AsyncBuffer` + footer metadata (see `neuroscapeReader`)
+ * so the footer isn't re-parsed per table. Returns `null` when the sibling URL
+ * is unset or the table is absent (older build).
+ */
+async function readNeuroscapeTableBytes(tableName: string): Promise<Uint8Array | null> {
+	const r = await neuroscapeReader();
+	if (!r) return null;
+	const outer = (await parquetReadObjects({
+		file: r.file,
+		metadata: r.metadata,
+		compressors,
+		utf8: false,
+		filter: { table_name: { $eq: tableName } }
+	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
+	return outer.find((x) => x.table_name === tableName)?.table_bytes ?? null;
+}
+
 /**
  * Read just the state_key from a sibling parquet's manifest row group.
  *
@@ -892,18 +999,9 @@ export async function loadClusterCentroidsFromNeuroscape(): Promise<Array<{
 	centroid_vector: Float32Array;
 	member_count: number;
 }> | null> {
-	const url = neuroscapeSiblingUrl();
-	if (!url) return null;
-	const file = await asyncBufferFromUrl({ url });
-	const outer = (await parquetReadObjects({
-		file,
-		compressors,
-		utf8: false,
-		filter: { table_name: { $eq: 'cluster_centroids' } }
-	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
-	const match = outer.find((r) => r.table_name === 'cluster_centroids');
-	if (!match?.table_bytes) return null;
-	const rows = (await decodeBlob(match.table_bytes)) as Array<{
+	const blob = await readNeuroscapeTableBytes('cluster_centroids');
+	if (!blob) return null;
+	const rows = (await decodeBlob(blob)) as Array<{
 		cluster_id: number | bigint;
 		centroid_vector: number[] | Float32Array;
 		member_count: number | bigint;
@@ -930,18 +1028,9 @@ export async function loadClusterCentroidsFromNeuroscape(): Promise<Array<{
 export async function loadClustersFromNeuroscape(): Promise<Array<
 	Record<string, unknown>
 > | null> {
-	const url = neuroscapeSiblingUrl();
-	if (!url) return null;
-	const file = await asyncBufferFromUrl({ url });
-	const outer = (await parquetReadObjects({
-		file,
-		compressors,
-		utf8: false,
-		filter: { table_name: { $eq: 'clusters' } }
-	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
-	const match = outer.find((r) => r.table_name === 'clusters');
-	if (!match?.table_bytes) return null;
-	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
+	const blob = await readNeuroscapeTableBytes('clusters');
+	if (!blob) return null;
+	const rows = (await decodeBlob(blob)) as Array<Record<string, unknown>>;
 	if (rows.length === 0) return null;
 	return rows;
 }
@@ -955,18 +1044,9 @@ export async function loadClustersFromNeuroscape(): Promise<Array<
  * fetch). Range-fetches only the manifest outer row, a few KB.
  */
 export async function readNeuroscapeBackdropLevelCount(): Promise<number | null> {
-	const url = neuroscapeSiblingUrl();
-	if (!url) return null;
-	const file = await asyncBufferFromUrl({ url });
-	const outer = (await parquetReadObjects({
-		file,
-		compressors,
-		utf8: false,
-		filter: { table_name: { $eq: 'manifest' } }
-	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
-	const match = outer.find((r) => r.table_name === 'manifest');
-	if (!match?.table_bytes) return null;
-	const inner = (await decodeBlob(match.table_bytes)) as Array<{ manifest_json?: string }>;
+	const blob = await readNeuroscapeTableBytes('manifest');
+	if (!blob) return null;
+	const inner = (await decodeBlob(blob)) as Array<{ manifest_json?: string }>;
 	const json = inner[0]?.manifest_json;
 	if (!json) return null;
 	// Defensive: a malformed/corrupt manifest must NOT reject the load
@@ -993,19 +1073,9 @@ export async function readNeuroscapeBackdropLevelCount(): Promise<number | null>
 export async function loadBackdropLevelFromNeuroscape(
 	level: number
 ): Promise<Array<Record<string, unknown>> | null> {
-	const url = neuroscapeSiblingUrl();
-	if (!url) return null;
-	const tableName = `backdrop_lod${level}`;
-	const file = await asyncBufferFromUrl({ url });
-	const outer = (await parquetReadObjects({
-		file,
-		compressors,
-		utf8: false,
-		filter: { table_name: { $eq: tableName } }
-	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
-	const match = outer.find((r) => r.table_name === tableName);
-	if (!match?.table_bytes) return null;
-	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
+	const blob = await readNeuroscapeTableBytes(`backdrop_lod${level}`);
+	if (!blob) return null;
+	const rows = (await decodeBlob(blob)) as Array<Record<string, unknown>>;
 	if (rows.length === 0) return null;
 	return rows;
 }
@@ -1029,18 +1099,9 @@ export async function loadBackdropLevelFromNeuroscape(
 export async function loadArticlesFromNeuroscape(): Promise<Array<
 	Record<string, unknown>
 > | null> {
-	const url = neuroscapeSiblingUrl();
-	if (!url) return null;
-	const file = await asyncBufferFromUrl({ url });
-	const outer = (await parquetReadObjects({
-		file,
-		compressors,
-		utf8: false,
-		filter: { table_name: { $eq: 'articles' } }
-	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
-	const match = outer.find((r) => r.table_name === 'articles');
-	if (!match?.table_bytes) return null;
-	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
+	const blob = await readNeuroscapeTableBytes('articles');
+	if (!blob) return null;
+	const rows = (await decodeBlob(blob)) as Array<Record<string, unknown>>;
 	if (rows.length === 0) return null;
 	return rows;
 }
@@ -1061,18 +1122,9 @@ export async function loadArticlesFromNeuroscape(): Promise<Array<
 export async function loadCoordsFromNeuroscape(): Promise<Array<
 	Record<string, unknown>
 > | null> {
-	const url = neuroscapeSiblingUrl();
-	if (!url) return null;
-	const file = await asyncBufferFromUrl({ url });
-	const outer = (await parquetReadObjects({
-		file,
-		compressors,
-		utf8: false,
-		filter: { table_name: { $eq: 'coords' } }
-	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
-	const match = outer.find((r) => r.table_name === 'coords');
-	if (!match?.table_bytes) return null;
-	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
+	const blob = await readNeuroscapeTableBytes('coords');
+	if (!blob) return null;
+	const rows = (await decodeBlob(blob)) as Array<Record<string, unknown>>;
 	if (rows.length === 0) return null;
 	return rows;
 }
@@ -1090,18 +1142,9 @@ export async function loadCoordsFromNeuroscape(): Promise<Array<
 export async function loadNeighborsFromNeuroscape(): Promise<Array<
 	Record<string, unknown>
 > | null> {
-	const url = neuroscapeSiblingUrl();
-	if (!url) return null;
-	const file = await asyncBufferFromUrl({ url });
-	const outer = (await parquetReadObjects({
-		file,
-		compressors,
-		utf8: false,
-		filter: { table_name: { $eq: 'neighbors_neuroscape' } }
-	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
-	const match = outer.find((r) => r.table_name === 'neighbors_neuroscape');
-	if (!match?.table_bytes) return null;
-	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
+	const blob = await readNeuroscapeTableBytes('neighbors_neuroscape');
+	if (!blob) return null;
+	const rows = (await decodeBlob(blob)) as Array<Record<string, unknown>>;
 	if (rows.length === 0) return null;
 	return rows;
 }
