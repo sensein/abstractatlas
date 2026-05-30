@@ -76,6 +76,16 @@
 	}> = [
 		{
 			date: '2026-05',
+			title: 'Readable large-corpus map + live loading',
+			summary:
+				'The PubMed backdrop now paints a coarse quadtree tier instantly and refines as finer detail streams in on zoom, with per-point opacity that scales to how many points are on screen so the cloud stays readable at every zoom level. The map opens fitted to the whole corpus, facet toggles (including hiding NeuroScape) clear every layer, and the result count shows a live loading indicator while the full ~461k-article corpus streams in. Cross-site navigation warms sibling data more cheaply.',
+			refs: [
+				{ label: 'PR #47', url: pr(47) },
+				{ label: 'PR #49', url: pr(49) }
+			]
+		},
+		{
+			date: '2026-05',
 			title: 'Cross-conference semantic search',
 			summary:
 				'Semantic search ✨ now runs on the NeuroScape PubMed atlas and the cross-conference root, not just OHBM 2026 — reusing the same in-browser MiniLM model. Search gained Damerau-Levenshtein typo tolerance and a debounced input so typing stays smooth on the 461k-article corpus.',
@@ -199,12 +209,29 @@
 		{:else}
 			<h1>About the OHBM 2026 Atlas</h1>
 		{/if}
-		<p class="lead">
-			A search-and-browse interface for every accepted OHBM 2026 abstract. Each abstract
-			is the submitter's own text; everything else on the site — clusters, related-abstract
-			suggestions, figure interpretations, claim extractions — is computed from those
-			abstracts by an automated pipeline. The pipeline is open-source and reproducible.
-		</p>
+		{#if SITE_MODE === 'atlas-root'}
+			<p class="lead">
+				A search-and-browse interface that places every accepted OHBM 2026 abstract in
+				the context of a neuroscience-wide PubMed literature map. The OHBM abstracts are
+				the submitters' own text; the clusters, related-abstract suggestions, figure
+				interpretations, and claim extractions are computed by an automated pipeline. It
+				is open-source and reproducible.
+			</p>
+		{:else if SITE_MODE === 'neuroscape'}
+			<p class="lead">
+				A search-and-browse interface for the NeuroScape PubMed neuroscience corpus —
+				~461,000 article titles from 1999–2023, clustered into 175 topical groups.
+				Article metadata is fetched live from PubMed; the embedding + clusters come from
+				the NeuroScape model. The atlas pipeline is open-source and reproducible.
+			</p>
+		{:else}
+			<p class="lead">
+				A search-and-browse interface for every accepted OHBM 2026 abstract. Each abstract
+				is the submitter's own text; everything else on the site — clusters, related-abstract
+				suggestions, figure interpretations, claim extractions — is computed from those
+				abstracts by an automated pipeline. The pipeline is open-source and reproducible.
+			</p>
+		{/if}
 	</header>
 
 	<section id="pipeline" class="pipeline-section">
@@ -669,15 +696,37 @@
 						{/if}
 					{:else if stage.key === 'ui'}
 						<p>
-							This site is a static SvelteKit app deployed to GitHub Pages. The data
-							package is a single gzipped tarball fetched from a stable CDN URL at
-							page load — no server, no database, no per-query backend round-trip.
+							Stage 6 turns the pipeline outputs into the browsable atlas — and it
+							now builds <strong>three sibling sites from one SvelteKit codebase</strong>
+							(selected by a build-time site mode): the per-conference OHBM 2026
+							site, the cross-conference <strong>Abstract Atlas</strong> hub, and the
+							neuroscience-wide <strong>NeuroScape PubMed atlas</strong> (~461,000
+							articles, 1999–2023, 175 topic clusters). The hub projects the 3,240
+							OHBM 2026 abstracts into the same UMAP as the NeuroScape corpus, so
+							conference work can be read against the broader neuroscience literature;
+							a toggle shows or hides the OHBM overlay on the PubMed backdrop.
+						</p>
+						<p>
+							Every site is static on GitHub Pages — no server, no database, no
+							per-query backend round-trip. Each one's data is a single-file
+							<strong>Parquet</strong> on a stable CDN URL, and the browser
+							<em>range-fetches one inner table at a time</em> (predicate pushdown
+							over a nested-envelope layout) instead of downloading the whole file.
+							The neuroscience-wide map is far too large to draw at once, so its
+							backdrop paints from a coarse quadtree tier first and refines as finer
+							tiers stream into view on zoom, with per-point opacity that scales to
+							the on-screen density so the cloud stays readable at any zoom.
+						</p>
+						<p>
 							Lexical typo-tolerant search runs in the main thread; semantic search
-							runs in a Web Worker using
+							<span class="ai-pill-demo">✨</span> runs in a Web Worker using
 							<a href={references.minilm.url} target="_blank" rel="noopener noreferrer">
 								MiniLM-L6</a
-							> ONNX through transformers.js, against an int8-quantised vector matrix
-							also shipped in the tarball.
+							> ONNX through transformers.js, against int8-quantised vectors. On the
+							small per-conference corpus it scores every abstract directly; on the
+							461k-article neuroscience map it routes each query to the nearest topic
+							cluster and expands through a precomputed neighbour graph, so it stays
+							fast without holding every vector in memory.
 						</p>
 						<p class="muted">
 							Source: <a href={references.repo.url} target="_blank" rel="noopener noreferrer"
@@ -706,15 +755,36 @@
 										localStorage-backed Svelte store with a system-pref watcher.
 									</li>
 									<li>
-										<strong>Data delivery.</strong> A single gzipped tarball at
-										<code>VITE_DATA_PACKAGE_URL</code> (Dropbox shared link rewritten
-										to <code>dl.dropboxusercontent.com</code> at runtime to avoid the
-										<code>www.dropbox.com</code> 302 that drops CORS). Body is
-										decoded via native <code>DecompressionStream('gzip')</code> + a
-										hand-rolled ~50-line tar parser
-										(<code>site/src/lib/data_package.ts</code>) into a
-										<code>Map&lt;path, JsonValue | Uint8Array&gt;</code> resident in
-										memory.
+										<strong>Data delivery.</strong> Each site loads a single-file
+										<strong>Parquet</strong> from a per-mode URL
+										(<code>VITE_DATA_PACKAGE_URL_OHBM2026 / _NEUROSCAPE / _ATLAS</code>;
+										Dropbox links are rewritten to
+										<code>dl.dropboxusercontent.com</code> at runtime to skip the
+										<code>www.dropbox.com</code> 302 that drops CORS). The parquets use
+										a nested-envelope layout (an outer row per inner table, written
+										<code>row_group_size=1</code>) so the browser can HTTP-range-fetch
+										ONE inner table via hyparquet predicate pushdown — the cluster
+										legend, one quadtree backdrop tier, the OHBM→NeuroScape overlay —
+										instead of pulling the whole ~100&nbsp;MB file. The
+										cross-conference hub range-fetches the NeuroScape backdrop +
+										clusters + overlay from the sibling parquets; nothing is
+										duplicated across files.
+									</li>
+									<li>
+										<strong>Neuroscience-wide map.</strong> A Python orchestrator
+										(<code>ohbmcli build-atlas-package</code>) fits a deterministic 2D
+										+ 3D UMAP on the NeuroScape Stage-2 vectors and projects the OHBM
+										2026 abstracts into it via <code>umap.transform</code>, so the
+										conference overlay and the ~461k PubMed backdrop share one
+										coordinate space. The backdrop is decimated into quadtree
+										blue-noise LOD tiers (a coarse cover paints first, finer tiers
+										stream in on zoom, capped by a viewport budget) and the 3D scene
+										renders a thinned sample to stay interactive. Semantic search on
+										this corpus is cluster-routed: the query embeds, picks the
+										nearest cluster centroid, range-fetches that cluster's int8
+										vectors, brute-forces seeds, then expands through the k=20
+										neighbour graph — bounded per-query cost instead of a full-corpus
+										scan.
 									</li>
 									<li>
 										<strong>Lexical search.</strong>
