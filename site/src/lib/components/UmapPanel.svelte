@@ -8,6 +8,10 @@
 		geometryFromPlotlySelection,
 		type LassoGeometry
 	} from '$lib/geo/lasso_select';
+	import {
+		backdropOpacity as densityZoomOpacity,
+		densityOpacity
+	} from '$lib/atlas/opacity';
 
 	/**
 	 * Stage 15 — unified UMAP panel. Drives all three subsites:
@@ -363,6 +367,10 @@
 		current2dXSpan = 0;
 		current2dXRange = null;
 		current2dYRange = null;
+		// Re-enter fit mode after a purge/restore so the rebuilt chart re-fits
+		// all points instead of inheriting a stale "interacted" state.
+		userHasInteracted2d = false;
+		atlas2dRenderedCount = 0;
 		// Drop the 2D array cache so post-bfcache restore renders
 		// build fresh references that match the (purged-then-reborn)
 		// chart's internal data buffers. Stale cached arrays could
@@ -1055,6 +1063,27 @@
 	let current2dXSpan = 0;
 	let current2dXRange: [number, number] | null = null;
 	let current2dYRange: [number, number] | null = null;
+	// Spec 019 follow-up — has the user manually panned/zoomed the 2D chart
+	// yet? Until they do, the layout stays on `autorange: true` so EVERY render
+	// (including each progressive LOD tier append, which grows the dataset)
+	// re-fits the viewport to ALL points — the requested "start with a FOV that
+	// fits all the underlying points". A double-click autorange reset returns to
+	// this fit-mode. Once the user drags/scrolls, we pin their explicit range
+	// (existing behaviour) so their exploration isn't yanked back on re-render.
+	let userHasInteracted2d = false;
+	// Rendered backdrop point count, refreshed at the top of every
+	// renderAtlasChart2D. The `plotly_relayout` zoom handler is attached ONCE
+	// (atlas2dHandlersAttached guard) so it would otherwise close over the
+	// FIRST render's `backdrop.length` (a few hundred during progressive tier
+	// load) and compute stale opacity after the dataset grows to ~56k. Reading
+	// this module var keeps the zoom-opacity keyed to the current sample size.
+	let atlas2dRenderedCount = 0;
+	// Current zoom factor (fullExtentSpan / visibleSpan, ≥1) for the
+	// density+zoom opacity model. 1 when fully zoomed out / unknown.
+	function currentZoomFactor2d(span: number): number {
+		if (data2dFullSpan <= 0 || span <= 0) return 1;
+		return Math.max(1, data2dFullSpan / span);
+	}
 	// Re-cache the full x-span whenever the backdrop dataset arrives
 	// or changes (parquet load, mode swap). Cheap one-pass scan.
 	$: data2dFullSpan = computeAtlasFullSpan(backdropPoints);
@@ -1073,21 +1102,30 @@
 	function applyAtlasZoomOpacity(
 		api: PlotlyApi,
 		el: HTMLDivElement,
-		baseOpacity: number,
+		renderedCount: number,
 		currentSpan: number
 	) {
-		if (data2dFullSpan <= 0 || currentSpan <= 0) return;
-		// Linear zoom factor (fullSpan / currentSpan); clamped to a
-		// minimum of 1 so zooming OUT never goes below the base
-		// opacity. Top opacity capped at 0.85 so the points still
-		// read as a cloud, not a solid line, at extreme zoom.
-		const zoomFactor = Math.max(1, data2dFullSpan / currentSpan);
-		const op = Math.min(0.85, baseOpacity * zoomFactor);
+		// Density + zoom model (see $lib/atlas/opacity): per-point opacity is a
+		// function of how many points are on screen and how far we're zoomed —
+		// fewer points / deeper zoom ⇒ higher opacity so the cloud reads at
+		// every zoom level (the old fixed 0.05 was a faint speck for the ~56k
+		// LOD sample, fainter still for the few-hundred-point first tiers).
+		const op = densityZoomOpacity(renderedCount, currentZoomFactor2d(currentSpan));
+		// Restyle the backdrop trace's base opacity AND its unselected-selection
+		// opacity together. The unselected value is what Plotly applies to
+		// points OUTSIDE a lasso (both mid-drag and after) — keeping it equal to
+		// the base opacity means lassoing never dims the surrounding cloud into
+		// invisibility (the "lasso-while-zoomed goes very dark" report). Only the
+		// SELECTED points pop, via the constant `selected.marker.opacity: 1`.
 		void (
 			api as unknown as {
 				restyle: (e: HTMLDivElement, u: Record<string, unknown[]>, idx: number[]) => Promise<unknown>;
 			}
-		).restyle(el, { 'marker.opacity': [op] }, [0]);
+		).restyle(
+			el,
+			{ 'marker.opacity': [op], 'unselected.marker.opacity': [op] },
+			[0]
+		);
 	}
 
 	// Spec 019 follow-up — viewport-driven LOD. The 'lod-detail' trace is
@@ -1138,10 +1176,13 @@
 		return { x, y, colours, customdata };
 	}
 
-	function lodDetailOpacity(): number {
-		if (data2dFullSpan <= 0 || current2dXSpan <= 0) return Math.min(0.9, backdropOpacity * 4);
-		const zoomFactor = Math.max(1, data2dFullSpan / current2dXSpan);
-		return Math.min(0.9, backdropOpacity * zoomFactor);
+	/** Opacity for the viewport-LOD detail trace. The rest-tier points it shows
+	 *  are all inside the current (zoomed) window, so it gets the same density +
+	 *  zoom treatment keyed to how many of them are actually rendered — a tight
+	 *  window of a few hundred reads near-opaque, a wide window of tens of
+	 *  thousands stays a readable cloud. */
+	function lodDetailOpacity(detailCount: number): number {
+		return densityZoomOpacity(detailCount, currentZoomFactor2d(current2dXSpan));
 	}
 
 	/** Restyle the lod-detail trace to the current viewport's rest points (or
@@ -1162,6 +1203,7 @@
 			);
 			return;
 		}
+		const detailOp = lodDetailOpacity(arrays.x.length);
 		void restyle(
 			el,
 			{
@@ -1169,7 +1211,8 @@
 				y: [arrays.y],
 				'marker.color': [arrays.colours],
 				customdata: [arrays.customdata],
-				'marker.opacity': [lodDetailOpacity()]
+				'marker.opacity': [detailOp],
+				'unselected.marker.opacity': [detailOp]
 			},
 			[LOD_DETAIL_TRACE_IDX]
 		);
@@ -1338,6 +1381,7 @@
 	) {
 		if (!api || !el) return;
 		const c = themedColors(t);
+		atlas2dRenderedCount = backdrop.length;
 
 		// Pull the 461k-point arrays from the cache instead of
 		// rebuilding them every lasso adjustment. Cache invalidates on
@@ -1354,13 +1398,28 @@
 				if (neuroLassoSet.has(backdrop[i].pubmed_id)) backdropSelectedIdx.push(i);
 			}
 		}
-		const backdropSelectedConfig = backdropSelectedIdx.length
-			? {
-					selectedpoints: backdropSelectedIdx,
-					selected: { marker: { opacity: 1 } },
-					unselected: { marker: { opacity: Math.max(opacity * 4, 0.2) } }
-			  }
-			: {};
+		// Density+zoom opacity for the base backdrop. At first render the live
+		// span isn't known yet (the plotly_relayout handler hasn't fired) — use
+		// `current2dXSpan` (0 ⇒ zoomFactor 1 ⇒ density base); the `.then()`
+		// below re-applies with the resolved span. `backdrop.length` is the
+		// rendered sample size (a few hundred during progressive tier load,
+		// ~56k once all tiers land).
+		const backdropEffectiveOpacity = densityZoomOpacity(
+			backdrop.length,
+			currentZoomFactor2d(current2dXSpan)
+		);
+		// `selected`/`unselected` are ALWAYS defined (not just when a lasso set
+		// is resident) so Plotly's mid-drag selection dimming uses our readable
+		// unselected opacity instead of its aggressive ~0.2 default — otherwise
+		// lassoing while zoomed in turns the whole cloud near-invisible. The
+		// unselected opacity == the base, so the surrounding cloud stays exactly
+		// as visible during/after a lasso; only the SELECTED points pop to 1.0.
+		// `selectedpoints` is set only once we have a completed lasso set.
+		const backdropSelectedConfig = {
+			selected: { marker: { opacity: 1 } },
+			unselected: { marker: { opacity: backdropEffectiveOpacity } },
+			...(backdropSelectedIdx.length ? { selectedpoints: backdropSelectedIdx } : {})
+		};
 		// Backdrop hover TOOLTIP is intentionally off (461k-point
 		// hover hit-test on scattergl is the documented latency
 		// hotspot — community.plotly.com confirms lasso/hover both
@@ -1382,7 +1441,7 @@
 			marker: {
 				size: 3,
 				color: bdr.colours,
-				opacity,
+				opacity: backdropEffectiveOpacity,
 				line: { width: 0 },
 				...(bdr.symbol ? { symbol: bdr.symbol } : {})
 			},
@@ -1396,6 +1455,7 @@
 		// rest-tier points so it persists across a re-render while zoomed;
 		// empty when not zoomed / feature off. Same marker style as backdrop.
 		const lodNow = buildLodDetailArrays();
+		const lodNowOpacity = lodDetailOpacity(lodNow ? lodNow.x.length : 0);
 		const lodDetailTrace: Record<string, unknown> = {
 			type: 'scattergl' as const,
 			mode: 'markers' as const,
@@ -1405,9 +1465,14 @@
 			marker: {
 				size: 3,
 				color: lodNow ? lodNow.colours : [],
-				opacity: lodDetailOpacity(),
+				opacity: lodNowOpacity,
 				line: { width: 0 }
 			},
+			// Match the backdrop's always-on selection style so a lasso drag
+			// doesn't dim the rest-tier detail points to Plotly's dark default —
+			// keeps the deep-zoom cloud visible while lassoing.
+			selected: { marker: { opacity: 1 } },
+			unselected: { marker: { opacity: lodNowOpacity } },
 			hoverinfo: 'none',
 			showlegend: false,
 			customdata: lodNow ? lodNow.customdata : []
@@ -1421,13 +1486,15 @@
 					if (ohbmLassoSet.has(overlay[i].poster_id)) overlaySelectedIdx.push(i);
 				}
 			}
-			const overlaySelectedConfig = overlaySelectedIdx.length
-				? {
-						selectedpoints: overlaySelectedIdx,
-						selected: { marker: { opacity: 1 } },
-						unselected: { marker: { opacity: 0.25 } }
-				  }
-				: {};
+			// Always-defined selected/unselected (see backdrop rationale): keeps
+			// the OHBM overlay visible during a lasso drag instead of Plotly's
+			// dark ~0.2 default. Overlay points are large + outlined, so 0.45
+			// unselected stays legible while the selected pop to full opacity.
+			const overlaySelectedConfig = {
+				selected: { marker: { opacity: 1 } },
+				unselected: { marker: { opacity: 0.45 } },
+				...(overlaySelectedIdx.length ? { selectedpoints: overlaySelectedIdx } : {})
+			};
 			traces.push({
 				type: 'scattergl' as const,
 				mode: 'markers' as const,
@@ -1512,28 +1579,39 @@
 		const userWiderThanFocus =
 			current2dXSpan === 0 || current2dXSpan > FOCUS_WINDOW_SPAN;
 		const shouldZoomToFocus = focus2d && focusChanged2d && userWiderThanFocus;
-		// Either the new focus-snap window (when we're snapping), or
-		// the user's current explicit zoom range (when we're NOT
-		// snapping but the user has manually zoomed in / panned).
-		// Without this, the bare `xaxis: { ... }` layout would let
-		// Plotly's default autorange:true kick in on the next react
-		// call — and the user's zoom would visibly snap back out.
+		// Spec 019 follow-up — FIT MODE. Until the user manually pans/zooms (and
+		// when nothing is focused), the viewport auto-fits ALL current points.
+		// Each progressive LOD tier append grows `backdrop`, re-renders, and —
+		// because the uirevision below changes with the point count — Plotly
+		// re-runs autorange and re-fits to the new extent. This is the requested
+		// "start with a FOV that fits all the underlying points" and keeps it
+		// fitted as the corpus streams in. A focus snap or any manual gesture
+		// leaves fit mode; a double-click autorange reset re-enters it.
+		const fitMode = !userHasInteracted2d && !shouldZoomToFocus && focusKey2d === '';
+		// Either the new focus-snap window (when we're snapping), the user's
+		// current explicit zoom range (when they've manually zoomed/panned), or
+		// `null` in fit mode (→ autorange:true below fits all points).
 		const xRange = shouldZoomToFocus
 			? [focus2d.x - ZOOM_HALF_SPAN, focus2d.x + ZOOM_HALF_SPAN]
-			: current2dXRange;
+			: fitMode
+				? null
+				: current2dXRange;
 		const yRange = shouldZoomToFocus
 			? [focus2d.y - ZOOM_HALF_SPAN, focus2d.y + ZOOM_HALF_SPAN]
-			: current2dYRange;
-		// uirevision is STICKY — only bumps when we actually want to
-		// override the user's zoom. Otherwise we reuse the previous
-		// render's uirev so Plotly preserves the user's manual
-		// pan/zoom gesture across re-renders (theme change, focus
-		// clear, etc.). Closing the detail panel does NOT yank the
-		// user back to autorange; their exploration is preserved.
+			: fitMode
+				? null
+				: current2dYRange;
+		// uirevision policy:
+		//   - focus snap → a focus-keyed revision (bumps to override the view).
+		//   - fit mode → a count-keyed revision so each tier append re-fits
+		//     (a CONSTANT uirevision would make Plotly ignore the autorange and
+		//     keep the coarse first tier's extent).
+		//   - otherwise → STICKY `last2dUirev`, so the user's manual pan/zoom
+		//     survives re-renders (theme / focus-clear / data change).
 		if (shouldZoomToFocus) {
 			last2dUirev = `atlas-2d-focus-${focusKey2d}`;
 		}
-		const uirev2d = last2dUirev;
+		const uirev2d = fitMode ? `atlas-2d-fit-${backdrop.length}` : last2dUirev;
 		last2dFocusKey = focusKey2d;
 		// We DON'T set `selectionrevision` — see the earlier attempt
 		// that emitted `unrecognized GUI edit: selections[0].yref`
@@ -1560,10 +1638,10 @@
 			showlegend: false,
 			xaxis: xRange
 				? { visible: false, scaleanchor: 'y', range: xRange, autorange: false }
-				: { visible: false, scaleanchor: 'y' },
+				: { visible: false, scaleanchor: 'y', autorange: true },
 			yaxis: yRange
 				? { visible: false, range: yRange, autorange: false }
-				: { visible: false },
+				: { visible: false, autorange: true },
 			uirevision: uirev2d
 		};
 		const config = {
@@ -1586,27 +1664,31 @@
 				// .range` after react() gives us the actual rendered
 				// bounds; caching them means subsequent renders pass
 				// them through explicitly with `autorange: false`.
-				if (!current2dXRange) {
+				{
 					const fl = (el as unknown as { _fullLayout?: {
 						xaxis?: { range?: [number, number] };
 						yaxis?: { range?: [number, number] };
 					} })._fullLayout;
 					const xr = fl?.xaxis?.range;
 					const yr = fl?.yaxis?.range;
-					if (
-						Array.isArray(xr) &&
-						typeof xr[0] === 'number' &&
-						typeof xr[1] === 'number'
-					) {
-						current2dXRange = [xr[0], xr[1]];
-						current2dXSpan = Math.abs(xr[1] - xr[0]);
-					}
-					if (
-						Array.isArray(yr) &&
-						typeof yr[0] === 'number' &&
-						typeof yr[1] === 'number'
-					) {
-						current2dYRange = [yr[0], yr[1]];
+					const xrOk =
+						Array.isArray(xr) && typeof xr[0] === 'number' && typeof xr[1] === 'number';
+					// Always refresh the SPAN from the resolved layout so the
+					// density+zoom opacity tracks the actual rendered extent —
+					// including in fit mode, where the extent grows as tiers land.
+					if (xrOk) current2dXSpan = Math.abs((xr as number[])[1] - (xr as number[])[0]);
+					// Only PIN the explicit range outside fit mode. In fit mode we
+					// deliberately leave `current2dXRange` null so the next render
+					// re-autoranges (re-fits) to any newly-arrived points.
+					if (!fitMode && !current2dXRange) {
+						if (xrOk) current2dXRange = [(xr as number[])[0], (xr as number[])[1]];
+						if (
+							Array.isArray(yr) &&
+							typeof yr[0] === 'number' &&
+							typeof yr[1] === 'number'
+						) {
+							current2dYRange = [yr[0], yr[1]];
+						}
 					}
 				}
 				// Re-apply zoom-aware opacity after EVERY react. The
@@ -1627,7 +1709,7 @@
 					applyAtlasZoomOpacity(
 						api as PlotlyApi,
 						el as HTMLDivElement,
-						backdropOpacity,
+						atlas2dRenderedCount,
 						reapplySpan
 					);
 				}
@@ -1689,6 +1771,9 @@
 						yMax = yArr[1];
 					}
 					if (typeof xMin === 'number' && typeof xMax === 'number') {
+						// A real pan/zoom gesture → leave fit mode and pin the
+						// user's explicit range so re-renders preserve it.
+						userHasInteracted2d = true;
 						current2dXSpan = Math.abs(xMax - xMin);
 						current2dXRange = [xMin, xMax];
 						if (typeof yMin === 'number' && typeof yMax === 'number') {
@@ -1697,23 +1782,24 @@
 						applyAtlasZoomOpacity(
 							api as PlotlyApi,
 							el as HTMLDivElement,
-							backdropOpacity,
+							atlas2dRenderedCount,
 							current2dXSpan
 						);
 						// Reveal finer (rest-tier) points inside the new window.
 						scheduleViewportLodDetail(api as PlotlyApi, el as HTMLDivElement);
 					} else if (ev['xaxis.autorange'] === true) {
-						// User double-clicked to reset axes → autorange
-						// ON → back to the base opacity (full corpus)
-						// and clear the cached ranges so the next render
-						// lets Plotly autorange too.
+						// User double-clicked to reset axes → RE-ENTER fit mode:
+						// clear the pinned ranges + the interaction flag so the
+						// view re-fits all points (and keeps re-fitting as tiers
+						// arrive), and reset opacity to the full-extent base.
+						userHasInteracted2d = false;
 						current2dXSpan = data2dFullSpan;
 						current2dXRange = null;
 						current2dYRange = null;
 						applyAtlasZoomOpacity(
 							api as PlotlyApi,
 							el as HTMLDivElement,
-							backdropOpacity,
+							atlas2dRenderedCount,
 							data2dFullSpan
 						);
 						// Range cleared → buildLodDetailArrays returns null →
@@ -1749,8 +1835,15 @@
 		// 461k-point scatter3d stable without triggering the documented
 		// plotly.js#6365 WebGL-context leak. The magenta focus halo
 		// below still highlights any single-clicked point.
+		// 3D backdrop opacity — count-aware like the 2D base, but capped lower
+		// (≤0.22) so the scatter3d cloud stays VOLUMETRIC (you see through it to
+		// the interior structure) rather than rendering as an opaque front
+		// shell. The old fixed 0.05 washed the cluster colours out to a grey
+		// haze; this lifts them while preserving depth see-through. No zoom term
+		// — scatter3d has no axis-range relayout to restyle against.
+		const backdrop3dOpacity = Math.min(0.22, densityOpacity(backdrop.length));
 		const traces: unknown[] = [
-			buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, true, new Set())
+			buildAtlasBackdropTrace(backdrop, clusters, backdrop3dOpacity, useShapes, true, new Set())
 		];
 		const overlayTrace = buildAtlasOverlayTrace(
 			overlay,
