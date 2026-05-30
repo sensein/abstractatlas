@@ -10,7 +10,6 @@
 	} from '$lib/geo/lasso_select';
 	import {
 		backdropOpacity as densityZoomOpacity,
-		densityOpacity,
 		overlayMarkerSize
 	} from '$lib/atlas/opacity';
 
@@ -1861,15 +1860,8 @@
 		// 461k-point scatter3d stable without triggering the documented
 		// plotly.js#6365 WebGL-context leak. The magenta focus halo
 		// below still highlights any single-clicked point.
-		// 3D backdrop opacity — count-aware like the 2D base, but capped lower
-		// (≤0.22) so the scatter3d cloud stays VOLUMETRIC (you see through it to
-		// the interior structure) rather than rendering as an opaque front
-		// shell. The old fixed 0.05 washed the cluster colours out to a grey
-		// haze; this lifts them while preserving depth see-through. No zoom term
-		// — scatter3d has no axis-range relayout to restyle against.
-		const backdrop3dOpacity = Math.min(0.22, densityOpacity(backdrop.length));
 		const traces: unknown[] = [
-			buildAtlasBackdropTrace(backdrop, clusters, backdrop3dOpacity, useShapes, true, new Set())
+			buildAtlasBackdropTrace(backdrop, clusters, opacity, useShapes, true, new Set())
 		];
 		const overlayTrace = buildAtlasOverlayTrace(
 			overlay,
@@ -1947,24 +1939,13 @@
 		// inspect it more closely.
 		const axisCfg = { visible: false, showbackground: false };
 		const uirev = 'atlas-3d';
-		// Closer eye (was {1.6,1.6,0.9}, mag ~2.43) so the cloud FILLS the pane
-		// instead of floating small in the centre. {0.85,0.85,0.85} (mag ~1.47)
-		// fills ~75% of the pane against the `aspectmode: 'cube'` scene below
-		// without clipping the cloud's extremes — tuned by visual probe.
-		let cameraEye: { x: number; y: number; z: number } = { x: 0.85, y: 0.85, z: 0.85 };
+		let cameraEye: { x: number; y: number; z: number } = { x: 1.6, y: 1.6, z: 0.9 };
 		if (chart3dInitialized && currentEye3D) cameraEye = currentEye3D;
 		const scene: Record<string, unknown> = {
 			xaxis: { ...axisCfg },
 			yaxis: { ...axisCfg },
 			zaxis: { ...axisCfg },
 			bgcolor: c.plot,
-			// `aspectmode: 'cube'` normalises the scene to a cube so the UMAP
-			// cloud fills the viewport (the default 'auto' fits it to the data's
-			// raw extent — a flatter slab that leaves big empty margins). This
-			// also matches the aspect the smooth-rotation path already applies
-			// (gl-plot3d setViewport defaults to cube), removing the reshape jump
-			// when rotation starts.
-			aspectmode: 'cube',
 			camera: { eye: cameraEye }
 		};
 		const layout = {
