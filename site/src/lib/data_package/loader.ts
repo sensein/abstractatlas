@@ -1078,6 +1078,35 @@ export async function loadCoordsFromNeuroscape(): Promise<Array<
 }
 
 /**
+ * Spec 019 follow-up — range-fetch the `neighbors_neuroscape` k=20 graph
+ * (`pubmed_id, nearest_pubmed_ids[], nearest_distances[]`) from
+ * `neuroscape.parquet`. It's the single biggest table in the file, but it
+ * only powers the detail panel's "Most similar" list — NOT first paint,
+ * the scatter, or search. So `/neuroscape/`'s progressive loader fetches it
+ * LAST (a background wave after articles + coords), turning the old 102 MB
+ * blocking GET into ~28 MB-to-interactive. Returns `null` when the URL is
+ * unset or the table is absent; "similar" then stays empty (graceful).
+ */
+export async function loadNeighborsFromNeuroscape(): Promise<Array<
+	Record<string, unknown>
+> | null> {
+	const url = neuroscapeSiblingUrl();
+	if (!url) return null;
+	const file = await asyncBufferFromUrl({ url });
+	const outer = (await parquetReadObjects({
+		file,
+		compressors,
+		utf8: false,
+		filter: { table_name: { $eq: 'neighbors_neuroscape' } }
+	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
+	const match = outer.find((r) => r.table_name === 'neighbors_neuroscape');
+	if (!match?.table_bytes) return null;
+	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
+	if (rows.length === 0) return null;
+	return rows;
+}
+
+/**
  * Verify that the sibling parquets currently published match what
  * `atlas.parquet` was built against. Returns `{ok: true}` on match,
  * `{ok: false, drift: [...]}` on any mismatch / fetch error so the

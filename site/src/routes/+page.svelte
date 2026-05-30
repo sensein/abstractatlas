@@ -86,6 +86,7 @@
 		loadClustersFromNeuroscape,
 		loadArticlesFromNeuroscape,
 		loadCoordsFromNeuroscape,
+		loadNeighborsFromNeuroscape,
 		loadBackdropLevelFromNeuroscape,
 		readNeuroscapeBackdropLevelCount,
 		verifyAtlasSiblingDrift,
@@ -1313,6 +1314,92 @@
 		neuroscapeTitleLookup.set(neuroMap);
 	}
 
+	// Spec 019 follow-up — progressive /neuroscape/ load. The old path did a
+	// single blocking ~102 MB full GET of neuroscape.parquet before any paint
+	// (so /neuroscape/ felt much slower than atlas-root, which range-fetches
+	// ~½ MB to first paint). Mirror atlas-root: paint a coarse `lod0` tier +
+	// clusters from a tiny range fetch, then stream the full `articles` (list
+	// + search) and `coords` (full scatter geometry) in the background, and
+	// defer the heavy `neighbors` table (detail "similar" only) to a final
+	// wave. Returns true if the fast first paint succeeded; false ⇒ caller
+	// falls back to the full-GET path (so a range-fetch problem can't break
+	// /neuroscape/ — worst case is the prior behaviour).
+	async function loadNeuroscapeProgressive(): Promise<boolean> {
+		let clustersRows: Array<Record<string, unknown>> | null = null;
+		let lod0Rows: Array<Record<string, unknown>> | null = null;
+		let levelCount: number | null = null;
+		try {
+			[clustersRows, lod0Rows, levelCount] = await Promise.all([
+				loadClustersFromNeuroscape(),
+				loadBackdropLevelFromNeuroscape(0),
+				readNeuroscapeBackdropLevelCount()
+			]);
+		} catch {
+			return false; // fall back to full GET
+		}
+		if (!clustersRows || !lod0Rows) return false;
+
+		// First paint: coarse scatter + cluster legend.
+		atlasClusters = clustersRows as unknown as AtlasClusterRow[];
+		atlasBackdrop = lod0Rows as unknown as AtlasBackdropPoint[];
+		listCorpus = lod0Rows as unknown as AtlasBackdropPoint[];
+		atlasOverlayPoints = [];
+		neuroscapeLodCap =
+			typeof levelCount === 'number' && levelCount > 0 ? levelCount - 1 : null;
+		refreshNeuroscapeTitleLookup();
+		void initNeuroscapeRanker();
+
+		// Background: full articles + coords → full scatter + search/list.
+		// Then a final wave for neighbours (detail "similar"). Fire-and-forget
+		// so first paint isn't blocked; failures log loudly + leave the coarse
+		// tier in place (CA-006, never a silent wrong-state).
+		void (async () => {
+			try {
+				const [articles, coords] = await Promise.all([
+					loadArticlesFromNeuroscape(),
+					loadCoordsFromNeuroscape()
+				]);
+				if (!articles) return;
+				// Search + result list always get the full corpus.
+				listCorpus = articles as unknown as AtlasBackdropPoint[];
+				refreshNeuroscapeTitleLookup();
+				// The SCATTER only swaps to the full corpus once coords are
+				// folded — articles carry no geometry, so without coords every
+				// point would collapse to (0,0). If coords failed, keep the
+				// coarse lod0 tier on the map (it has real umap_2d/3d).
+				if (coords) {
+					const geoById = new Map(coords.map((c) => [Number(c.pubmed_id), c]));
+					for (const a of articles as Array<Record<string, unknown>>) {
+						const c = geoById.get(Number(a.pubmed_id));
+						if (c) {
+							a.umap_2d = c.umap_2d;
+							a.umap_3d = c.umap_3d;
+							a.lod_level = c.lod_level;
+						}
+					}
+					atlasBackdrop = articles as unknown as AtlasBackdropPoint[];
+				}
+				// Final wave — neighbours for the detail "Most similar" list.
+				const nbrs = await loadNeighborsFromNeuroscape();
+				if (nbrs) {
+					const nbrById = new Map(nbrs.map((n) => [Number(n.pubmed_id), n]));
+					for (const a of articles as Array<Record<string, unknown>>) {
+						const n = nbrById.get(Number(a.pubmed_id));
+						if (n) {
+							a.nearest_pubmed_ids = n.nearest_pubmed_ids;
+							a.nearest_distances = n.nearest_distances;
+						}
+					}
+					// Reassign so the detail "similar" reactive picks up neighbours.
+					atlasBackdrop = [...(articles as unknown as AtlasBackdropPoint[])];
+				}
+			} catch (err) {
+				console.warn('neuroscape progressive background load failed:', err);
+			}
+		})();
+		return true;
+	}
+
 	async function loadAtlasData() {
 		if (SITE_MODE === 'ohbm2026') return;
 		if (atlasLoading || atlasBackdrop.length > 0) return;
@@ -1321,6 +1408,13 @@
 		atlasProgressTotal = null;
 		atlasPhase = 'connecting';
 		try {
+			// /neuroscape/ — try the progressive range-fetch path first (fast
+			// coarse paint, then stream the rest). On success we're done; on
+			// failure fall through to the full-GET path below (no regression).
+			if (SITE_MODE === 'neuroscape') {
+				const ok = await loadNeuroscapeProgressive();
+				if (ok) return;
+			}
 			const pkg = await loadDataPackage(
 				fetch,
 				(loaded, total) => {
