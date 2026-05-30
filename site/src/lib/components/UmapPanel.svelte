@@ -4,6 +4,10 @@
 	import { effectiveTheme } from '$lib/stores/theme';
 	import { loadCell, loadTopics, type CellShard, type TopicShard } from '$lib/shards';
 	import type { AbstractRecord } from '$lib/shards';
+	import {
+		geometryFromPlotlySelection,
+		type LassoGeometry
+	} from '$lib/geo/lasso_select';
 
 	/**
 	 * Stage 15 — unified UMAP panel. Drives all three subsites:
@@ -102,10 +106,36 @@
 	 */
 	export let atlasFocusKind: 'ohbm2026' | 'neuroscape' | null = null;
 	export let atlasFocusId: number | null = null;
+	// Spec 019 follow-up — explicit focus coordinates for the current
+	// `atlasFocusId`, resolved by the parent against the FULL corpus. With
+	// the LOD backdrop the focused point may not be in the rendered sample
+	// (so `atlasFocusCoords` couldn't find it in `backdrop`); when provided
+	// these place the focus halo + drive the camera-snap regardless.
+	export let atlasFocusUmap2d: [number, number] | null = null;
+	export let atlasFocusUmap3d: [number, number, number] | null = null;
+	// Spec 019 follow-up — viewport-driven LOD on the 2D scatter. `backdropFull`
+	// is the FULL corpus with per-point `lod_level` (the base `backdropPoints`
+	// renders only the representative tiers); when the user zooms in, points
+	// with `lod_level >= lodRestLevel` that fall inside the visible window are
+	// rendered into an additive "lod-detail" trace — so zooming reveals finer
+	// detail where you're looking, bounded by VIEWPORT_LOD_BUDGET. Empty
+	// `backdropFull` / infinite `lodRestLevel` ⇒ feature off (unchanged).
+	export let backdropFull: Array<{
+		pubmed_id: number;
+		cluster_id: number;
+		umap_2d?: [number, number];
+		lod_level?: number;
+	}> = [];
+	export let lodRestLevel: number = Number.POSITIVE_INFINITY;
 
 	const dispatch = createEventDispatcher<{
 		pointclick: { kind: 'ohbm2026' | 'neuroscape'; id: number };
-		lassoselect: { ohbm2026_ids: number[]; neuroscape_ids: number[] };
+		// Spec 019 follow-up — dispatch the lasso GEOMETRY (polygon / box)
+		// rather than the rendered points' ids. With the LOD backdrop the
+		// scatter only renders a sample, so the parent runs a point-in-
+		// polygon test against the FULL coords (which it holds) to find
+		// every abstract in the region, not just the drawn sample.
+		lassoselect: { geometry: LassoGeometry };
 		lassoclear: void;
 	}>();
 
@@ -475,6 +505,9 @@
 		// not lasso-aware at this point-count). See that block for
 		// the rationale.
 		void renderToken;
+		// Track the 2D focus override so a late-arriving coord (atlas-root
+		// lazy full-coords fetch) re-renders the focus halo + camera-snap.
+		void atlasFocusUmap2d;
 		void renderAtlasChart2D(
 			plotly,
 			chart2dEl,
@@ -514,6 +547,8 @@
 	// only on data, theme, overlay-toggle, opacity, or focus changes.
 	$: if (mode !== 'ohbm') {
 		void renderToken;
+		// Track the 3D focus override (see 2D block) so a late coord re-renders.
+		void atlasFocusUmap3d;
 		void renderAtlasChart3D(
 			plotly,
 			chart3dEl,
@@ -1055,6 +1090,98 @@
 		).restyle(el, { 'marker.opacity': [op] }, [0]);
 	}
 
+	// Spec 019 follow-up — viewport-driven LOD. The 'lod-detail' trace is
+	// always trace index 1 (pushed right after the backdrop in
+	// renderAtlasChart2D), so we restyle it by a fixed index. Cap on how many
+	// rest-tier points we add to the scatter — when more than this fall inside
+	// the window the user is too zoomed out to want them, so we render none.
+	const LOD_DETAIL_TRACE_IDX = 1;
+	const VIEWPORT_LOD_BUDGET = 30000;
+	let lodDetailTimer: ReturnType<typeof setTimeout> | null = null;
+
+	/** Rest-tier (`lod_level >= lodRestLevel`) points inside the current 2D
+	 *  window, as trace arrays — or `null` (render nothing) when the feature
+	 *  is off, the view isn't zoomed, or the in-window count exceeds the
+	 *  budget (too zoomed out). */
+	function buildLodDetailArrays(): {
+		x: number[];
+		y: number[];
+		colours: string[];
+		customdata: Array<{ kind: string; id: number }>;
+	} | null {
+		if (
+			!backdropFull.length ||
+			!Number.isFinite(lodRestLevel) ||
+			!current2dXRange ||
+			!current2dYRange
+		)
+			return null;
+		const xlo = Math.min(current2dXRange[0], current2dXRange[1]);
+		const xhi = Math.max(current2dXRange[0], current2dXRange[1]);
+		const ylo = Math.min(current2dYRange[0], current2dYRange[1]);
+		const yhi = Math.max(current2dYRange[0], current2dYRange[1]);
+		const x: number[] = [];
+		const y: number[] = [];
+		const colours: string[] = [];
+		const customdata: Array<{ kind: string; id: number }> = [];
+		for (const p of backdropFull) {
+			if ((p.lod_level ?? -1) < lodRestLevel) continue; // base tiers already drawn
+			const xy = p.umap_2d;
+			if (!xy) continue;
+			if (xy[0] < xlo || xy[0] > xhi || xy[1] < ylo || xy[1] > yhi) continue;
+			x.push(xy[0]);
+			y.push(xy[1]);
+			colours.push(clustersById.get(p.cluster_id)?.colour_hex ?? '#9c9c9c');
+			customdata.push({ kind: 'neuroscape', id: p.pubmed_id });
+			if (x.length > VIEWPORT_LOD_BUDGET) return null; // too zoomed out → off
+		}
+		return { x, y, colours, customdata };
+	}
+
+	function lodDetailOpacity(): number {
+		if (data2dFullSpan <= 0 || current2dXSpan <= 0) return Math.min(0.9, backdropOpacity * 4);
+		const zoomFactor = Math.max(1, data2dFullSpan / current2dXSpan);
+		return Math.min(0.9, backdropOpacity * zoomFactor);
+	}
+
+	/** Restyle the lod-detail trace to the current viewport's rest points (or
+	 *  empty). Cheap restyle of one trace — never re-renders the chart, so it
+	 *  can't reset the user's zoom or fight the gesture. */
+	function applyViewportLodDetail(api: PlotlyApi, el: HTMLDivElement) {
+		const restyle = (
+			api as unknown as {
+				restyle: (e: HTMLDivElement, u: Record<string, unknown[]>, idx: number[]) => Promise<unknown>;
+			}
+		).restyle;
+		const arrays = buildLodDetailArrays();
+		if (!arrays) {
+			void restyle(
+				el,
+				{ x: [[]], y: [[]], 'marker.color': [[]], customdata: [[]] },
+				[LOD_DETAIL_TRACE_IDX]
+			);
+			return;
+		}
+		void restyle(
+			el,
+			{
+				x: [arrays.x],
+				y: [arrays.y],
+				'marker.color': [arrays.colours],
+				customdata: [arrays.customdata],
+				'marker.opacity': [lodDetailOpacity()]
+			},
+			[LOD_DETAIL_TRACE_IDX]
+		);
+	}
+
+	/** Debounced wrapper — the lod-detail filter walks the full corpus, so we
+	 *  only recompute after a zoom/pan settles (opacity updates stay live). */
+	function scheduleViewportLodDetail(api: PlotlyApi, el: HTMLDivElement) {
+		if (lodDetailTimer) clearTimeout(lodDetailTimer);
+		lodDetailTimer = setTimeout(() => applyViewportLodDetail(api, el), 160);
+	}
+
 	/**
 	 * Per-render 2D trace-array cache. Without it, every lasso state
 	 * change in `renderAtlasChart2D` rebuilds the same 461k-point
@@ -1175,6 +1302,15 @@
 					: { x: (p.umap_2d ?? [0, 0])[0], y: (p.umap_2d ?? [0, 0])[1] };
 			}
 		} else {
+			// Parent-supplied override (coords resolved against the FULL
+			// corpus) — used when the focused point isn't in the rendered
+			// LOD sample. Corresponds to the current `atlasFocusId`.
+			if (is3d && atlasFocusUmap3d) {
+				return { x: atlasFocusUmap3d[0], y: atlasFocusUmap3d[1], z: atlasFocusUmap3d[2] };
+			}
+			if (!is3d && atlasFocusUmap2d) {
+				return { x: atlasFocusUmap2d[0], y: atlasFocusUmap2d[1] };
+			}
 			for (const p of backdrop) {
 				if (p.pubmed_id !== focusId) continue;
 				return is3d
@@ -1255,7 +1391,28 @@
 			customdata: bdr.customdata,
 			...backdropSelectedConfig
 		};
-		const traces: unknown[] = [backdropTrace];
+		// Spec 019 follow-up — additive viewport-LOD trace (index 1, restyled
+		// on zoom by applyViewportLodDetail). Built from the current window's
+		// rest-tier points so it persists across a re-render while zoomed;
+		// empty when not zoomed / feature off. Same marker style as backdrop.
+		const lodNow = buildLodDetailArrays();
+		const lodDetailTrace: Record<string, unknown> = {
+			type: 'scattergl' as const,
+			mode: 'markers' as const,
+			x: lodNow ? lodNow.x : [],
+			y: lodNow ? lodNow.y : [],
+			name: 'lod-detail',
+			marker: {
+				size: 3,
+				color: lodNow ? lodNow.colours : [],
+				opacity: lodDetailOpacity(),
+				line: { width: 0 }
+			},
+			hoverinfo: 'none',
+			showlegend: false,
+			customdata: lodNow ? lodNow.customdata : []
+		};
+		const traces: unknown[] = [backdropTrace, lodDetailTrace];
 
 		if (overlay.length > 0) {
 			const overlaySelectedIdx: number[] = [];
@@ -1492,17 +1649,17 @@
 					}
 				});
 				node.on('plotly_selected', (e: unknown) => {
-					const ev = e as { points?: Array<{ customdata?: unknown }> } | null;
-					if (!ev || !ev.points || ev.points.length === 0) return;
-					const ohbm: number[] = [];
-					const neuro: number[] = [];
-					for (const pt of ev.points) {
-						const cd = pt.customdata as { kind?: string; id?: number } | undefined;
-						if (!cd || typeof cd.id !== 'number') continue;
-						if (cd.kind === 'ohbm2026') ohbm.push(cd.id);
-						else if (cd.kind === 'neuroscape') neuro.push(cd.id);
-					}
-					dispatch('lassoselect', { ohbm2026_ids: ohbm, neuroscape_ids: neuro });
+					// Spec 019 follow-up — dispatch the lasso GEOMETRY, not the
+					// rendered points. The backdrop on screen is only the LOD
+					// sample; the parent tests this polygon against the full
+					// coords so the lasso finds every abstract in the region.
+					// Plotly fires a spurious empty `plotly_selected` after its
+					// internal relayout — geometryFromPlotlySelection returns
+					// null for it (no lassoPoints / range), so we ignore it and
+					// DON'T clear (the real clear is `plotly_deselect`).
+					const geometry = geometryFromPlotlySelection(e);
+					if (!geometry) return;
+					dispatch('lassoselect', { geometry });
 				});
 				node.on('plotly_deselect', () => dispatch('lassoclear'));
 				// Zoom-aware backdrop opacity: every pan/zoom emits a
@@ -1543,6 +1700,8 @@
 							backdropOpacity,
 							current2dXSpan
 						);
+						// Reveal finer (rest-tier) points inside the new window.
+						scheduleViewportLodDetail(api as PlotlyApi, el as HTMLDivElement);
 					} else if (ev['xaxis.autorange'] === true) {
 						// User double-clicked to reset axes → autorange
 						// ON → back to the base opacity (full corpus)
@@ -1557,6 +1716,9 @@
 							backdropOpacity,
 							data2dFullSpan
 						);
+						// Range cleared → buildLodDetailArrays returns null →
+						// clears the lod-detail trace back to empty.
+						scheduleViewportLodDetail(api as PlotlyApi, el as HTMLDivElement);
 					}
 				});
 			})

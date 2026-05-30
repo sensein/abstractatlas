@@ -338,6 +338,13 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 		if (name === 'manifest') continue;
 		// Enrichment tables are joined into one envelope below.
 		if (name === 'enrichment_claims' || name === 'enrichment_figures') continue;
+		// Spec 019 follow-up — the progressive backdrop tiers
+		// (`backdrop_lod0..N`) are range-fetched on demand by atlas-root
+		// (loadBackdropLevelFromNeuroscape). On a full GET (e.g. the
+		// /neuroscape/ corpus load) the scatter renders from `coords`
+		// (which carries lod_level), so decoding the per-tier blobs here
+		// would be wasted work — skip them before the decode.
+		if (name.startsWith('backdrop_lod')) continue;
 		// Binary blobs are stored without Parquet wrapping.
 		if (name === 'search:minilm_vectors') {
 			out.set('data/search/minilm_vectors.bin', blob);
@@ -383,10 +390,10 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 			}
 			// Spec 019 — atlas.parquet now carries ONLY manifest + ohbm_overlay
 			// (the OHBM→NeuroScape projection, which is impossible to derive
-			// from either sibling alone). clusters, backdrop_decimated, and
-			// cluster_centroids are all range-fetched from the sibling
-			// neuroscape.parquet (loadClustersFromNeuroscape /
-			// loadBackdropDecimatedFromNeuroscape / loadClusterCentroidsFromNeuroscape)
+			// from either sibling alone). clusters, the progressive backdrop
+			// tiers, and cluster_centroids are all range-fetched from the
+			// sibling neuroscape.parquet (loadClustersFromNeuroscape /
+			// loadBackdropLevelFromNeuroscape / loadClusterCentroidsFromNeuroscape)
 			// — single source of truth, no duplication. cross_pointers dropped:
 			// permalinks are derived from (kind, id) in the browser.
 			// Unknown atlas.v1 outer row — ignore silently (forwards
@@ -414,17 +421,6 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 					schema_version: 'neuroscape.coords.v1',
 					build_info: buildInfo,
 					coords: rows
-				});
-				continue;
-			}
-			if (name === 'backdrop_decimated') {
-				// Spec 019 — self-contained landing scatter sample (moved here
-				// from atlas.parquet). Carries its own title/year/umap so the
-				// atlas-root backdrop renders from one range fetch.
-				out.set('data/neuroscape/backdrop_decimated.json', {
-					schema_version: 'neuroscape.backdrop.v1',
-					build_info: buildInfo,
-					points: rows
 				});
 				continue;
 			}
@@ -553,19 +549,32 @@ async function parseParquetSingle(bytes: Uint8Array): Promise<Map<string, unknow
 						pubmed_id: number;
 						umap_2d: number[];
 						umap_3d: number[];
+						lod_level?: number;
 					}>;
 			  }
 			| undefined;
 		if (articlesShard?.articles && coordsShard?.coords) {
-			const geoById = new Map<number, { umap_2d: number[]; umap_3d: number[] }>();
+			const geoById = new Map<
+				number,
+				{ umap_2d: number[]; umap_3d: number[]; lod_level?: number }
+			>();
 			for (const c of coordsShard.coords) {
-				geoById.set(c.pubmed_id, { umap_2d: c.umap_2d, umap_3d: c.umap_3d });
+				geoById.set(c.pubmed_id, {
+					umap_2d: c.umap_2d,
+					umap_3d: c.umap_3d,
+					lod_level: c.lod_level
+				});
 			}
 			for (const a of articlesShard.articles) {
 				const hit = geoById.get(a.pubmed_id);
 				if (hit) {
 					a.umap_2d = hit.umap_2d;
 					a.umap_3d = hit.umap_3d;
+					// Spec 019 follow-up — carry the quadtree LOD tier so the
+					// /neuroscape/ scatter can cap to a blue-noise sample
+					// (lod_level <= cap) without an extra fetch; search +
+					// result-list keep the full corpus.
+					(a as { lod_level?: number }).lod_level = hit.lod_level;
 				}
 			}
 		}
@@ -938,16 +947,14 @@ export async function loadClustersFromNeuroscape(): Promise<Array<
 }
 
 /**
- * Spec 019 — range-fetch the self-contained `backdrop_decimated` scatter
- * sample from the sibling `neuroscape.parquet`. This table moved out of
- * atlas.parquet: each row carries its own pubmed_id, cluster_id, umap_2d,
- * umap_3d, title, year, so the atlas-root landing backdrop renders from a
- * single range fetch without joining the full corpus. Returns `null` when
- * the sibling URL is unset or the table is absent.
+ * Spec 019 follow-up — read the number of progressive backdrop tiers
+ * (`n_backdrop_levels`) from the sibling `neuroscape.parquet` manifest so
+ * atlas-root knows how many `backdrop_lod{k}` tables to range-fetch.
+ * Returns `null` when the sibling URL is unset or the manifest predates
+ * the LOD encoding (older build → caller falls back to a single-tier
+ * fetch). Range-fetches only the manifest outer row, a few KB.
  */
-export async function loadBackdropDecimatedFromNeuroscape(): Promise<Array<
-	Record<string, unknown>
-> | null> {
+export async function readNeuroscapeBackdropLevelCount(): Promise<number | null> {
 	const url = neuroscapeSiblingUrl();
 	if (!url) return null;
 	const file = await asyncBufferFromUrl({ url });
@@ -955,9 +962,48 @@ export async function loadBackdropDecimatedFromNeuroscape(): Promise<Array<
 		file,
 		compressors,
 		utf8: false,
-		filter: { table_name: { $eq: 'backdrop_decimated' } }
+		filter: { table_name: { $eq: 'manifest' } }
 	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
-	const match = outer.find((r) => r.table_name === 'backdrop_decimated');
+	const match = outer.find((r) => r.table_name === 'manifest');
+	if (!match?.table_bytes) return null;
+	const inner = (await decodeBlob(match.table_bytes)) as Array<{ manifest_json?: string }>;
+	const json = inner[0]?.manifest_json;
+	if (!json) return null;
+	// Defensive: a malformed/corrupt manifest must NOT reject the load
+	// promise and break atlas-root's first paint — fall back to null
+	// (caller treats it as "single-tier", per CA-006 no silent break).
+	try {
+		const n = (JSON.parse(json) as { n_backdrop_levels?: number }).n_backdrop_levels;
+		return typeof n === 'number' && n > 0 ? n : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Spec 019 follow-up — range-fetch one progressive backdrop tier
+ * (`backdrop_lod{level}`) from the sibling `neuroscape.parquet`. Each tier
+ * is a self-contained quadtree LOD sample (pubmed_id, cluster_id, umap_2d,
+ * umap_3d, title, year); `backdrop_lod0` is the coarsest blue-noise cover
+ * (an instant first paint) and finer tiers refine it. atlas-root fetches
+ * `lod0` first, paints, then streams the remaining tiers — so the full
+ * corpus is never fetched for the backdrop. Returns `null` when the
+ * sibling URL is unset or the tier is absent/empty.
+ */
+export async function loadBackdropLevelFromNeuroscape(
+	level: number
+): Promise<Array<Record<string, unknown>> | null> {
+	const url = neuroscapeSiblingUrl();
+	if (!url) return null;
+	const tableName = `backdrop_lod${level}`;
+	const file = await asyncBufferFromUrl({ url });
+	const outer = (await parquetReadObjects({
+		file,
+		compressors,
+		utf8: false,
+		filter: { table_name: { $eq: tableName } }
+	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
+	const match = outer.find((r) => r.table_name === tableName);
 	if (!match?.table_bytes) return null;
 	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
 	if (rows.length === 0) return null;
@@ -993,6 +1039,67 @@ export async function loadArticlesFromNeuroscape(): Promise<Array<
 		filter: { table_name: { $eq: 'articles' } }
 	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
 	const match = outer.find((r) => r.table_name === 'articles');
+	if (!match?.table_bytes) return null;
+	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
+	if (rows.length === 0) return null;
+	return rows;
+}
+
+/**
+ * Spec 019 follow-up — range-fetch the FULL `coords` geometry table
+ * (`pubmed_id, cluster_id, umap_2d, umap_3d, lod_level`) from the sibling
+ * `neuroscape.parquet`. Used by atlas-root ONLY, and only lazily: the
+ * landing scatter renders the LOD sample, but a lasso must find every
+ * abstract in the drawn region — which needs the full 461k coordinates.
+ * atlas-root fetches this on the first lasso (≈11 MB) rather than eagerly,
+ * so a visitor who never lassos never pays for it. `/neuroscape/` already
+ * has the full coords in memory (folded onto `articles`) so it never calls
+ * this. Returns `null` when the sibling URL is unset or the table is
+ * absent (older build) — the caller then falls back to selecting only the
+ * rendered LOD sample and logs loudly (CA-006).
+ */
+export async function loadCoordsFromNeuroscape(): Promise<Array<
+	Record<string, unknown>
+> | null> {
+	const url = neuroscapeSiblingUrl();
+	if (!url) return null;
+	const file = await asyncBufferFromUrl({ url });
+	const outer = (await parquetReadObjects({
+		file,
+		compressors,
+		utf8: false,
+		filter: { table_name: { $eq: 'coords' } }
+	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
+	const match = outer.find((r) => r.table_name === 'coords');
+	if (!match?.table_bytes) return null;
+	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
+	if (rows.length === 0) return null;
+	return rows;
+}
+
+/**
+ * Spec 019 follow-up — range-fetch the `neighbors_neuroscape` k=20 graph
+ * (`pubmed_id, nearest_pubmed_ids[], nearest_distances[]`) from
+ * `neuroscape.parquet`. It's the single biggest table in the file, but it
+ * only powers the detail panel's "Most similar" list — NOT first paint,
+ * the scatter, or search. So `/neuroscape/`'s progressive loader fetches it
+ * LAST (a background wave after articles + coords), turning the old 102 MB
+ * blocking GET into ~28 MB-to-interactive. Returns `null` when the URL is
+ * unset or the table is absent; "similar" then stays empty (graceful).
+ */
+export async function loadNeighborsFromNeuroscape(): Promise<Array<
+	Record<string, unknown>
+> | null> {
+	const url = neuroscapeSiblingUrl();
+	if (!url) return null;
+	const file = await asyncBufferFromUrl({ url });
+	const outer = (await parquetReadObjects({
+		file,
+		compressors,
+		utf8: false,
+		filter: { table_name: { $eq: 'neighbors_neuroscape' } }
+	})) as Array<{ table_name?: string; table_bytes?: Uint8Array }>;
+	const match = outer.find((r) => r.table_name === 'neighbors_neuroscape');
 	if (!match?.table_bytes) return null;
 	const rows = (await decodeBlob(match.table_bytes)) as Array<Record<string, unknown>>;
 	if (rows.length === 0) return null;
