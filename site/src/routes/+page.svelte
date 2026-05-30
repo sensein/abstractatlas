@@ -92,6 +92,7 @@
 		type AtlasDriftEntry
 	} from '$lib/data_package/loader';
 	import { selectIdsInGeometry, type LassoGeometry } from '$lib/geo/lasso_select';
+	import { resolveAtlasSelection, type AtlasSelection } from '$lib/atlas/select';
 	import { loadClusterCentroids } from '$lib/shards';
 	// Spec 019 / FR-002 — full cluster-routed semantic ranker. Wired in
 	// when the `neuroscape_vectors.parquet` sidecar URL is configured;
@@ -551,23 +552,7 @@
 	let neuroscapeLodCap: number | null = null;
 	// T046 + T047 — selection state for the slide-in detail panel
 	// and the lasso grouped result list. Both are atlas-root-only.
-	let atlasSelection:
-		| {
-				kind: 'ohbm2026';
-				title: string;
-				poster_id: number;
-				nearest_cluster_id: number;
-				permalink: string;
-		  }
-		| {
-				kind: 'neuroscape';
-				title: string;
-				pubmed_id: number;
-				year: number;
-				cluster_id: number;
-				permalink: string;
-		  }
-		| null = null;
+	let atlasSelection: AtlasSelection | null = null;
 	// Lasso state now lives in `atlasLassoOhbmSet` / `atlasLassoNeuroSet`
 	// declared further down — Sets are the right shape since the
 	// browse panel needs O(1) lookup, and the scatter highlight needs
@@ -940,34 +925,20 @@
 		ev: CustomEvent<{ kind: 'ohbm2026' | 'neuroscape'; id: number }>
 	) {
 		const { kind, id } = ev.detail;
-		if (kind === 'ohbm2026') {
-			const p = atlasOverlayById.get(id);
-			if (!p) return;
-			atlasSelection = {
-				kind: 'ohbm2026',
-				title: p.title,
-				poster_id: p.poster_id,
-				nearest_cluster_id: p.nearest_cluster_id,
-				permalink: atlasPermalink('ohbm2026', p.poster_id)
-			};
-		} else {
-			// Resolve against the FULL corpus (`listCorpusById`), not the LOD
-			// scatter sample (`atlasBackdropById`): a clicked result-list row
-			// is almost always a full-corpus point that isn't in the rendered
-			// sample, so looking it up in the sample map returned undefined and
-			// silently dropped the click (no detail panel). `listCorpus` carries
-			// identity (title/year/cluster_id) on both surfaces.
-			const p = listCorpusById.get(id) ?? atlasBackdropById.get(id);
-			if (!p) return;
-			atlasSelection = {
-				kind: 'neuroscape',
-				title: p.title,
-				pubmed_id: p.pubmed_id,
-				year: p.year,
-				cluster_id: p.cluster_id,
-				permalink: atlasPermalink('neuroscape', p.pubmed_id)
-			};
-		}
+		// Resolve the clicked id to a selection. The neuro lookup consults the
+		// FULL corpus (`listCorpusById`) first, with a sample fallback — a
+		// clicked result row is usually a point that isn't in the rendered LOD
+		// sample, and resolving it against the sample map returned undefined and
+		// silently dropped the click (the regression `atlas_select.test.ts`
+		// guards). `null` ⇒ id in neither lookup → leave the panel as-is.
+		const sel = resolveAtlasSelection(
+			kind,
+			id,
+			(i) => atlasOverlayById.get(i),
+			(i) => listCorpusById.get(i) ?? atlasBackdropById.get(i),
+			atlasPermalink
+		);
+		if (sel) atlasSelection = sel;
 	}
 
 	// Most-similar list for the inline detail panel. On /neuroscape/
