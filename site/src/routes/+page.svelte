@@ -141,9 +141,13 @@
 		colour_hex: string;
 		palette_tier: 'primary' | 'secondary';
 	};
-	// Minimal shape the lasso point-in-polygon test needs — satisfied by
-	// AtlasBackdropPoint, AtlasOverlayPoint, and the lazily-fetched coords.
-	type CoordPoint = { pubmed_id: number; umap_2d?: [number, number] };
+	// Minimal shape the lasso point-in-polygon test + focus-coord lookup
+	// need — satisfied by AtlasBackdropPoint and the lazily-fetched coords.
+	type CoordPoint = {
+		pubmed_id: number;
+		umap_2d?: [number, number];
+		umap_3d?: [number, number, number];
+	};
 
 	let manifest: Manifest | null = null;
 	let abstracts: AbstractRecord[] = [];
@@ -947,7 +951,13 @@
 				permalink: atlasPermalink('ohbm2026', p.poster_id)
 			};
 		} else {
-			const p = atlasBackdropById.get(id);
+			// Resolve against the FULL corpus (`listCorpusById`), not the LOD
+			// scatter sample (`atlasBackdropById`): a clicked result-list row
+			// is almost always a full-corpus point that isn't in the rendered
+			// sample, so looking it up in the sample map returned undefined and
+			// silently dropped the click (no detail panel). `listCorpus` carries
+			// identity (title/year/cluster_id) on both surfaces.
+			const p = listCorpusById.get(id) ?? atlasBackdropById.get(id);
 			if (!p) return;
 			atlasSelection = {
 				kind: 'neuroscape',
@@ -1047,6 +1057,36 @@
 		atlasLassoOhbmSet = new Set();
 		atlasLassoNeuroSet = new Set();
 	}
+
+	// Spec 019 follow-up — resolve the focus halo's coordinates for the
+	// current selection against the FULL corpus, so clicking a result that
+	// isn't in the rendered LOD sample still highlights + camera-snaps it in
+	// the UMAPs (the detail panel already opens via listCorpusById above).
+	$: atlasFullCoordsById = new Map((atlasFullCoords ?? []).map((p) => [p.pubmed_id, p]));
+	// atlas-root: a selected neuroscape point that isn't in the sample needs
+	// the full coords (identity-only listCorpus has none) — lazily fetch them
+	// (same ~11 MB table the lasso uses). The reactives below re-resolve once
+	// they land. No-op on /neuroscape/ (full coords already in atlasBackdrop).
+	$: if (
+		SITE_MODE === 'atlas-root' &&
+		atlasSelection?.kind === 'neuroscape' &&
+		!atlasBackdropById.has(atlasSelection.pubmed_id) &&
+		!atlasFullCoords
+	) {
+		void ensureAtlasFullCoords();
+	}
+	$: atlasFocusUmap2d = (() => {
+		if (atlasSelection?.kind !== 'neuroscape') return null;
+		const id = atlasSelection.pubmed_id;
+		const c = (atlasBackdropById.get(id) ?? atlasFullCoordsById.get(id))?.umap_2d;
+		return c ? ([c[0], c[1]] as [number, number]) : null;
+	})();
+	$: atlasFocusUmap3d = (() => {
+		if (atlasSelection?.kind !== 'neuroscape') return null;
+		const id = atlasSelection.pubmed_id;
+		const c = (atlasBackdropById.get(id) ?? atlasFullCoordsById.get(id))?.umap_3d;
+		return c ? ([c[0], c[1], c[2]] as [number, number, number]) : null;
+	})();
 	// T043 — drift banner state. Populated by the sibling-state-key
 	// check that fires in the background after atlas.parquet loads.
 	let atlasDrift: AtlasDriftEntry[] = [];
@@ -1861,6 +1901,8 @@
 							? atlasSelection.poster_id
 							: atlasSelection.pubmed_id
 						: null}
+					atlasFocusUmap2d={atlasFocusUmap2d}
+					atlasFocusUmap3d={atlasFocusUmap3d}
 					on:pointclick={onAtlasPointClick}
 					on:lassoselect={onAtlasLasso}
 					on:lassoclear={clearAtlasLasso}

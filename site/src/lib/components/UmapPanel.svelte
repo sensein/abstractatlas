@@ -106,6 +106,13 @@
 	 */
 	export let atlasFocusKind: 'ohbm2026' | 'neuroscape' | null = null;
 	export let atlasFocusId: number | null = null;
+	// Spec 019 follow-up — explicit focus coordinates for the current
+	// `atlasFocusId`, resolved by the parent against the FULL corpus. With
+	// the LOD backdrop the focused point may not be in the rendered sample
+	// (so `atlasFocusCoords` couldn't find it in `backdrop`); when provided
+	// these place the focus halo + drive the camera-snap regardless.
+	export let atlasFocusUmap2d: [number, number] | null = null;
+	export let atlasFocusUmap3d: [number, number, number] | null = null;
 
 	const dispatch = createEventDispatcher<{
 		pointclick: { kind: 'ohbm2026' | 'neuroscape'; id: number };
@@ -484,6 +491,9 @@
 		// not lasso-aware at this point-count). See that block for
 		// the rationale.
 		void renderToken;
+		// Track the 2D focus override so a late-arriving coord (atlas-root
+		// lazy full-coords fetch) re-renders the focus halo + camera-snap.
+		void atlasFocusUmap2d;
 		void renderAtlasChart2D(
 			plotly,
 			chart2dEl,
@@ -523,6 +533,8 @@
 	// only on data, theme, overlay-toggle, opacity, or focus changes.
 	$: if (mode !== 'ohbm') {
 		void renderToken;
+		// Track the 3D focus override (see 2D block) so a late coord re-renders.
+		void atlasFocusUmap3d;
 		void renderAtlasChart3D(
 			plotly,
 			chart3dEl,
@@ -1184,6 +1196,15 @@
 					: { x: (p.umap_2d ?? [0, 0])[0], y: (p.umap_2d ?? [0, 0])[1] };
 			}
 		} else {
+			// Parent-supplied override (coords resolved against the FULL
+			// corpus) — used when the focused point isn't in the rendered
+			// LOD sample. Corresponds to the current `atlasFocusId`.
+			if (is3d && atlasFocusUmap3d) {
+				return { x: atlasFocusUmap3d[0], y: atlasFocusUmap3d[1], z: atlasFocusUmap3d[2] };
+			}
+			if (!is3d && atlasFocusUmap2d) {
+				return { x: atlasFocusUmap2d[0], y: atlasFocusUmap2d[1] };
+			}
 			for (const p of backdrop) {
 				if (p.pubmed_id !== focusId) continue;
 				return is3d
