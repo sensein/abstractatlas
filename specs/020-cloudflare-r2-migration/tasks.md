@@ -35,9 +35,9 @@ read domain). End-to-end validation is doable locally (upload → build → rend
 
 **Purpose**: Dependencies, ignore rules, and package skeleton before any code.
 
-- [ ] T001 [P] Add optional dependency group `r2 = ["boto3>=1.34"]` under `[project.optional-dependencies]` in `pyproject.toml`, then install it into the repo venv: `uv pip install --python .venv/bin/python ".[r2]"`.
-- [ ] T002 [P] Add Stage-20 ignore lines to `.gitignore` (the `data/` root is already ignored at line 7; these are for convention/clarity and MUST precede any write): `data/provenance/atlas_upload_provenance__*.json` and `data/outputs/data-hosting-comparison__*.json`.
-- [ ] T003 Create the package skeleton `src/ohbm2026/atlas_hosting/__init__.py` (empty module; submodules added by later tasks).
+- [X] T001 [P] Add optional dependency group `r2 = ["boto3>=1.34"]` under `[project.optional-dependencies]` in `pyproject.toml`, then install it into the repo venv: `uv pip install --python .venv/bin/python ".[r2]"`.
+- [X] T002 [P] Add Stage-20 ignore lines to `.gitignore` (the `data/` root is already ignored at line 7; these are for convention/clarity and MUST precede any write): `data/provenance/atlas_upload_provenance__*.json` and `data/outputs/data-hosting-comparison__*.json`.
+- [X] T003 Create the package skeleton `src/ohbm2026/atlas_hosting/__init__.py` (empty module; submodules added by later tasks).
 
 ---
 
@@ -47,12 +47,12 @@ read domain). End-to-end validation is doable locally (upload → build → rend
 content-hashing, the R2 client). **⚠️ No user story may begin until this phase
 is complete.**
 
-- [ ] T004 [P] Write FAILING test `tests/test_stage20_exceptions.py` for the `Stage20Error` subtree: each of `R2CredentialsError`, `R2UploadError`, `ContentHashMismatchError`, `ArtifactDiscoveryError`, `HostingComparisonError` subclasses `Stage20Error` → `OhbmStageError`; keyword-only context attributes are stored; all appear in `exceptions.__all__`. Mirror `tests/test_atlas_exceptions.py`.
-- [ ] T005 Implement the `Stage20Error` subtree in `src/ohbm2026/exceptions.py` (and extend `__all__`) to pass T004, matching the `Stage15Error` style (keyword-only `field`/`key`/`reason`/etc. attrs, docstrings). Per research.md §R-9.
-- [ ] T006 [P] Write FAILING test `tests/test_atlas_hosting_content_hash.py`: streamed `sha256_file` equals `hashlib.sha256(path.read_bytes())`; `derive_object_key(sha256, filename, prefix)` = `[<prefix>/]<sha256>/<filename>`, stable for identical bytes and distinct for differing bytes; `public_url(base, key)` joins to `https://…`.
-- [ ] T007 Implement `src/ohbm2026/atlas_hosting/content_hash.py` (`sha256_file` streaming over fixed chunks; `derive_object_key`; `public_url`) to pass T006. Per research.md §R-1.
-- [ ] T008 [P] Write FAILING test `tests/test_atlas_hosting_r2_client.py`: a missing/blank required `R2_*` var → `R2CredentialsError` (raised before any client call); the S3 endpoint is built as `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` with `region_name="auto"`; a `botocore` `ClientError` from `head_object`/`upload` surfaces as `R2UploadError` with context (env + boto3 stubbed/mocked).
-- [ ] T009 Implement `src/ohbm2026/atlas_hosting/r2_client.py` to pass T008: read creds via `get_api_key(env_path, var)` (`fetch/graphql_api.py:201`); build the boto3 S3 client (endpoint from `R2_ACCOUNT_ID`, sigv4, `region="auto"`); `object_exists(key) -> (exists: bool, size: int|None)` via `head_object` catching `ClientError` and inspecting code/status for `404`/`NoSuchKey` precisely (no bare except); `upload(key, path)` via `upload_file` + `TransferConfig` (multipart for large files); other `ClientError` → `R2UploadError`. Per research.md §R-3/§R-4/§R-5.
+- [X] T004 [P] Write FAILING test `tests/test_stage20_exceptions.py` for the `Stage20Error` subtree: each of `R2CredentialsError`, `R2UploadError`, `ContentHashMismatchError`, `ArtifactDiscoveryError`, `HostingComparisonError` subclasses `Stage20Error` → `OhbmStageError`; keyword-only context attributes are stored; all appear in `exceptions.__all__`. Mirror `tests/test_atlas_exceptions.py`.
+- [X] T005 Implement the `Stage20Error` subtree in `src/ohbm2026/exceptions.py` (and extend `__all__`) to pass T004, matching the `Stage15Error` style (keyword-only `field`/`key`/`reason`/etc. attrs, docstrings). Per research.md §R-9.
+- [X] T006 [P] Write FAILING test `tests/test_atlas_hosting_content_hash.py`: streamed `sha256_file` equals `hashlib.sha256(path.read_bytes())`; `derive_object_key(sha256, filename, prefix)` = `[<prefix>/]<sha256>/<filename>`, stable for identical bytes and distinct for differing bytes; `public_url(base, key)` joins to `https://…`.
+- [X] T007 Implement `src/ohbm2026/atlas_hosting/content_hash.py` (`sha256_file` streaming over fixed chunks; `derive_object_key`; `public_url`) to pass T006. Per research.md §R-1.
+- [X] T008 [P] Write FAILING test `tests/test_atlas_hosting_r2_client.py`: a missing/blank required `R2_*` var → `R2CredentialsError` (raised before any client call); the S3 endpoint is built as `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` with `region_name="auto"`; a `botocore` `ClientError` from `head_object`/`upload` surfaces as `R2UploadError` with context (env + boto3 stubbed/mocked).
+- [X] T009 Implement `src/ohbm2026/atlas_hosting/r2_client.py` to pass T008: read creds via `get_api_key(env_path, var)` (`fetch/graphql_api.py:201`); build the boto3 S3 client (endpoint from `R2_ACCOUNT_ID`, sigv4, `region="auto"`); `object_exists(key) -> (exists: bool, size: int|None)` via `head_object` catching `ClientError` and inspecting code/status for `404`/`NoSuchKey` precisely (no bare except); `upload(key, path)` via `upload_file` + `TransferConfig` (multipart for large files); other `ClientError` → `R2UploadError`. Per research.md §R-3/§R-4/§R-5.
 
 **Checkpoint**: exceptions + content-hashing + R2 client exist and are unit-tested; stories can begin.
 
