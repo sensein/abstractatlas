@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abstractatlas.brainkb.org/schemas/atlas_upload_manifest.v1.json",
+  "title": "Atlas Upload Manifest",
+  "description": "Machine-readable provenance for one `ohbmcli upload-atlas-package` run (CA-008). Lives at data/provenance/atlas_upload_provenance__<upload_state_key>.json. Contains NO secrets and NO absolute/user-home paths.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "upload_state_key",
+    "bucket",
+    "public_base_url",
+    "key_prefix",
+    "code_revision",
+    "command_line",
+    "uploaded_utc",
+    "source_package_dir",
+    "artifacts",
+    "channel_entry"
+  ],
+  "properties": {
+    "schema_version": { "const": "atlas_upload_manifest.v1" },
+    "upload_state_key": { "type": "string", "pattern": "^[0-9a-f]{12}$" },
+    "bucket": { "type": "string", "minLength": 1 },
+    "public_base_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "key_prefix": { "type": "string" },
+    "code_revision": { "type": "string", "minLength": 1 },
+    "command_line": { "type": "string", "minLength": 1 },
+    "uploaded_utc": { "type": "string", "format": "date-time" },
+    "source_package_dir": {
+      "type": "string",
+      "description": "Repo-relative path (validated by provenance.normalise_path; never absolute or ~).",
+      "not": { "pattern": "^(/|~)" }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/contentAddressedObject" }
+    },
+    "channel_entry": { "$ref": "#/$defs/channelEntry" }
+  },
+  "$defs": {
+    "contentAddressedObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logical_name",
+        "filename",
+        "sha256",
+        "size_bytes",
+        "object_key",
+        "public_url",
+        "source_build_state_key",
+        "action"
+      ],
+      "properties": {
+        "logical_name": {
+          "enum": ["ohbm2026", "neuroscape", "atlas", "neuroscape_vectors"]
+        },
+        "filename": { "type": "string", "pattern": "\\.parquet$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "object_key": { "type": "string", "minLength": 1 },
+        "public_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "source_build_state_key": {
+          "type": ["string", "null"],
+          "description": "state_key read from the artifact's parquet build_info; null if unreadable."
+        },
+        "action": { "enum": ["uploaded", "skipped"] }
+      }
+    },
+    "channelEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ohbm2026", "neuroscape", "atlas"],
+      "properties": {
+        "ohbm2026": { "$ref": "#/$defs/urlSha" },
+        "neuroscape": { "$ref": "#/$defs/urlSha" },
+        "atlas": { "$ref": "#/$defs/urlSha" },
+        "neuroscape_vectors": { "$ref": "#/$defs/urlSha" }
+      }
+    },
+    "urlSha": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sha256"],
+      "properties": {
+        "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

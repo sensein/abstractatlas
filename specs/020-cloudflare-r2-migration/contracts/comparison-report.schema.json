@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abstractatlas.brainkb.org/schemas/data_hosting_comparison.v1.json",
+  "title": "Data Hosting Comparison Report",
+  "description": "Dropbox-vs-R2 byte-parity / Range / CORS evidence produced by `ohbmcli compare-data-hosting` (US3). Lives at data/outputs/data-hosting-comparison__<ts>.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_utc",
+    "origin",
+    "dropbox_channel",
+    "r2_channel",
+    "artifacts",
+    "overall_pass"
+  ],
+  "properties": {
+    "schema_version": { "const": "data_hosting_comparison.v1" },
+    "generated_utc": { "type": "string", "format": "date-time" },
+    "origin": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "dropbox_channel": { "type": "string" },
+    "r2_channel": { "type": "string" },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/artifactComparison" }
+    },
+    "overall_pass": { "type": "boolean" }
+  },
+  "$defs": {
+    "artifactComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logical_name", "dropbox", "r2", "byte_parity", "pass"],
+      "properties": {
+        "logical_name": {
+          "enum": ["ohbm2026", "neuroscape", "atlas", "neuroscape_vectors"]
+        },
+        "dropbox": { "$ref": "#/$defs/endpointProbe" },
+        "r2": { "$ref": "#/$defs/endpointProbe" },
+        "byte_parity": { "type": "boolean" },
+        "pass": {
+          "type": "boolean",
+          "description": "byte_parity AND r2.range_supported AND r2.cors_allowed AND r2.reachable"
+        }
+      }
+    },
+    "endpointProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "reachable",
+        "sha256",
+        "status",
+        "range_supported",
+        "cors_allowed",
+        "latency_ms",
+        "error"
+      ],
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "reachable": { "type": "boolean" },
+        "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "status": { "type": ["integer", "null"] },
+        "range_supported": { "type": "boolean" },
+        "cors_allowed": { "type": "boolean" },
+        "latency_ms": { "type": ["number", "null"], "minimum": 0 },
+        "error": {
+          "type": ["string", "null"],
+          "description": "Set when a verdict is a failure; a failed probe is recorded here, never omitted (FR-015)."
+        }
+      }
+    }
+  }
+}

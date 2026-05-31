@@ -168,17 +168,34 @@ Current canonical defaults (the UI consumes these):
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at `specs/019-neuroscape-semantic-search/plan.md`. The companion design
-artefacts under the same directory — `research.md`, `data-model.md`,
-`contracts/parquet-schemas.md`, `contracts/cli-build-atlas-package.md`,
-`contracts/search-ranking-pipeline.md`,
-`contracts/atlas-root-search-ui.md`, and `quickstart.md` — pin Stage 19:
-the deferred semantic-search lane for `/neuroscape/` plus a new
-cross-conference search bar on atlas-root that ranks OHBM 2026 +
-NeuroScape together. Reuses the existing `/ohbm2026/` Xenova/MiniLM-L6-v2
-worker; adds a cluster-routed + KNN-expansion pipeline that bounds
-per-query cost (~4 MB cold-cache range fetch instead of full 50 MB
-sidecar).
+at `specs/020-cloudflare-r2-migration/plan.md`. Stage 20 publishes the UI
+data bundle (the four atlas-package parquets) to Cloudflare R2
+(S3-compatible) under content-addressed, immutable keys
+(`<sha256>/<filename>`) via a new local `ohbmcli upload-atlas-package`
+command, registers a new R2 channel in the existing
+`OHBM2026_UI_DATA_PACKAGE_URLS` registry (Dropbox stays the production
+default — cutover is deferred), and adds `ohbmcli compare-data-hosting`
+for byte-parity / CORS / Range evidence. Companion artefacts under the
+same directory: `research.md`, `data-model.md`,
+`contracts/cli-upload-atlas-package.md`,
+`contracts/cli-compare-data-hosting.md`,
+`contracts/r2-storage-layout.md`, `contracts/upload-manifest.schema.json`,
+`contracts/comparison-report.schema.json`, and `quickstart.md`. The site
+loader and `.github/scripts/resolve-data-channel.sh` are UNCHANGED — R2
+URLs flow through `normaliseDropboxUrl` untouched (only Dropbox hosts are
+rewritten); new code lives in `src/ohbm2026/atlas_hosting/` with a
+`Stage20Error` exception subtree and an optional `r2 = ["boto3"]` extra.
+
+The immediately-prior Stage 19
+(`specs/019-neuroscape-semantic-search/plan.md`; companions
+`research.md`, `data-model.md`,
+`contracts/{parquet-schemas,cli-build-atlas-package,search-ranking-pipeline,atlas-root-search-ui}.md`,
+`quickstart.md`) added the deferred semantic-search lane for
+`/neuroscape/` plus a cross-conference search bar on atlas-root that ranks
+OHBM 2026 + NeuroScape together, reusing the existing `/ohbm2026/`
+Xenova/MiniLM-L6-v2 worker with a cluster-routed + KNN-expansion pipeline
+that bounds per-query cost (~4 MB cold-cache range fetch instead of the
+full 50 MB sidecar).
 
 **Per-table range fetch — never download a whole envelope parquet.**
 The nested-envelope parquets (`ohbm2026.parquet`, `neuroscape.parquet`,
