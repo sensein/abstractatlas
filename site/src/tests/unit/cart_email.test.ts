@@ -150,6 +150,14 @@ describe('buildUnifiedCartRestoreUrl — grouped, extensible kind:id format', ()
 		);
 	});
 
+	it('deduplicates repeated ids per kind so the URL stays compact', () => {
+		const url = buildUnifiedCartRestoreUrl(
+			[urow('ohbm2026', 42), urow('ohbm2026', 42), urow('neuroscape', 7), urow('ohbm2026', 101)],
+			'https://x.org'
+		);
+		expect(url).toBe('https://x.org/?cart=ohbm2026:42,101+neuroscape:7');
+	});
+
 	it('drops non-positive / non-finite ids and returns the bare root for an empty cart', () => {
 		expect(buildUnifiedCartRestoreUrl([], 'https://x.org/')).toBe('https://x.org/');
 		expect(

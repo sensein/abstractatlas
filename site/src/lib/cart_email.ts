@@ -55,14 +55,18 @@ function siblingPermalink(siteRoot: string, kind: 'ohbm2026' | 'neuroscape', id:
  * (and still accepts the legacy bare-number `?cart=0042,0101` = ohbm2026).
  */
 export function buildUnifiedCartRestoreUrl(items: UnifiedCartRow[], siteRoot: string): string {
-	const byKind = new Map<string, number[]>();
+	// A Set per kind so duplicate ids never bloat the URL. The cart store
+	// already dedups by `kind:id`, so this is defensive — but it keeps the
+	// restore link minimal regardless of the input. Set preserves insertion
+	// order, so group + id ordering stays stable.
+	const byKind = new Map<string, Set<number>>();
 	for (const r of items) {
 		if (!Number.isFinite(r.id) || r.id <= 0) continue;
-		const ids = byKind.get(r.kind);
-		if (ids) ids.push(r.id);
-		else byKind.set(r.kind, [r.id]);
+		let ids = byKind.get(r.kind);
+		if (!ids) byKind.set(r.kind, (ids = new Set<number>()));
+		ids.add(r.id);
 	}
-	const groups = [...byKind.entries()].map(([kind, ids]) => `${kind}:${ids.join(',')}`);
+	const groups = [...byKind.entries()].map(([kind, ids]) => `${kind}:${[...ids].join(',')}`);
 	const base = trimSlash(siteRoot);
 	return groups.length ? `${base}/?cart=${groups.join('+')}` : `${base}/`;
 }
