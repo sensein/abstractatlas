@@ -921,11 +921,14 @@
 		// scales with point count). On 3D specifically, sustained
 		// hover hit-tests during orbit / zoom drive the GPU into
 		// thermal pressure → `webglcontextlost`.
-		// `hoverinfo: 'none'` (NOT `'skip'`) suppresses the tooltip
-		// without disabling `plotly_click` / `plotly_selected`
-		// events — clicks still open the inline detail panel via
-		// `customdata`. The 3,240-point OHBM overlay keeps its
-		// tooltip (light, useful for the small dataset).
+		// Hover-info differs by dimension. The 2D backdrop uses
+		// `hoverinfo: 'none'` (NOT `'skip'`): it suppresses the tooltip but
+		// keeps `plotly_click` so a 2D click still opens the detail panel.
+		// The 3D backdrop uses `'skip'` (see the is3d branch): a click on a
+		// scatter3d point makes gl3d run a pick pass (pick-buffer render +
+		// synchronous glReadPixels over the whole backdrop) that stalls /
+		// wedges the tab on a real GPU. The 3,240-point OHBM overlay keeps
+		// its tooltip + clicks (light, useful for the small dataset).
 		if (is3d) {
 			return {
 				type: 'scatter3d' as const,
@@ -941,7 +944,13 @@
 					line: { width: 0 },
 					...(useShapes ? { symbol: points.map((p) => atlasShape3D(p.cluster_id)) } : {})
 				},
-				hoverinfo: 'none' as const,
+				// 'skip' (NOT 'none'): excludes the backdrop from gl3d's click
+				// hit-test, so a click no longer triggers the pick-buffer
+				// readback that froze the tab on a real GPU. Backdrop points
+				// are therefore not click-selectable in 3D — select via the 2D
+				// pane or the result list. The OHBM overlay (below) stays
+				// clickable, and the focus halo still highlights any selection.
+				hoverinfo: 'skip' as const,
 				showlegend: false,
 				customdata,
 				...selectedConfig
