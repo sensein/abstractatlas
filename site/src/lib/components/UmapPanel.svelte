@@ -241,6 +241,10 @@
 	let handlers2dAttached = false;
 	let handlers3dAttached = false;
 	let chart3dInitialized = false;
+	// Indices of the 3 persistent focus-halo traces in the 3D plot, set on
+	// each render so `applyFocus3dHalo` can `restyle` them in place (cheap)
+	// instead of rebuilding the scene on every click.
+	let focus3dTraceIndices: number[] = [];
 
 	// Authoritative camera eye for the 3D chart, kept in sync with both
 	// programmatic rotation frames AND user mouse interactions via the
@@ -557,8 +561,6 @@
 	// only on data, theme, overlay-toggle, opacity, or focus changes.
 	$: if (mode !== 'ohbm') {
 		void renderToken;
-		// Track the 3D focus override (see 2D block) so a late coord re-renders.
-		void atlasFocusUmap3d;
 		void renderAtlasChart3D(
 			plotly,
 			chart3dEl,
@@ -568,10 +570,22 @@
 			showOverlay,
 			backdropOpacity,
 			useAtlasShapes,
-			atlasFocusKind,
-			atlasFocusId,
 			theme
 		);
+	}
+
+	// 3D focus halo — applied by a CHEAP `restyle` of the persistent halo
+	// traces, NOT a backdrop rebuild. A single-point click only changes
+	// atlasFocus*, so keeping focus OUT of the backdrop reactive above means
+	// clicking no longer re-runs `Plotly.react` over the (50k) scatter3d —
+	// that full-scene rebuild was the "click is resource-intensive" pause,
+	// and adding/removing the halo traces also changed the trace count
+	// (the plotly.js#6365 WebGL-context leak). `restyle` in place avoids both.
+	$: {
+		void atlasFocusKind;
+		void atlasFocusId;
+		void atlasFocusUmap3d;
+		if (mode !== 'ohbm' && chart3dInitialized) applyFocus3dHalo();
 	}
 
 	// Paul Tol's "bright" qualitative palette — high-contrast, deuteranopia /
@@ -1839,6 +1853,57 @@
 			});
 	}
 
+	// Cheaply reposition the 3D focus-halo crosshair via an in-place
+	// `restyle` of the three persistent halo traces — no `Plotly.react`, no
+	// trace-count change. Empties them when nothing is focused. Each update
+	// value is per-trace: x[0]→focus-x arm, x[1]→focus-y arm, x[2]→focus-z arm.
+	function applyFocus3dHalo() {
+		if (!plotly || !chart3dEl || focus3dTraceIndices.length !== 3) return;
+		const restyle = (
+			plotly as unknown as {
+				restyle: (
+					e: HTMLDivElement,
+					u: Record<string, unknown[]>,
+					idx: number[]
+				) => Promise<unknown>;
+			}
+		).restyle;
+		const f = atlasFocusCoords(atlasFocusKind, atlasFocusId, backdropPoints, overlayPoints, true);
+		if (!f) {
+			void restyle(
+				chart3dEl,
+				{ x: [[], [], []], y: [[], [], []], z: [[], [], []] },
+				focus3dTraceIndices
+			);
+			return;
+		}
+		const cx = f.x;
+		const cy = f.y;
+		const cz = f.z ?? 0;
+		const h = 1.0;
+		void restyle(
+			chart3dEl,
+			{
+				x: [
+					[cx - h, cx + h],
+					[cx, cx],
+					[cx, cx]
+				],
+				y: [
+					[cy, cy],
+					[cy - h, cy + h],
+					[cy, cy]
+				],
+				z: [
+					[cz, cz],
+					[cz, cz],
+					[cz - h, cz + h]
+				]
+			},
+			focus3dTraceIndices
+		);
+	}
+
 	function renderAtlasChart3D(
 		api: PlotlyApi | null,
 		el: HTMLDivElement | null,
@@ -1848,8 +1913,6 @@
 		showOverlayTrace: boolean,
 		opacity: number,
 		useShapes: boolean,
-		focusKind: 'ohbm2026' | 'neuroscape' | null,
-		focusId: number | null,
 		t: 'light' | 'dark'
 	) {
 		if (!api || !el) return;
@@ -1881,61 +1944,26 @@
 			new Set()
 		);
 		if (overlayTrace) traces.push(overlayTrace);
-		// Focus halo — magenta-ring marker at the focused point's
-		// 3D coordinates so "Show on atlas" gives an obvious visual
-		// anchor (without this the visitor lands on the home with
-		// only the inline detail panel as the signal).
-		const focus3d = atlasFocusCoords(focusKind, focusId, backdrop, overlay, true);
-		if (focus3d) {
-			// 3-axis crosshair centered on the focused point. Three
-			// perpendicular line segments (one per UMAP axis) in the
-			// conventional RGB axis-colour mapping — easier to read at
-			// any camera angle than a filled marker, and crucially the
-			// actual data point underneath stays visible (a filled
-			// sphere occluded it). Each segment is ±1 UMAP unit long
-			// from the point's coordinates; line width 5 keeps the
-			// cross visible from a distance.
-			const cx = focus3d.x;
-			const cy = focus3d.y;
-			const cz = focus3d.z ?? 0;
-			const halfArm = 1.0;
-			// X-axis arm — red.
-			traces.push({
-				type: 'scatter3d' as const,
-				mode: 'lines' as const,
-				x: [cx - halfArm, cx + halfArm],
-				y: [cy, cy],
-				z: [cz, cz],
-				name: 'focus-x',
-				line: { color: '#ff4444', width: 5 },
-				hoverinfo: 'skip' as const,
-				showlegend: false
-			});
-			// Y-axis arm — green.
-			traces.push({
-				type: 'scatter3d' as const,
-				mode: 'lines' as const,
-				x: [cx, cx],
-				y: [cy - halfArm, cy + halfArm],
-				z: [cz, cz],
-				name: 'focus-y',
-				line: { color: '#33cc33', width: 5 },
-				hoverinfo: 'skip' as const,
-				showlegend: false
-			});
-			// Z-axis arm — blue.
-			traces.push({
-				type: 'scatter3d' as const,
-				mode: 'lines' as const,
-				x: [cx, cx],
-				y: [cy, cy],
-				z: [cz - halfArm, cz + halfArm],
-				name: 'focus-z',
-				line: { color: '#4488ff', width: 5 },
-				hoverinfo: 'skip' as const,
-				showlegend: false
-			});
-		}
+		// Persistent focus-halo traces — a 3-axis crosshair (RGB arms, one per
+		// UMAP axis) that highlights a single-clicked point. Built EMPTY here
+		// and positioned later by `applyFocus3dHalo` via a cheap in-place
+		// `restyle`, so a focus change never rebuilds this scene or changes the
+		// trace count. Their indices are recorded for that restyle.
+		const haloArm = (name: string, color: string) => ({
+			type: 'scatter3d' as const,
+			mode: 'lines' as const,
+			x: [] as number[],
+			y: [] as number[],
+			z: [] as number[],
+			name,
+			line: { color, width: 5 },
+			hoverinfo: 'skip' as const,
+			showlegend: false
+		});
+		traces.push(haloArm('focus-x', '#ff4444'));
+		traces.push(haloArm('focus-y', '#33cc33'));
+		traces.push(haloArm('focus-z', '#4488ff'));
+		focus3dTraceIndices = [traces.length - 3, traces.length - 2, traces.length - 1];
 		// On lasso, we DON'T touch the 3D camera — the previous
 		// attempt to zoom (explicit axis range) clipped unselected
 		// context points against the scene volume edge, and the
@@ -1972,6 +2000,9 @@
 			.react(el, traces, layout, config)
 			.then(() => {
 				chart3dInitialized = true;
+				// (Re)position the focus halo for the current focus after a
+				// backdrop render reset the halo traces to empty.
+				applyFocus3dHalo();
 				// `webglcontextlost` — handle gracefully. Sustained
 				// scatter3d interaction at 461k points on a mobile
 				// GPU hits thermal / memory pressure and the browser

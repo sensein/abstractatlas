@@ -163,15 +163,19 @@ def probe_endpoint(
     except Exception as exc:  # noqa: BLE001 — a network/HTTP failure is a RECORDED verdict, not a raise
         error = f"{type(exc).__name__}: {exc}"
 
+    # Verify byte-parity whenever the URL is REACHABLE — a CORS or Range
+    # failure doesn't affect file integrity, so it must not block the hash
+    # check (PR #53 review). Any download failure is appended to `error`,
+    # not skipped. With `compute_sha=False` (--trust-recorded-sha256) the
+    # caller compares the recorded hashes instead, so sha256 stays None.
     sha256: Optional[str] = None
-    if compute_sha and reachable and error is None:
+    if compute_sha and reachable:
         try:
             full = http_get(url, {"Origin": origin})
             sha256 = hashlib.sha256(getattr(full, "content")).hexdigest()
         except Exception as exc:  # noqa: BLE001 — recorded, not raised
-            error = f"sha256 download failed: {type(exc).__name__}: {exc}"
-    elif not compute_sha:
-        sha256 = None  # recorded hash used by the caller instead
+            sha_err = f"sha256 download failed: {type(exc).__name__}: {exc}"
+            error = f"{error} | {sha_err}" if error else sha_err
 
     return EndpointProbe(
         url=url,
@@ -195,14 +199,27 @@ def compare_channels(
     r2_channel_key: str = "",
     range_bytes: int = 100,
     trust_recorded_sha256: bool = False,
-    http_get: HttpGet = _default_http_get,
+    http_get: Optional[HttpGet] = None,
 ) -> ComparisonReport:
     """Compare two registry channels and return a :class:`ComparisonReport`.
 
     Channels are ``{logical_name: {"url", "sha256"}}`` dicts. An artifact
     present in only ONE channel is unattemptable →
     :class:`HostingComparisonError`.
+
+    When ``http_get`` is not injected, a shared :class:`requests.Session` is
+    used so the up-to-16 probes reuse one TCP/TLS connection (keep-alive)
+    instead of reconnecting per request (PR #53 review). The session's
+    connection pool is released when the function returns (single CLI use).
     """
+
+    if http_get is None:
+        import requests
+
+        _session = requests.Session()
+        http_get = lambda url, headers: _session.get(  # noqa: E731
+            url, headers=headers, timeout=30
+        )
 
     comparisons: list[ArtifactComparison] = []
     overall = True
