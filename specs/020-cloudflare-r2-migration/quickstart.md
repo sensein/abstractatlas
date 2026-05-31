@@ -18,8 +18,8 @@ R2_ACCOUNT_ID=<cloudflare-account-id>
 R2_ACCESS_KEY_ID=<r2-access-key-id>
 R2_SECRET_ACCESS_KEY=<r2-secret>
 R2_BUCKET=<bucket-name>
-R2_PUBLIC_BASE_URL=https://pub-<hash>.r2.dev    # or a custom domain
-# R2_KEY_PREFIX=                                # optional namespace
+R2_PUBLIC_BASE_URL=https://aadata.cirrusscience.org   # configured custom domain (CORS already set)
+# R2_KEY_PREFIX=                                       # optional namespace
 ```
 
 Configure the bucket once for public read + CORS + Range (see
