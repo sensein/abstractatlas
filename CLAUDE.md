@@ -124,6 +124,7 @@ All library code lives in `src/ohbm2026/`:
 - `category_evaluation.py`, `category_rollup.py` — compare learned cluster families against submitter taxonomies.
 - `layout/` (**parked** as of Stage 5 — specs/007-package-reorg/) — poster_layout, poster_sequencing, nocd_experiments. Preserved verbatim for future revival; not actively maintained. Tests under `tests/test_poster_*.py` + `tests/test_nocd_experiments.py` still run with import-paths updated to `ohbm2026.layout.*`. The 15 companion scripts live under `scripts/layout/`. Revive when a new organizer cycle needs poster-layout work.
 - `ui_data/` — **Stage 6** UI data-package builders. `manifest.py`, `abstracts.py`, `authors.py`, `cells.py`, `topics.py`, `neighbors.py`, `enrichment.py`, `vectors.py` produce per-shard envelopes (every shard carries a top-level `build_info` block — FR-019 + CA-008). `state_key.py` discovers the corpus + Stage 4 rollup state-keys at build time (CA-007). `builder.py` orchestrates + enforces the 8 cross-shard invariants from `specs/008-ui-rewrite/data-model.md` §8. `link_check.py` HEAD-validates `specs/008-ui-rewrite/contracts/references.yaml` (every external citation from the About page; non-zero exit blocks the deploy — FR-017). CLI entry: `scripts/build_ui_data.py`. Schema: every emitted JSON shard validates against `specs/008-ui-rewrite/contracts/ui_data.linkml.yaml` via `scripts/validate_ui_data.sh`. The SvelteKit site lives at `site/` (self-contained pnpm project; gh-pages deploy via `.github/workflows/{deploy-ui,pr-preview,pr-preview-cleanup}.yml`; runtime data fetched from the Dropbox tarball at `vars.OHBM2026_UI_DATA_PACKAGE_URL`).
+- `atlas_hosting/` — **Stage 20** (spec 020-cloudflare-r2-migration) data-bundle publishing to Cloudflare R2 + Dropbox-vs-R2 comparison. `content_hash.py` (streamed sha256 + `<sha256>/<filename>` content-addressed keys), `r2_client.py` (boto3 S3 client from `.env`; `head_object` existence; multipart upload; creds by name only), `uploader.py` (discover the four required parquets across two locations — `ohbm2026.parquet` via `--ohbm2026-parquet`, `neuroscape`/`atlas`/`neuroscape_vectors` from `--package-dir`; idempotent skip-if-present + size-guard; immutable, never overwrites), `manifest.py` (`UploadManifest` provenance under `data/provenance/atlas_upload_provenance__<key>.json`), `compare.py` (Range/CORS/byte-parity probes → `data/outputs/data-hosting-comparison__<ts>.json`). CLI: `ohbmcli upload-atlas-package` + `compare-data-hosting`; typed `Stage20Error` subtree. R2 public base = `https://aadata.cirrusscience.org`; the site loader + `resolve-data-channel.sh` are UNCHANGED (R2 URLs are opaque). Dropbox stays the production default — cutover deferred.
 - `cli.py` — single dispatch entrypoint that wires the above into subcommands.
 
 Tests in `tests/` mirror the module names and use `unittest`.
@@ -168,17 +169,34 @@ Current canonical defaults (the UI consumes these):
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at `specs/019-neuroscape-semantic-search/plan.md`. The companion design
-artefacts under the same directory — `research.md`, `data-model.md`,
-`contracts/parquet-schemas.md`, `contracts/cli-build-atlas-package.md`,
-`contracts/search-ranking-pipeline.md`,
-`contracts/atlas-root-search-ui.md`, and `quickstart.md` — pin Stage 19:
-the deferred semantic-search lane for `/neuroscape/` plus a new
-cross-conference search bar on atlas-root that ranks OHBM 2026 +
-NeuroScape together. Reuses the existing `/ohbm2026/` Xenova/MiniLM-L6-v2
-worker; adds a cluster-routed + KNN-expansion pipeline that bounds
-per-query cost (~4 MB cold-cache range fetch instead of full 50 MB
-sidecar).
+at `specs/020-cloudflare-r2-migration/plan.md`. Stage 20 publishes the UI
+data bundle (the four atlas-package parquets) to Cloudflare R2
+(S3-compatible) under content-addressed, immutable keys
+(`<sha256>/<filename>`) via a new local `ohbmcli upload-atlas-package`
+command, registers a new R2 channel in the existing
+`OHBM2026_UI_DATA_PACKAGE_URLS` registry (Dropbox stays the production
+default — cutover is deferred), and adds `ohbmcli compare-data-hosting`
+for byte-parity / CORS / Range evidence. Companion artefacts under the
+same directory: `research.md`, `data-model.md`,
+`contracts/cli-upload-atlas-package.md`,
+`contracts/cli-compare-data-hosting.md`,
+`contracts/r2-storage-layout.md`, `contracts/upload-manifest.schema.json`,
+`contracts/comparison-report.schema.json`, and `quickstart.md`. The site
+loader and `.github/scripts/resolve-data-channel.sh` are UNCHANGED — R2
+URLs flow through `normaliseDropboxUrl` untouched (only Dropbox hosts are
+rewritten); new code lives in `src/ohbm2026/atlas_hosting/` with a
+`Stage20Error` exception subtree and an optional `r2 = ["boto3"]` extra.
+
+The immediately-prior Stage 19
+(`specs/019-neuroscape-semantic-search/plan.md`; companions
+`research.md`, `data-model.md`,
+`contracts/{parquet-schemas,cli-build-atlas-package,search-ranking-pipeline,atlas-root-search-ui}.md`,
+`quickstart.md`) added the deferred semantic-search lane for
+`/neuroscape/` plus a cross-conference search bar on atlas-root that ranks
+OHBM 2026 + NeuroScape together, reusing the existing `/ohbm2026/`
+Xenova/MiniLM-L6-v2 worker with a cluster-routed + KNN-expansion pipeline
+that bounds per-query cost (~4 MB cold-cache range fetch instead of the
+full 50 MB sidecar).
 
 **Per-table range fetch — never download a whole envelope parquet.**
 The nested-envelope parquets (`ohbm2026.parquet`, `neuroscape.parquet`,

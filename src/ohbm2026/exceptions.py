@@ -83,6 +83,12 @@ __all__ = [
     "EmbeddingComputeError",
     "VectorsParquetWriteError",
     "VectorsManifestDriftError",
+    "Stage20Error",
+    "R2CredentialsError",
+    "R2UploadError",
+    "ContentHashMismatchError",
+    "ArtifactDiscoveryError",
+    "HostingComparisonError",
 ]
 
 
@@ -677,3 +683,135 @@ class CommunityResolutionDegenerate(Warning):
     not abort. A warning is the right vehicle so the runner's stdout
     summary still records the run as successful.
     """
+
+
+class Stage20Error(OhbmStageError):
+    """Base for any failure originating inside Stage 20 (Cloudflare R2
+    migration + content-hashed data store).
+
+    Concrete subclasses cover the error paths enumerated in
+    ``specs/020-cloudflare-r2-migration/research.md#R-9`` — credential,
+    upload, content-hash, artifact-discovery, and hosting-comparison
+    failures. Each carries structured kwargs so the uploader / compare
+    CLI and tests can inspect failure context without regex-matching
+    message strings (Principle VI).
+    """
+
+
+class R2CredentialsError(Stage20Error):
+    """A required R2 S3 credential is missing or blank.
+
+    Raised by ``ohbm2026.atlas_hosting.r2_client`` before any network
+    call when one of ``R2_ACCOUNT_ID`` / ``R2_ACCESS_KEY_ID`` /
+    ``R2_SECRET_ACCESS_KEY`` / ``R2_BUCKET`` / ``R2_PUBLIC_BASE_URL`` is
+    absent from the environment and the ``.env`` file. Carries the
+    offending ``var`` name; the credential VALUE is never stored or
+    logged (Principle V / CA-004).
+    """
+
+    def __init__(self, message: str, *, var: str | None = None) -> None:
+        super().__init__(message)
+        self.var = var
+
+
+class R2UploadError(Stage20Error):
+    """An R2 S3 operation (head/upload) failed.
+
+    Raised by ``ohbm2026.atlas_hosting.r2_client`` when a ``head_object``
+    or ``upload_file`` call fails for any reason other than the expected
+    404-not-found (which is handled as "object absent"). Carries
+    (``key``, ``bucket``, ``op``, ``reason``) so the failure is
+    diagnosable from artifacts alone — and so a partial publish is never
+    silently swallowed (Principle VI).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        key: str | None = None,
+        bucket: str | None = None,
+        op: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.key = key
+        self.bucket = bucket
+        self.op = op
+        self.reason = reason
+
+
+class ContentHashMismatchError(Stage20Error):
+    """An object already present at a content-addressed key disagrees with
+    the bytes that key asserts.
+
+    A key of the form ``<sha256>/<filename>`` must only ever hold bytes
+    whose sha256 equals ``<sha256>``. Raised by
+    ``ohbm2026.atlas_hosting.uploader`` when ``head_object`` reports a
+    ``ContentLength`` that differs from the local file's size for the
+    same key — a corruption / key-scheme violation that must fail loudly
+    rather than overwrite. Carries (``key``, ``expected``, ``actual``).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        key: str | None = None,
+        expected: str | None = None,
+        actual: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.key = key
+        self.expected = expected
+        self.actual = actual
+
+
+class ArtifactDiscoveryError(Stage20Error):
+    """The built atlas-package directory does not match the expected
+    artifact set.
+
+    Raised by ``ohbm2026.atlas_hosting.uploader`` when a required parquet
+    (``ohbm2026`` / ``neuroscape`` / ``atlas``) is missing from the
+    package dir, or when an unexpected ``*.parquet`` outside the known
+    set is present (no silent inclusion — Principle VII). Carries
+    (``path``, ``missing``, ``unexpected``).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        path: str | None = None,
+        missing: list[str] | None = None,
+        unexpected: list[str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.path = path
+        self.missing = list(missing or [])
+        self.unexpected = list(unexpected or [])
+
+
+class HostingComparisonError(Stage20Error):
+    """A Dropbox-vs-R2 comparison probe could not be attempted.
+
+    Distinct from a *failed verdict* (a probe that ran and returned a
+    negative result, which is RECORDED in the report, not raised — see
+    FR-015): this is raised by ``ohbm2026.atlas_hosting.compare`` only
+    when a probe cannot be performed at all — a malformed URL, or a
+    channel missing a required artifact. Carries (``url``, ``probe``,
+    ``reason``).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        url: str | None = None,
+        probe: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.url = url
+        self.probe = probe
+        self.reason = reason

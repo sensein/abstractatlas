@@ -56,3 +56,7 @@ data/cache/atlas-runs/
 data/outputs/atlas-package/
 data/outputs/parquets/
 data/provenance/neuroscape_context_provenance__*.json
+
+# Stage 20 artifact roots (spec 020-cloudflare-r2-migration, Principle II)
+data/provenance/atlas_upload_provenance__*.json
+data/outputs/data-hosting-comparison__*.json

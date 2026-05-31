@@ -173,6 +173,52 @@ The `--proposal-listing` flag is optional — without it the `poster_standby` fi
 
 Per-PR previews surface in the **PR's Deployments box** (top-of-PR, via the `environment:` declaration in `.github/workflows/pr-preview.yml`) — NOT as a bot comment. The short committish (first 7 chars of git SHA) bakes into the page `<title>` + the persistent footer affordance via the `VITE_BUILD_SHA` env var injected by the deploy workflows, so reviewers can verify each PR-preview reflects the latest pushed commit at-a-glance (FR-022 + SC-011).
 
+### Publishing the data bundle to Cloudflare R2 (`ohbmcli upload-atlas-package`)
+
+Stage 20 (`specs/020-cloudflare-r2-migration/`) adds an alternative host for the data bundle: **Cloudflare R2**, an S3-compatible object store. Unlike the Dropbox in-place overwrite above, R2 uploads are **content-addressed and immutable** — every artifact is stored at `<sha256>/<filename>`, so a new build adds new keys and never clobbers a published URL. This makes future atlas updates a safe re-run rather than an overwrite.
+
+The bundle is four required parquets across two locations: `ohbm2026.parquet` (the Stage-10 build, under `data/outputs/parquets/<corpus-key>/`) plus `neuroscape.parquet` + `atlas.parquet` + `neuroscape_vectors.parquet` (the `build-atlas-package --output-root`).
+
+R2 S3 credentials live in `.env` (never committed, never logged):
+
+```dotenv
+R2_ACCOUNT_ID=<cloudflare-account-id>          # → S3 endpoint https://<id>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=<r2-access-key-id>
+R2_SECRET_ACCESS_KEY=<r2-secret>
+R2_BUCKET=<bucket-name>
+R2_PUBLIC_BASE_URL=https://aadata.cirrusscience.org   # public read domain (CORS + Range configured)
+# R2_KEY_PREFIX=                                       # optional namespace
+```
+
+Install the client (`uv pip install --python .venv/bin/python ".[r2]"`), then:
+
+```bash
+# Dry-run first (hashes + existence checks; no PUT, no manifest):
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli upload-atlas-package \
+  --package-dir data/outputs/atlas-package__<state-key> \
+  --ohbm2026-parquet data/outputs/parquets/<corpus-key>/ohbm2026.parquet \
+  --dry-run
+
+# Upload (idempotent: a re-run on an unchanged build uploads zero bytes):
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli upload-atlas-package \
+  --package-dir data/outputs/atlas-package__<state-key> \
+  --ohbm2026-parquet data/outputs/parquets/<corpus-key>/ohbm2026.parquet
+```
+
+The command emits a ready-to-register **channel entry** (`{logical: {url, sha256}}`, same shape as the `OHBM2026_UI_DATA_PACKAGE_URLS` registry value) to stdout and writes a provenance manifest to `data/provenance/atlas_upload_provenance__<key>.json`. Register it under a new key in the GitHub Actions variable (`gh variable set OHBM2026_UI_DATA_PACKAGE_URLS …`) and point a branch's `site/data-channel.json` at it — no site code or `resolve-data-channel.sh` change is needed, because R2 URLs flow through `loader.ts`'s URL handling untouched (only Dropbox hosts are rewritten).
+
+Before trusting a cutover, generate the Dropbox-vs-R2 evidence (byte-parity / CORS / Range):
+
+```bash
+gh variable get OHBM2026_UI_DATA_PACKAGE_URLS > /tmp/registry.json   # local only; never commit
+PYTHONPATH=src .venv/bin/python -m ohbm2026.cli compare-data-hosting \
+  --registry /tmp/registry.json \
+  --dropbox-channel <current-prod-key> --r2-channel <new-r2-key> \
+  --origin https://abstractatlas.brainkb.org
+```
+
+Exit 0 only when every artifact is byte-identical and R2 honours Range + CORS; the report lands at `data/outputs/data-hosting-comparison__<ts>.json`. **Dropbox stays the production default — the cutover is a separate, deferred decision** informed by this report. See `specs/020-cloudflare-r2-migration/quickstart.md` for the full runbook.
+
 ## External Requirements
 
 Required:

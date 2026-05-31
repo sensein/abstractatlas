@@ -40,6 +40,13 @@
 # Fails loudly (Constitution VI): a missing registry, missing channel file,
 # unknown key, or missing required URL is a misconfiguration and aborts the
 # build — never a silent fallback to stale/wrong data.
+#
+# Host-agnostic (spec 020-cloudflare-r2-migration): a channel's URLs may be
+# Dropbox shared links OR Cloudflare R2 (e.g. https://aadata.cirrusscience.org/
+# <sha256>/<file>.parquet). This script and the site loader are unchanged — the
+# URL is opaque to both; loader.ts only rewrites Dropbox hosts, so R2 URLs pass
+# through verbatim. `ohbmcli upload-atlas-package` emits a ready-to-paste
+# channel entry in exactly the shape above.
 
 set -euo pipefail
 
