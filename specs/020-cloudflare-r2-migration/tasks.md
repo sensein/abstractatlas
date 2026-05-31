@@ -141,13 +141,13 @@ fails loudly on any probe failure, and exits 0 only when all pass. (SC-005)
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T031 [P] Update `README.md`: the R2 publish runbook (build → `upload-atlas-package` → register channel via `gh variable set` → set `site/data-channel.json` → PR preview), the new subcommands, and the `R2_*` env vars (names only, never values).
-- [ ] T032 [P] Add the operational data-hosting note to the body of `CLAUDE.md` (R2 channel alongside Dropbox; the SPECKIT plan pointer is already updated): content-addressed keys, `aadata.cirrusscience.org` public base, `.env` var names, and that `resolve-data-channel.sh`/the loader are unchanged.
-- [ ] T033 [P] Update the explanatory comments in `.github/scripts/resolve-data-channel.sh` and `site/data-channel.json` to note the registry channels may now hold R2 URLs (no resolver/site code change).
-- [ ] T034 [P] Add a schema-validation check (small test or `scripts` step) that a produced upload manifest validates against `contracts/upload-manifest.schema.json` and a produced comparison report against `contracts/comparison-report.schema.json`.
-- [ ] T035 Secret-exposure review: confirm no `R2_*` value appears in stdout, the manifest, the report, the emitted channel snippet, or logs; confirm `git status` shows no `data/` artifact staged and the new ignore lines (T002) are present.
-- [ ] T036 Error-handling + external-state audit: no bare `except` (precise `ClientError` code/status handling only); existence/Range/CORS discovered at runtime (`head_object`/live probes), not hardcoded; missing-artifact/credential/mismatch paths raise precise typed errors; provenance manifest carries inputs/hashes/revision/command/timestamp with no absolute/`~` paths.
-- [ ] T037 Run `.specify/scripts/bash/constitution-check.sh --full` and resolve any reported violation; run the full Python suite `PYTHONPATH=src .venv/bin/python -m unittest discover -s tests` + the site test `cd site && pnpm exec vitest run`.
+- [X] T031 [P] Update `README.md`: the R2 publish runbook (build → `upload-atlas-package` → register channel via `gh variable set` → set `site/data-channel.json` → PR preview), the new subcommands, and the `R2_*` env vars (names only, never values).
+- [X] T032 [P] Add the operational data-hosting note to the body of `CLAUDE.md` (R2 channel alongside Dropbox; the SPECKIT plan pointer is already updated): content-addressed keys, `aadata.cirrusscience.org` public base, `.env` var names, and that `resolve-data-channel.sh`/the loader are unchanged.
+- [X] T033 [P] Update the explanatory comments in `.github/scripts/resolve-data-channel.sh` and `site/data-channel.json` to note the registry channels may now hold R2 URLs (no resolver/site code change).
+- [X] T034 [P] Add a schema-validation check (small test or `scripts` step) that a produced upload manifest validates against `contracts/upload-manifest.schema.json` and a produced comparison report against `contracts/comparison-report.schema.json`.
+- [X] T035 Secret-exposure review: confirm no `R2_*` value appears in stdout, the manifest, the report, the emitted channel snippet, or logs; confirm `git status` shows no `data/` artifact staged and the new ignore lines (T002) are present.
+- [X] T036 Error-handling + external-state audit: no bare `except` (precise `ClientError` code/status handling only); existence/Range/CORS discovered at runtime (`head_object`/live probes), not hardcoded; missing-artifact/credential/mismatch paths raise precise typed errors; provenance manifest carries inputs/hashes/revision/command/timestamp with no absolute/`~` paths.
+- [X] T037 Run `.specify/scripts/bash/constitution-check.sh --full` and resolve any reported violation; run the full Python suite `PYTHONPATH=src .venv/bin/python -m unittest discover -s tests` + the site test `cd site && pnpm exec vitest run`.
 - [ ] T038 Run `quickstart.md` end-to-end (steps 0–6) as the acceptance pass.
 
 ---
