@@ -110,7 +110,7 @@ Web frontend, single SvelteKit project at `site/`. Source in `site/src/`, tests 
 ### Implementation for User Story 3
 
 - [x] T023 [P] [US3] Add the pure selected/unselected opacity-gap helper to `site/src/lib/atlas/opacity.ts` (e.g. `unselectedOpacity(base, selectionActive)` → `selectionActive ? min(base, cap) : base`) to pass T021.
-- [ ] T024 [US3] In `site/src/lib/components/UmapPanel.svelte` `applyAtlasZoomOpacity` (~:1155–1159): when a selection is active, set `unselected.marker.opacity` to the capped (gap) value while `selected.marker.opacity` stays 1.0; retain `unselected == base` when no selection. (2D fix — keep `selectedpoints`.)
+- [x] T024 [US3] In `site/src/lib/components/UmapPanel.svelte` `applyAtlasZoomOpacity` (~:1155–1159): when a selection is active, set `unselected.marker.opacity` to the capped (gap) value while `selected.marker.opacity` stays 1.0; retain `unselected == base` when no selection. (2D fix — keep `selectedpoints`.)
 - [ ] T025 [US3] In `site/src/lib/components/UmapPanel.svelte` `renderAtlasChart3D` (~:1945/1953): apply the selection highlight via an in-place `Plotly.restyle` of a precomputed per-point `marker.opacity` array (selected→1.0, unselected→density-dim); NO `Plotly.react`, no trace-count change. Run the H7 spike — if `marker.opacity` recreates the WebGL context, fall back to a precomputed `marker.color` rgba array.
 - [ ] T026 [US3] Add the mobile "lasso available on larger screens" note where 2D dragmode falls back to `pan` (in `UmapPanel.svelte` and/or `+page.svelte`), ensuring no partial selection (FR-012/FR-013).
 

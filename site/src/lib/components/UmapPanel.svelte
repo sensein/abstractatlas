@@ -11,7 +11,8 @@
 	} from '$lib/geo/lasso_select';
 	import {
 		backdropOpacity as densityZoomOpacity,
-		overlayMarkerSize
+		overlayMarkerSize,
+		unselectedOpacity
 	} from '$lib/atlas/opacity';
 
 	/**
@@ -1142,11 +1143,18 @@
 		// LOD sample, fainter still for the few-hundred-point first tiers).
 		const op = densityZoomOpacity(renderedCount, currentZoomFactor2d(currentSpan));
 		// Restyle the backdrop trace's base opacity AND its unselected-selection
-		// opacity together. The unselected value is what Plotly applies to
-		// points OUTSIDE a lasso (both mid-drag and after) — keeping it equal to
-		// the base opacity means lassoing never dims the surrounding cloud into
-		// invisibility (the "lasso-while-zoomed goes very dark" report). Only the
-		// SELECTED points pop, via the constant `selected.marker.opacity: 1`.
+		// opacity together. The unselected value is what Plotly applies to points
+		// OUTSIDE a lasso (both mid-drag and after).
+		//
+		// Spec 021 (US3) fix: when a selection is ACTIVE, cap the unselected
+		// opacity BELOW the selected opacity (1.0) so a contrast gap survives
+		// zoom-in. Previously unselected was tied to the base `op`, which
+		// `backdropOpacity` raises toward the CAP as you zoom, so the selection
+		// washed out (the reported "lasso highlight dominated when zoomed").
+		// With no selection active, unselected stays == base so an un-lassoed
+		// cloud still reads at every zoom (the original "don't go dark" concern;
+		// the cap is high enough — 0.5 — that the lassoed cloud is never dark).
+		const selectionActive = lassoOhbmSet.size + lassoNeuroSet.size > 0;
 		const restyle = (
 			api as unknown as {
 				restyle: (e: HTMLDivElement, u: Record<string, unknown[]>, idx: number[]) => Promise<unknown>;
@@ -1154,7 +1162,7 @@
 		).restyle;
 		void restyle(
 			el,
-			{ 'marker.opacity': [op], 'unselected.marker.opacity': [op] },
+			{ 'marker.opacity': [op], 'unselected.marker.opacity': [unselectedOpacity(op, selectionActive)] },
 			[0]
 		);
 		// Grow the OHBM overlay markers with zoom so the conference points stay
