@@ -98,9 +98,9 @@ test.describe('US1: /neuroscape/ semantic search', () => {
 		// keeps the result list reflowing for ~30-60s on CI — longer when
 		// the (rate-limit-prone) data host throttles — and the default 30s
 		// test timeout isn't enough for "wait for stable list → click →
-		// assert panel". Budget leaves headroom past the stabilisation poll
-		// for the click + panel assertion.
-		test.setTimeout(180_000);
+		// assert panel". Budget covers the stabilisation poll (≤120s) plus
+		// the click-retry loop below (≤90s) with headroom.
+		test.setTimeout(240_000);
 		const input = page.getByTestId('search-input');
 		await input.fill('memory');
 		// Wait until the result count stops changing — two consecutive
@@ -119,14 +119,27 @@ test.describe('US1: /neuroscape/ semantic search', () => {
 				{ timeout: 120_000, intervals: [1_000, 2_000, 3_000] }
 			)
 			.toBe('stable');
-		const firstRow = page.getByTestId('neuroscape-result-row').first();
-		await firstRow.click({ force: true });
-		// The detail panel may render under different test-ids
-		// (`neuroscape-detail-panel`, `ohbm2026-detail-panel`,
-		// inline detail cards). FR-008 just requires the panel reach
-		// a visible state via the existing per-subsite path.
+		// Open the inline detail panel by clicking the first result row.
+		// Use a PLAIN click (auto-scroll + hit-test) — NOT `{ force: true }`.
+		// A forced click fires at the row's raw geometric centre without
+		// scrolling it into view, and on CI that centre can sit at/under the
+		// viewport fold, so the synthetic click never reaches the row
+		// button's handler: the panel never opens and the assert times out.
+		// This — not the data or any BigInt/Number key mismatch — was the
+		// recurring prod-e2e "regression" (verified against production data:
+		// plain + dispatchEvent clicks open the panel, a forced click does
+		// not). Wrap in `toPass` so a click that loses the actionability race
+		// against the still-streaming 461k list simply retries. The detail
+		// panel may render under different test-ids (`atlas-root-detail-panel`,
+		// `detail-panel`, …); FR-008 just requires SOME panel reach visible.
 		const panel = page.locator('[data-testid*="detail"]').first();
-		await expect(panel).toBeVisible({ timeout: 15_000 });
+		await expect(async () => {
+			await page.getByTestId('neuroscape-result-row').first().click({ timeout: 8_000 });
+			// 15s (not 5s) so a slow-but-successful render on a throttled CI
+			// runner isn't prematurely re-clicked; toPass still retries fast
+			// when the click itself fails actionability (the 8s click above).
+			await expect(panel).toBeVisible({ timeout: 15_000 });
+		}).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
 	});
 
 	// Below: semantic-only assertions. These require the deployed
