@@ -1,6 +1,6 @@
 # Search Unification Plan — ohbm2026 / atlas-root / neuroscape
 
-**Status:** design (analysis of prior steps + proposed unified architecture). Implementation follows in phases on this branch.
+**Status:** implemented (PR #60). Phases 1–4 + the facet-count fix are landed and verified on production data; see the per-phase checklist in §3.
 
 **Why:** Three site surfaces (`SITE_MODE` = `ohbm2026`, `atlas-root`, `neuroscape`) run search with diverging engines and, on the two large NeuroScape surfaces, semantic search that is neither exhaustive nor cleanly decoupled from the rendered scatter. atlas-root recently returned **zero** semantic results (fixed in PR #59) precisely because the ranker's lookup maps were derived from the displayed LOD scatter. This plan makes search behave consistently, reach the whole corpus, and never depend on what the UMAP happens to be showing.
 
@@ -101,11 +101,14 @@ Wire `neighbors_neuroscape` into the ranker's `knnIndex` from the full corpus at
 
 ## 3. Implementation phases
 
-1. **Decouple ranker maps from the scatter** (P3/R1): build `pubmedToCluster` from `listCorpus`; add the UMAP-independence invariant test.
-2. **Wire the KNN graph** (R3): populate `knnIndex` from `neighbors_neuroscape` over the full corpus; re-init ranker after the neighbours wave; test `knn_size > 0`.
-3. **Relevance-bounded progressive sweep** (P2): extend `neuroscape_ranker.ts` to rank centroids, sweep nearest→outward with the distance-threshold stop, and KNN-expand at each step; unit tests for: stops at threshold, reaches a relevant non-routed cluster, never fetches beyond the horizon, per-query bandwidth bound.
-4. **Unify result assembly** (P1): shared merge/rank helper across the three panels; test parity.
-5. **Verify on production data** (preview builds, the established probe harness): root + neuroscape return broad, threshold-bounded semantic sets; ohbm unchanged; results invariant to LOD tier.
+1. ✅ **Decouple ranker maps from the scatter** (P3/R1): `pubmedToCluster`/`knnIndex` built from `listCorpus`, refreshed in place via `updateRankerMaps` as the corpus/neighbours stream in. Verified: atlas-root `p2c` 327 → 461,316.
+2. ✅ **Wire the KNN graph** (R3): `knnIndex` populated from `neighbors_neuroscape`; ranker maps upgraded after the neighbours wave (no worker/LRU reset). Verified: neuroscape `knn` 0 → 461,316.
+3. ✅ **Relevance-bounded progressive sweep** (P2): `rankClusters` + nearest-first sweep with the distance-threshold stop + KNN-expand; FR-024 cap bounds bandwidth. Verified: neuroscape 1 → 4 clusters, ~54 → 2243 candidates. Unit tests: neighbouring-cluster reach, threshold stop.
+4. ✅ **Unify result assembly** (P1): shared `assembleResults` helper (`src/lib/search/assemble.ts`); atlas-root passes N `CorpusSource`s (OHBM + NeuroScape today), neuroscape passes one. 6 unit tests.
+5. ✅ **Facet counts narrow with search** (P1/P3): `neuroSearchMatch`/`ohbmSearchMatch` narrow the facet-count base sources. Verified: neuroscape 461,316/175 → 251/56 clusters.
+6. ✅ **Verified on production data** (preview builds, the probe harness): root + neuroscape render broad, threshold-bounded semantic sets; results invariant to LOD tier; no page errors. svelte-check clean; 238 unit tests pass.
+
+**Deferred (follow-ups, not blocking):** atlas-root has no KNN neighbour graph resident (`knn=0` there), so its semantic relies on the routed-cluster sweep without cross-cluster KNN-expansion — fetching a neighbour slice for root would turn that on. OHBM-side semantic (an `ohbm_vectors` table) is still pending the build step.
 
 ## 4. Risks / open questions
 
