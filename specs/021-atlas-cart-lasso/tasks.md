@@ -28,8 +28,8 @@ Web frontend, single SvelteKit project at `site/`. Source in `site/src/`, tests 
 
 **Purpose**: Confirm the toolchain and create stable import paths for the new pure helpers.
 
-- [ ] T001 Ensure the site toolchain is ready and the baseline is green: `cd site && pnpm install`, then confirm `pnpm exec vitest run` and `pnpm test:e2e` execute (record baseline). NOTE: no Python in this feature — CA-001 venv tasks are N/A.
-- [ ] T002 [P] Create `site/src/lib/selection/` with stub modules `compose.ts` and `cart_scope.ts` (exported typed signatures only, no logic) so later parallel tasks have stable import paths.
+- [x] T001 Ensure the site toolchain is ready and the baseline is green: `cd site && pnpm install`, then confirm `pnpm exec vitest run` and `pnpm test:e2e` execute (record baseline). NOTE: no Python in this feature — CA-001 venv tasks are N/A.
+- [x] T002 [P] Create `site/src/lib/selection/` with stub modules `compose.ts` and `cart_scope.ts` (exported typed signatures only, no logic) so later parallel tasks have stable import paths.
 
 ---
 
@@ -39,8 +39,8 @@ Web frontend, single SvelteKit project at `site/`. Source in `site/src/`, tests 
 
 **⚠️ CRITICAL**: US1/US2/US3 all consume `compose()`; complete this phase first.
 
-- [ ] T003 [P] Write FAILING unit test `site/src/tests/unit/selection_compose.test.ts` for `compose(parts)` per `contracts/selection-composition.md` C1–C6 (all-null→null; single active→identity; intersection; inactive=identity; active-empty forces empty; result ⊆ corpus).
-- [ ] T004 Implement `compose(parts: Array<Set<number> | null>): Set<number> | null` in `site/src/lib/selection/compose.ts` to pass T003.
+- [x] T003 [P] Write FAILING unit test `site/src/tests/unit/selection_compose.test.ts` for `compose(parts)` per `contracts/selection-composition.md` C1–C6 (all-null→null; single active→identity; intersection; inactive=identity; active-empty forces empty; result ⊆ corpus).
+- [x] T004 Implement `compose(parts: Array<Set<number> | null>): Set<number> | null` in `site/src/lib/selection/compose.ts` to pass T003.
 
 **Checkpoint**: Shared composer ready — user stories can begin.
 
@@ -54,13 +54,13 @@ Web frontend, single SvelteKit project at `site/`. Source in `site/src/`, tests 
 
 ### Tests for User Story 1 (write first, ensure they FAIL) ⚠️
 
-- [ ] T005 [P] [US1] FAILING unit test `site/src/tests/unit/cart_scope.test.ts` for `savedInCorpus(cartItems, indexHas, mode)` per `contracts/cart-only-filter.md` (F2 membership; per-mode hidden counts; W4 atlas-root hides neither; W5 unknown kind counted + named).
-- [ ] T006 [P] [US1] Extend `site/src/tests/unit/selection_compose.test.ts` to assert cart-as-intersecting-term: cart off ⇒ identity; cart on ⇒ narrows with search/facets/lasso (encodes the OHBM cart-dominant→intersection behavior change).
+- [x] T005 [P] [US1] FAILING unit test `site/src/tests/unit/cart_scope.test.ts` for `savedInCorpus(cartItems, indexHas, mode)` per `contracts/cart-only-filter.md` (F2 membership; per-mode hidden counts; W4 atlas-root hides neither; W5 unknown kind counted + named).
+- [x] T006 [P] [US1] Extend `site/src/tests/unit/selection_compose.test.ts` to assert cart-as-intersecting-term: cart off ⇒ identity; cart on ⇒ narrows with search/facets/lasso (encodes the OHBM cart-dominant→intersection behavior change).
 - [ ] T007 [P] [US1] FAILING e2e `site/src/tests/e2e/cart_only_parity.spec.ts`: neuroscape "Cart only" filters to neuroscape saved items + shows hidden-count warning; empty states E1 (cart empty) and E2 (saved but none here); OHBM toggle label reads "Cart only" / "✓ Cart". Also assert **FR-005 live update** (add/remove a cart item while the filter is active → view updates without reload) and **SC-003 latency** (the toggle/cart-mutation re-filter completes < 1 s on the neuroscape corpus — measured in the e2e).
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Implement `savedInCorpus(...)` in `site/src/lib/selection/cart_scope.ts` (returns `{ shown: Set<number>; hiddenCount: number; hiddenKinds: string[] }`) to pass T005.
+- [x] T008 [US1] Implement `savedInCorpus(...)` in `site/src/lib/selection/cart_scope.ts` (returns `{ shown: Set<number>; hiddenCount: number; hiddenKinds: string[] }`) to pass T005.
 - [ ] T009 [P] [US1] Update the `cartOnly` doc comment in `site/src/lib/stores/selection.ts`: "Show only saved" → "Cart only"; note it is now an intersecting filter, not a dominant override.
 - [ ] T010 [US1] OHBM composition in `site/src/routes/+page.svelte`: replace the `$cartOnly ? cartIds : intersect(...)` dominant ternary (~:434) with `compose([effectiveSearchIds, $lassoSelection, facetIds, authorChipIds, cartIds])`; add `cartIds` to `preFilterForFacetCounts` (~:437); rewrite the ~:427–433 comment to describe intersection semantics.
 - [ ] T011 [US1] Atlas/neuroscape composition in `site/src/routes/+page.svelte`: add per-mode `cartOnly` state; when on, narrow `filteredBackdrop`/`filteredOverlay` (and the scatter feed) by `savedInCorpus().shown` via `compose`; derive `hiddenCount`/`hiddenKinds` from the loaded corpus indexes (`abstractsByPosterId`/`listCorpusById`/`atlasOverlayById`).
@@ -104,12 +104,12 @@ Web frontend, single SvelteKit project at `site/`. Source in `site/src/`, tests 
 
 ### Tests for User Story 3 (write first, ensure they FAIL) ⚠️
 
-- [ ] T021 [P] [US3] FAILING unit test `site/src/tests/unit/selection_opacity.test.ts`: the selected/unselected opacity-gap helper keeps `unselected < selected (=1.0)` across the full `densityZoomOpacity` / zoom-factor range when a selection is active, and equals base when no selection (H2/H3/H4).
+- [x] T021 [P] [US3] FAILING unit test `site/src/tests/unit/selection_opacity.test.ts`: the selected/unselected opacity-gap helper keeps `unselected < selected (=1.0)` across the full `densityZoomOpacity` / zoom-factor range when a selection is active, and equals base when no selection (H2/H3/H4).
 - [ ] T022 [P] [US3] FAILING e2e (highlight section of `site/src/tests/e2e/selection_highlight.spec.ts`): 2D lasso + zoom keeps the contrast gap; 3D reflects the selection; render/trace-count probe asserts no `Plotly.react` on selection change (H6); mobile lasso disabled with a visible note (B3); and (FR-013) the "Cart only" cross-site warning stays reachable + legible at the mobile width.
 
 ### Implementation for User Story 3
 
-- [ ] T023 [P] [US3] Add the pure selected/unselected opacity-gap helper to `site/src/lib/atlas/opacity.ts` (e.g. `unselectedOpacity(base, selectionActive)` → `selectionActive ? min(base, cap) : base`) to pass T021.
+- [x] T023 [P] [US3] Add the pure selected/unselected opacity-gap helper to `site/src/lib/atlas/opacity.ts` (e.g. `unselectedOpacity(base, selectionActive)` → `selectionActive ? min(base, cap) : base`) to pass T021.
 - [ ] T024 [US3] In `site/src/lib/components/UmapPanel.svelte` `applyAtlasZoomOpacity` (~:1155–1159): when a selection is active, set `unselected.marker.opacity` to the capped (gap) value while `selected.marker.opacity` stays 1.0; retain `unselected == base` when no selection. (2D fix — keep `selectedpoints`.)
 - [ ] T025 [US3] In `site/src/lib/components/UmapPanel.svelte` `renderAtlasChart3D` (~:1945/1953): apply the selection highlight via an in-place `Plotly.restyle` of a precomputed per-point `marker.opacity` array (selected→1.0, unselected→density-dim); NO `Plotly.react`, no trace-count change. Run the H7 spike — if `marker.opacity` recreates the WebGL context, fall back to a precomputed `marker.color` rgba array.
 - [ ] T026 [US3] Add the mobile "lasso available on larger screens" note where 2D dragmode falls back to `pan` (in `UmapPanel.svelte` and/or `+page.svelte`), ensuring no partial selection (FR-012/FR-013).
