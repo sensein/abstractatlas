@@ -2267,7 +2267,7 @@
 							loading={atlasCorpusLoading}
 							semanticHits={neuroscapeSemanticHits}
 							searchIndex={titleSearchIndex}
-							bind:matchedIds={neuroPanelMatched}
+							on:matched={(e) => (neuroPanelMatched = new Set(e.detail.ids))}
 							on:focus={(ev) => {
 								// Update the URL so deep-link restore + back-button work,
 								// THEN open the detail panel so the inline third pane
@@ -2293,8 +2293,10 @@
 							loading={atlasCorpusLoading}
 							semanticHits={neuroscapeSemanticHits}
 							searchIndex={titleSearchIndex}
-							bind:matchedNeuroIds={atlasMatchedNeuro}
-							bind:matchedOhbmIds={atlasMatchedOhbm}
+							on:matched={(e) => {
+								atlasMatchedNeuro = new Set(e.detail.neuro);
+								atlasMatchedOhbm = new Set(e.detail.ohbm);
+							}}
 							on:select={(ev) => {
 								onAtlasPointClick(
 									new CustomEvent('pointclick', { detail: ev.detail })

@@ -64,16 +64,12 @@
 	 *  shows the unfiltered combined list). */
 	export let searchIndex: InvertedIndex | null = null;
 
-	/** Spec 021 (US2) — matched ids per corpus for the active query, exposed
-	 *  (two-way bound by the parent) so the scatter can highlight search
-	 *  results: neuroscape pubmed_ids drive the backdrop, ohbm poster_ids the
-	 *  overlay. Empty when no query is active. Single source of truth: the
-	 *  same `filtered` rows the list renders. */
-	export let matchedNeuroIds: Set<number> = new Set();
-	export let matchedOhbmIds: Set<number> = new Set();
-
 	const dispatch = createEventDispatcher<{
 		select: { kind: 'ohbm2026' | 'neuroscape'; id: number };
+		// Spec 021 (US2) — emit matched ids per corpus for the active query so
+		// the parent can highlight search results: neuroscape pubmed_ids drive
+		// the backdrop, ohbm poster_ids the overlay. Empty when no query.
+		matched: { neuro: number[]; ohbm: number[] };
 	}>();
 
 	let limit = 100;
@@ -256,19 +252,16 @@
 	$: visible = filtered.slice(0, limit);
 	$: totalCount = filtered.length;
 
-	// Spec 021 (US2) — matched ids per corpus for scatter highlighting, only
-	// when a query is active.
-	$: {
-		if ((query ?? '').trim()) {
-			matchedNeuroIds = new Set(
-				filtered.filter((r) => r.kind === 'neuroscape').map((r) => r.id)
-			);
-			matchedOhbmIds = new Set(filtered.filter((r) => r.kind === 'ohbm2026').map((r) => r.id));
-		} else {
-			matchedNeuroIds = new Set<number>();
-			matchedOhbmIds = new Set<number>();
-		}
-	}
+	// Spec 021 (US2) — emit matched ids per corpus for scatter highlighting,
+	// only when a query is active.
+	$: dispatch('matched', {
+		neuro: (query ?? '').trim()
+			? filtered.filter((r) => r.kind === 'neuroscape').map((r) => r.id)
+			: [],
+		ohbm: (query ?? '').trim()
+			? filtered.filter((r) => r.kind === 'ohbm2026').map((r) => r.id)
+			: []
+	});
 
 	// Bulk-add over the FULL filtered set (mixed kinds), not just
 	// the paginated `visible` slice — matches OHBM 2026 ResultList
