@@ -34,7 +34,9 @@ describe('unselectedOpacity() — selection contrast gap', () => {
 				expect(unsel).toBeLessThanOrEqual(SELECTION_UNSELECTED_MAX);
 				expect(unsel).toBeLessThan(SELECTED_OPACITY);
 				// gap is meaningful (selected pops clearly above unselected)
-				expect(SELECTED_OPACITY - unsel).toBeGreaterThanOrEqual(SELECTED_OPACITY - SELECTION_UNSELECTED_MAX);
+				expect(SELECTED_OPACITY - unsel).toBeGreaterThanOrEqual(
+					SELECTED_OPACITY - SELECTION_UNSELECTED_MAX
+				);
 			}
 		}
 	});

@@ -43,8 +43,10 @@ describe('savedInCorpus()', () => {
 	it('W4 atlas-root: both kinds displayable ⇒ nothing hidden, per-kind sets populated', () => {
 		const ohbmIndex = new Set([101, 102]);
 		const neuroIndex = new Set([9001, 9002, 9003]);
-		const scope = savedInCorpus(cart, (kind, id) =>
-			(kind === 'ohbm2026' && ohbmIndex.has(id)) || (kind === 'neuroscape' && neuroIndex.has(id))
+		const scope = savedInCorpus(
+			cart,
+			(kind, id) =>
+				(kind === 'ohbm2026' && ohbmIndex.has(id)) || (kind === 'neuroscape' && neuroIndex.has(id))
 		);
 		expect(scope.hiddenCount).toBe(0);
 		expect([...shownIds(scope, 'ohbm2026')].sort()).toEqual([101, 102]);
@@ -52,12 +54,12 @@ describe('savedInCorpus()', () => {
 	});
 
 	it('W5: an unknown kind is counted + named, never silently dropped', () => {
-		const withUnknown: CartItem[] = [
-			...cart,
-			{ kind: 'future' as CartItem['kind'], id: 5 }
-		];
+		const withUnknown: CartItem[] = [...cart, { kind: 'future' as CartItem['kind'], id: 5 }];
 		const neuroIndex = new Set([9001, 9002, 9003]);
-		const scope = savedInCorpus(withUnknown, (kind, id) => kind === 'neuroscape' && neuroIndex.has(id));
+		const scope = savedInCorpus(
+			withUnknown,
+			(kind, id) => kind === 'neuroscape' && neuroIndex.has(id)
+		);
 		// hidden = 101,102 (ohbm) + 5 (future) = 3
 		expect(scope.hiddenCount).toBe(3);
 		expect(scope.hiddenKinds).toContain('future');

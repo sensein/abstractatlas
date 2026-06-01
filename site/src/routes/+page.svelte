@@ -33,7 +33,9 @@
 	import FacetSidebar from '$lib/components/FacetSidebar.svelte';
 	import { semanticEnabled } from '$lib/stores/searchMode';
 	import { semanticStatus } from '$lib/search/semantic';
-	import { cartStore } from '$lib/stores/cart';
+	import { cartStore, cartItems } from '$lib/stores/cart';
+	import { compose } from '$lib/selection/compose';
+	import { savedInCorpus, shownIds } from '$lib/selection/cart_scope';
 	import {
 		cartDrawerOpen,
 		ohbmTitleLookup,
@@ -424,19 +426,17 @@
 	// Build a Map<author_name, poster_ids> on the fly when the chip set
 	// changes, then intersect. Empty chip set → null (no filter).
 	$: authorChipIds = computeAuthorChipIds($authorChips, abstracts, authorsById);
-	// Saved-only is a DOMINANT filter — when ON, it overrides the search /
-	// facet / lasso state so the user sees their full saved list. Toggling
-	// it off restores the prior filter state (search box text, active
-	// facets, lasso are kept in their stores so they reappear). Facet
-	// counts in Saved-only mode are computed over the saved set, so any
-	// facets the user clicks while in this mode are advisory only — they
-	// don't further narrow the result list until Saved-only is turned off.
-	$: filteredIds = $cartOnly
-		? cartIds
-		: intersect(intersect(intersect(effectiveSearchIds, $lassoSelection), facetIds), authorChipIds);
-	$: preFilterForFacetCounts = $cartOnly
-		? cartIds
-		: intersect(intersect(effectiveSearchIds, $lassoSelection), authorChipIds);
+	// Spec 021 — "Cart only" is now ONE MORE intersecting filter, not a
+	// dominant override. The visible set is the intersection of every active
+	// filter (search ∩ lasso ∩ facets ∩ author-chips ∩ cart-only); an inactive
+	// filter contributes `null` (no constraint). `cartIds` is null when the
+	// toggle is off, so it drops out of the intersection. This matches the
+	// atlas-root / neuroscape behavior so all three sites compose identically.
+	$: filteredIds = compose([effectiveSearchIds, $lassoSelection, facetIds, authorChipIds, cartIds]);
+	// Facet-count pre-filter: the intersection of all active filters EXCEPT the
+	// facet dimension being counted — now including cart-only so counts narrow
+	// when "Cart only" is active.
+	$: preFilterForFacetCounts = compose([effectiveSearchIds, $lassoSelection, authorChipIds, cartIds]);
 	$: facetCounts = recomputeFacets(abstracts, $activeFilters, preFilterForFacetCounts, facetCtx);
 
 	function cartIdsFromStore(
@@ -644,6 +644,17 @@
 	// articles table (no graph → KNN fallback yields nothing, ranker drives
 	// semantic search).
 	$: listCorpusById = new Map(listCorpus.map((p) => [p.pubmed_id, p]));
+	// Spec 021 — "Cart only" scope for atlas-root / neuroscape. The cart is
+	// cross-site, so on a given site only saved items present in THAT site's
+	// loaded corpus index are displayable; the rest feed the cross-site
+	// warning. Membership is discovered at runtime from the loaded indexes —
+	// no hardcoded kind→site table (Constitution VII). atlas-root can show both
+	// kinds (overlay = ohbm, backdrop/list = neuroscape) ⇒ usually 0 hidden.
+	$: atlasCartScope = savedInCorpus($cartItems, (kind, id) => {
+		if (kind === 'neuroscape') return listCorpusById.has(id);
+		if (kind === 'ohbm2026') return atlasOverlayById.has(id);
+		return false;
+	});
 	$: atlasClustersById = new Map(
 		atlasClusters.map((c) => [c.cluster_id, { cluster_id: c.cluster_id, title: c.title, colour_hex: c.colour_hex }])
 	);
@@ -736,14 +747,19 @@
 	// lasso region: NeuroScape rows collapse to empty.
 	$: anyLassoActive = atlasLassoOhbmSet.size + atlasLassoNeuroSet.size > 0;
 	$: filteredBackdrop = (() => {
-		// No lasso → the RESULT LIST shows the full facet-filtered corpus.
-		// With a lasso active, narrow the FULL corpus to the lassoed ids.
-		// Spec 019 follow-up — `atlasLassoNeuroSet` now holds EVERY abstract
-		// whose coordinate fell inside the polygon (point-in-polygon over the
-		// full coords), not just the rendered LOD sample, so the result list
-		// reflects the whole region — not the downsampled subset on screen.
-		if (!anyLassoActive) return listFacetFiltered;
-		return listFacetFiltered.filter((p) => atlasLassoNeuroSet.has(p.pubmed_id));
+		// No lasso → the RESULT LIST starts from the full facet-filtered corpus.
+		// With a lasso active, narrow to the lassoed ids (resolved over the full
+		// coords, not just the rendered LOD sample — spec 019). Spec 021: when
+		// "Cart only" is on, additionally intersect with the saved neuroscape
+		// items present in this corpus (search is applied downstream in the
+		// browse panel, completing the search ∩ lasso ∩ facets ∩ cart set).
+		let rows = listFacetFiltered;
+		if (anyLassoActive) rows = rows.filter((p) => atlasLassoNeuroSet.has(p.pubmed_id));
+		if ($cartOnly) {
+			const cartSet = shownIds(atlasCartScope, 'neuroscape');
+			rows = rows.filter((p) => cartSet.has(p.pubmed_id));
+		}
+		return rows;
 	})();
 	// Spec 019 / FR-002 — KNN-expansion semantic search on /neuroscape/
 	// + atlas-root. When `$semanticEnabled` is on AND the debounced
@@ -927,8 +943,15 @@
 	$: rankerBusy =
 		rankerState !== null && rankerState !== 'ready' && rankerState !== 'idle' && rankerState !== 'error';
 	$: filteredOverlay = (() => {
-		if (!anyLassoActive) return scatterOverlay;
-		return scatterOverlay.filter((p) => atlasLassoOhbmSet.has(p.poster_id));
+		let rows = scatterOverlay;
+		if (anyLassoActive) rows = rows.filter((p) => atlasLassoOhbmSet.has(p.poster_id));
+		// Spec 021 — atlas-root "Cart only": intersect the OHBM overlay with the
+		// saved ohbm items present here.
+		if ($cartOnly) {
+			const cartSet = shownIds(atlasCartScope, 'ohbm2026');
+			rows = rows.filter((p) => cartSet.has(p.poster_id));
+		}
+		return rows;
 	})();
 
 	// Cross-subsite permalink construction.
@@ -1991,6 +2014,25 @@
 				>
 					{atlasShowMap ? '✕ Hide map' : '🗺  Show map'}
 				</button>
+				<!-- Spec 021 — "Cart only" filter, now on atlas-root + neuroscape
+				     (parity with the OHBM home). Intersects with search / facets /
+				     lasso via compose(); cross-site warning rendered below. -->
+				<button
+					type="button"
+					class="control-toggle"
+					class:active={$cartOnly}
+					disabled={$cartItems.length === 0 && !$cartOnly}
+					on:click={() => cartOnly.update((v) => !v)}
+					aria-pressed={$cartOnly}
+					title={$cartOnly
+						? 'Showing cart items only — click to show everything'
+						: $cartItems.length === 0
+							? 'Cart-only filter — your cart is empty'
+							: `Filter to your ${$cartItems.length} cart item${$cartItems.length === 1 ? '' : 's'} available here`}
+					data-testid="toggle-cart-only"
+				>
+					{$cartOnly ? '✓ Cart' : 'Cart only'}
+				</button>
 			</div>
 		</div>
 
@@ -2173,6 +2215,25 @@
 					{/if}
 				</div>
 				<div class="list-pane">
+					<!-- Spec 021 — "Cart only" cross-site notice + empty states. -->
+					{#if $cartOnly}
+						{#if $cartItems.length === 0}
+							<p class="cart-only-note" data-testid="cart-only-empty">
+								Your cart is empty — save items to use “Cart only”.
+							</p>
+						{:else if atlasCartScope.hiddenCount === $cartItems.length}
+							<p class="cart-only-note" data-testid="cart-only-warning">
+								None of your {$cartItems.length} saved item{$cartItems.length === 1 ? '' : 's'}
+								are available in this site (saved from other collections).
+							</p>
+						{:else if atlasCartScope.hiddenCount > 0}
+							<p class="cart-only-note" data-testid="cart-only-warning">
+								Cart only — showing only saved items available in this site.
+								{atlasCartScope.hiddenCount} saved item{atlasCartScope.hiddenCount === 1 ? '' : 's'}
+								from other collections {atlasCartScope.hiddenCount === 1 ? 'is' : 'are'} hidden.
+							</p>
+						{/if}
+					{/if}
 					{#if SITE_MODE === 'neuroscape'}
 						<NeuroscapeBrowsePanel
 							articles={filteredBackdrop}
@@ -2340,19 +2401,19 @@
 					on:click={() => cartOnly.update((v) => !v)}
 					aria-pressed={$cartOnly}
 					title={$cartOnly
-						? 'Showing saved abstracts only — click to show everything'
+						? 'Showing cart items only — click to show everything'
 						: $cartStore.size === 0
-							? 'Saved-only filter — your list is empty'
-							: `Filter to the ${$cartStore.size} saved abstract${$cartStore.size === 1 ? '' : 's'}`}
+							? 'Cart-only filter — your cart is empty'
+							: `Filter to the ${$cartStore.size} cart item${$cartStore.size === 1 ? '' : 's'}`}
 					data-testid="toggle-cart-only"
 				>
-					{$cartOnly ? '✓ Saved' : 'Saved only'}
+					{$cartOnly ? '✓ Cart' : 'Cart only'}
 				</button>
 				<!-- The 🛒 N "open cart drawer" button is now in the
 				     unifying SiteHeader so it's the single source on
-				     every subsite. The "Saved only" filter stays here
-				     because it's OHBM-home-specific (no equivalent on
-				     atlas-root / neuroscape). -->
+				     every subsite. Spec 021: "Cart only" now also exists
+				     on atlas-root / neuroscape (their own toggle in the
+				     atlas controls row). -->
 			</div>
 		{/if}
 	</div>
@@ -2801,5 +2862,16 @@
 		.home.has-focus .detail-pane {
 			display: block;
 		}
+	}
+
+	.cart-only-note {
+		margin: 0 0 0.5rem;
+		padding: 0.4rem 0.6rem;
+		font-size: 0.85rem;
+		line-height: 1.3;
+		color: var(--text-muted, #555);
+		background: var(--surface-2, rgba(127,127,127,0.08));
+		border-left: 3px solid var(--accent, #3b82f6);
+		border-radius: 4px;
 	}
 </style>
