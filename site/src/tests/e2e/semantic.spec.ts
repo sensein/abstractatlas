@@ -135,7 +135,10 @@ test.describe('US1: /neuroscape/ semantic search', () => {
 		const panel = page.locator('[data-testid*="detail"]').first();
 		await expect(async () => {
 			await page.getByTestId('neuroscape-result-row').first().click({ timeout: 8_000 });
-			await expect(panel).toBeVisible({ timeout: 5_000 });
+			// 15s (not 5s) so a slow-but-successful render on a throttled CI
+			// runner isn't prematurely re-clicked; toPass still retries fast
+			// when the click itself fails actionability (the 8s click above).
+			await expect(panel).toBeVisible({ timeout: 15_000 });
 		}).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] });
 	});
 
