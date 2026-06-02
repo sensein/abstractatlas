@@ -147,6 +147,15 @@ def build_compare_parser() -> argparse.ArgumentParser:
         help="Skip downloads; compare each channel's recorded sha256 instead of re-hashing bytes.",
     )
     parser.add_argument("--range-bytes", type=int, default=100, help="Range probe window size.")
+    parser.add_argument(
+        "--verify-cache",
+        action="store_true",
+        help=(
+            "Spec 022: probe the R2 host for edge-cache effectiveness "
+            "(cf-cache-status / age / cache-control, cold->warm, range byte-parity) "
+            "and report a cache_effective verdict. Does not change the parity exit code."
+        ),
+    )
     return parser
 
 
@@ -176,6 +185,7 @@ def compare_main(argv: list[str] | None = None) -> int:
             r2_channel_key=args.r2_channel,
             range_bytes=args.range_bytes,
             trust_recorded_sha256=args.trust_recorded_sha256,
+            cache_probe=args.verify_cache,
         )
     except HostingComparisonError as exc:
         sys.stderr.write(f"compare-data-hosting: {type(exc).__name__}: {exc}\n")
@@ -193,6 +203,23 @@ def compare_main(argv: list[str] | None = None) -> int:
             f"{art.logical_name:18s} parity {mark(art.byte_parity)}  "
             f"range {mark(art.r2.range_supported)}  cors {mark(art.r2.cors_allowed)}  "
             f"=> {'PASS' if art.passed else 'FAIL'}\n"
+        )
+    if report.cache_effective is not None:
+        _ms = lambda v: f"{v:.0f}ms" if isinstance(v, (int, float)) else "-"  # noqa: E731
+        for art in report.artifacts:
+            for cp in art.r2_cache or []:
+                parity = (
+                    f"  parity {'✓' if cp.range_byte_parity else '✗'}"
+                    if cp.kind == "range"
+                    else ""
+                )
+                flag = f"  FLAG: {cp.flag}" if cp.flag else ""
+                sys.stdout.write(
+                    f"  cache[{art.logical_name}/{cp.kind}] {cp.cf_cache_status or '-'}  "
+                    f"cold {_ms(cp.cold_ms)} warm {_ms(cp.warm_ms)}{parity}{flag}\n"
+                )
+        sys.stdout.write(
+            f"edge-cache-effective: {'YES' if report.cache_effective else 'NO'}\n"
         )
     sys.stdout.write(f"report: {out_path}\noverall: {'PASS' if report.overall_pass else 'FAIL'}\n")
     return 0 if report.overall_pass else 1

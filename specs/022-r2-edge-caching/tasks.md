@@ -25,7 +25,7 @@ Python package `src/ohbm2026/atlas_hosting/`; tests `tests/`. CLI `ohbmcli` (`sr
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm the toolchain: the `r2` extra is installed (`uv pip install --python .venv/bin/python ".[r2]"` if needed) and the baseline atlas_hosting suite runs: `PYTHONPATH=src .venv/bin/python -m unittest tests.test_atlas_hosting_compare tests.test_atlas_hosting_r2_client tests.test_atlas_hosting_manifest tests.test_atlas_hosting_cli -v`.
+- [x] T001 Confirm the toolchain: the `r2` extra is installed (`uv pip install --python .venv/bin/python ".[r2]"` if needed) and the baseline atlas_hosting suite runs: `PYTHONPATH=src .venv/bin/python -m unittest tests.test_atlas_hosting_compare tests.test_atlas_hosting_r2_client tests.test_atlas_hosting_manifest tests.test_atlas_hosting_cli -v`.
 
 ---
 
@@ -33,7 +33,7 @@ Python package `src/ohbm2026/atlas_hosting/`; tests `tests/`. CLI `ohbmcli` (`sr
 
 **Purpose**: shared loud-failure type for the cache verification.
 
-- [ ] T002 Add a typed cache-verification failure to the `Stage20Error` subtree in `src/ohbm2026/exceptions.py` (e.g. `DataHostingCacheError`) so a bypassing host / range-parity mismatch raises explicitly (CA-006); export it where the other Stage20 errors are exported.
+- [x] T002 Add a typed cache-verification failure to the `Stage20Error` subtree in `src/ohbm2026/exceptions.py` (e.g. `DataHostingCacheError`) so a bypassing host / range-parity mismatch raises explicitly (CA-006); export it where the other Stage20 errors are exported.
 
 **Checkpoint**: error type available to US3.
 
@@ -49,13 +49,13 @@ Python package `src/ohbm2026/atlas_hosting/`; tests `tests/`. CLI `ohbmcli` (`sr
 
 ### Tests for User Story 2 (write/extend first) ⚠️
 
-- [ ] T003 [P] [US2] Extend `tests/test_atlas_hosting_r2_client.py`: assert the upload path passes `CacheControl="public, max-age=31536000, immutable"` (and the parquet `ContentType`) in `ExtraArgs` for both small and multipart-sized files (regression guard — should pass immediately).
-- [ ] T004 [P] [US2] Extend `tests/test_atlas_hosting_manifest.py`: a manifest built for a publish records the applied cache policy (`cache_control`) and round-trips through `to_dict`/`from_dict` (FAILS until T005/T006).
+- [x] T003 [P] [US2] Extend `tests/test_atlas_hosting_r2_client.py`: assert the upload path passes `CacheControl="public, max-age=31536000, immutable"` (and the parquet `ContentType`) in `ExtraArgs` for both small and multipart-sized files (regression guard — should pass immediately).
+- [x] T004 [P] [US2] Extend `tests/test_atlas_hosting_manifest.py`: a manifest built for a publish records the applied cache policy (`cache_control`) and round-trips through `to_dict`/`from_dict` (FAILS until T005/T006).
 
 ### Implementation for User Story 2
 
-- [ ] T005 [US2] In `src/ohbm2026/atlas_hosting/r2_client.py`, expose the applied cache policy (e.g. make `_DEFAULT_CACHE_CONTROL` accessible / return it from the upload helper) so callers can record it — without changing upload behavior.
-- [ ] T006 [US2] In `src/ohbm2026/atlas_hosting/manifest.py`, add a `cache_control` field to the upload manifest (channel-level, uniform per publish) incl. `to_dict`/`from_dict`; in `src/ohbm2026/atlas_hosting/uploader.py`, thread the applied policy from the R2 client into the manifest so `data/provenance/atlas_upload_provenance__<key>.json` records it (FR-010 / CA-008).
+- [x] T005 [US2] In `src/ohbm2026/atlas_hosting/r2_client.py`, expose the applied cache policy (e.g. make `_DEFAULT_CACHE_CONTROL` accessible / return it from the upload helper) so callers can record it — without changing upload behavior.
+- [x] T006 [US2] In `src/ohbm2026/atlas_hosting/manifest.py`, add a `cache_control` field to the upload manifest (channel-level, uniform per publish) incl. `to_dict`/`from_dict`; in `src/ohbm2026/atlas_hosting/uploader.py`, thread the applied policy from the R2 client into the manifest so `data/provenance/atlas_upload_provenance__<key>.json` records it (FR-010 / CA-008).
 
 **Checkpoint**: every published object's cache policy is auditable from provenance; behavior unchanged.
 
@@ -71,12 +71,12 @@ Python package `src/ohbm2026/atlas_hosting/`; tests `tests/`. CLI `ohbmcli` (`sr
 
 ### Tests for User Story 3 (write/extend first) ⚠️
 
-- [ ] T007 [P] [US3] Extend `tests/test_atlas_hosting_compare.py` with mocked `http_request`: (a) parse `cf-cache-status`/`age`/`cache-control`; (b) classify HIT vs MISS-then-HIT (warmed) vs DYNAMIC/BYPASS (flagged); (c) range byte-parity match vs mismatch (mismatch → flag/raise); (d) cold/warm timings are recorded (`cold_ms`/`warm_ms` present) (FAILS until T008).
+- [x] T007 [P] [US3] Extend `tests/test_atlas_hosting_compare.py` with mocked `http_request`: (a) parse `cf-cache-status`/`age`/`cache-control`; (b) classify HIT vs MISS-then-HIT (warmed) vs DYNAMIC/BYPASS (flagged); (c) range byte-parity match vs mismatch (mismatch → flag/raise); (d) cold/warm timings are recorded (`cold_ms`/`warm_ms` present) (FAILS until T008).
 
 ### Implementation for User Story 3
 
-- [ ] T008 [US3] In `src/ohbm2026/atlas_hosting/compare.py`, add cache-evidence capture: issue each probe twice (cold→warm) for a representative full GET and ≥1 inner-table Range, record the [data-model](./data-model.md) fields (`cf_cache_status`, `age`, `cache_control`, `cached`, `warmed`, `cold_ms`, `warm_ms`, `range_byte_parity`, `flag`) — including the wall-clock cold/warm timings for the SC-003 latency-drop measurement — flag BYPASS/DYNAMIC and range-parity mismatches; preserve the existing reachability/Range/CORS/If-None-Match probes.
-- [ ] T009 [US3] In `src/ohbm2026/cli.py` (`compare-data-hosting`), surface the cache section in the comparison report (`data/outputs/data-hosting-comparison__<ts>.json`) + a human-readable "edge-cache-effective?" summary, and make a bypassing/parity-failing host flag explicitly (non-zero or clearly-failing aggregate) via `DataHostingCacheError` where appropriate; guard/skip clearly when creds/host are absent (CA-006/CA-007).
+- [x] T008 [US3] In `src/ohbm2026/atlas_hosting/compare.py`, add cache-evidence capture: issue each probe twice (cold→warm) for a representative full GET and ≥1 inner-table Range, record the [data-model](./data-model.md) fields (`cf_cache_status`, `age`, `cache_control`, `cached`, `warmed`, `cold_ms`, `warm_ms`, `range_byte_parity`, `flag`) — including the wall-clock cold/warm timings for the SC-003 latency-drop measurement — flag BYPASS/DYNAMIC and range-parity mismatches; preserve the existing reachability/Range/CORS/If-None-Match probes.
+- [x] T009 [US3] In `src/ohbm2026/cli.py` (`compare-data-hosting`), surface the cache section in the comparison report (`data/outputs/data-hosting-comparison__<ts>.json`) + a human-readable "edge-cache-effective?" summary, and make a bypassing/parity-failing host flag explicitly (non-zero or clearly-failing aggregate) via `DataHostingCacheError` where appropriate; guard/skip clearly when creds/host are absent (CA-006/CA-007).
 
 **Checkpoint**: a single `compare-data-hosting` run audits cache effectiveness for full + range, before and after the host rule.
 
@@ -101,9 +101,9 @@ Python package `src/ohbm2026/atlas_hosting/`; tests `tests/`. CLI `ohbmcli` (`sr
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T012 [P] Docs (CA-003): update README + `specs/020-cloudflare-r2-migration` notes with the cache rule + `compare-data-hosting` cache verification; close out `memory/cloudflare_cache_unused.md` once verified.
-- [ ] T013 Run the full atlas_hosting suite: `PYTHONPATH=src .venv/bin/python -m unittest tests.test_atlas_hosting_compare tests.test_atlas_hosting_r2_client tests.test_atlas_hosting_manifest tests.test_atlas_hosting_cli tests.test_atlas_hosting_uploader -v`.
-- [ ] T014 Run `.specify/scripts/bash/constitution-check.sh --full`; verify no committed data/secrets (R2 + any Cloudflare token stay in `.env`), provenance records the policy, and error paths are explicit.
+- [x] T012 [P] Docs (CA-003): update README + `specs/020-cloudflare-r2-migration` notes with the cache rule + `compare-data-hosting` cache verification; close out `memory/cloudflare_cache_unused.md` once verified.
+- [x] T013 Run the full atlas_hosting suite: `PYTHONPATH=src .venv/bin/python -m unittest tests.test_atlas_hosting_compare tests.test_atlas_hosting_r2_client tests.test_atlas_hosting_manifest tests.test_atlas_hosting_cli tests.test_atlas_hosting_uploader -v`.
+- [x] T014 Run `.specify/scripts/bash/constitution-check.sh --full`; verify no committed data/secrets (R2 + any Cloudflare token stay in `.env`), provenance records the policy, and error paths are explicit.
 - [ ] T015 Run `specs/022-r2-edge-caching/quickstart.md` end-to-end against the live host (before/after evidence) and attach the comparison report.
 
 ---
