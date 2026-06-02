@@ -92,8 +92,8 @@ Python package `src/ohbm2026/atlas_hosting/`; tests `tests/`. CLI `ohbmcli` (`sr
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Finalize `specs/022-r2-edge-caching/contracts/cloudflare-cache-rule.md` as the reproducible host-rule spec (scope = `aadata.cirrusscience.org`, eligible-for-cache, respect-origin `Cache-Control`, 206/Range cacheable, CORS preserved) and apply the rule to the zone (dashboard by default; API automation only if `CLOUDFLARE_API_TOKEN` is in `.env`).
-- [ ] T011 [US1] Run `PYTHONPATH=src .venv/bin/python -m ohbm2026.cli compare-data-hosting` BEFORE (expect BYPASS flagged) and AFTER applying the rule (expect warm HIT on full + range, byte-parity, CORS intact); record the after-report as the acceptance evidence (SC-001/003/004/005/006).
+- [x] T010 [US1] Finalize `specs/022-r2-edge-caching/contracts/cloudflare-cache-rule.md` as the reproducible host-rule spec (scope = `aadata.cirrusscience.org`, eligible-for-cache, respect-origin `Cache-Control`, 206/Range cacheable, CORS preserved) and apply the rule to the zone (dashboard by default; API automation only if `CLOUDFLARE_API_TOKEN` is in `.env`).
+- [x] T011 [US1] Run `PYTHONPATH=src .venv/bin/python -m ohbm2026.cli compare-data-hosting` BEFORE (expect BYPASS flagged) and AFTER applying the rule (expect warm HIT on full + range, byte-parity, CORS intact); record the after-report as the acceptance evidence (SC-001/003/004/005/006).
 
 **Checkpoint**: the R2 host is edge-cache-effective; production channel still Dropbox (FR-009).
 
@@ -104,7 +104,7 @@ Python package `src/ohbm2026/atlas_hosting/`; tests `tests/`. CLI `ohbmcli` (`sr
 - [x] T012 [P] Docs (CA-003): update README + `specs/020-cloudflare-r2-migration` notes with the cache rule + `compare-data-hosting` cache verification; close out `memory/cloudflare_cache_unused.md` once verified.
 - [x] T013 Run the full atlas_hosting suite: `PYTHONPATH=src .venv/bin/python -m unittest tests.test_atlas_hosting_compare tests.test_atlas_hosting_r2_client tests.test_atlas_hosting_manifest tests.test_atlas_hosting_cli tests.test_atlas_hosting_uploader -v`.
 - [x] T014 Run `.specify/scripts/bash/constitution-check.sh --full`; verify no committed data/secrets (R2 + any Cloudflare token stay in `.env`), provenance records the policy, and error paths are explicit.
-- [ ] T015 Run `specs/022-r2-edge-caching/quickstart.md` end-to-end against the live host (before/after evidence) and attach the comparison report.
+- [x] T015 Run `specs/022-r2-edge-caching/quickstart.md` end-to-end against the live host (before/after evidence) and attach the comparison report.
 
 ---
 
