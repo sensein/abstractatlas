@@ -120,12 +120,12 @@ Web frontend, single SvelteKit project at `site/`. Source in `site/src/`, tests 
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T027 [P] Docs: update the README UI section and `memory/{search_unification,stage15_atlas_subsites,stage19_semantic_search}.md` for the rename, the cart-dominant→intersection change, the cross-site warning, and the 2D-contrast + 3D-highlight behavior (CA-003).
-- [ ] T028 Update any existing test that asserted the OHBM cart-dominant override to the new intersection behavior (e.g. `site/src/tests/e2e/cart.spec.ts`, `site/src/tests/unit/filter.test.ts`) — do not weaken assertions; re-express them.
-- [ ] T029 Run `cd site && pnpm check && pnpm lint`; fix type/lint issues.
-- [ ] T030 Run the full suites: `cd site && pnpm exec vitest run && pnpm test:e2e`; confirm green including the no-`Plotly.react` probe.
-- [ ] T031 Run `.specify/scripts/bash/constitution-check.sh --full`; verify no committed data/secrets and no new gitignored-root writes (this is a UI-only change; localStorage only).
-- [ ] T032 Run `specs/021-atlas-cart-lasso/quickstart.md` verification across all three modes (`VITE_SITE_MODE=atlas-root|neuroscape|ohbm2026`).
+- [x] T027 [P] Docs: update the README UI section and `memory/{search_unification,stage15_atlas_subsites,stage19_semantic_search}.md` for the rename, the cart-dominant→intersection change, the cross-site warning, and the 2D-contrast + 3D-highlight behavior (CA-003).
+- [x] T028 Update any existing test that asserted the OHBM cart-dominant override to the new intersection behavior (e.g. `site/src/tests/e2e/cart.spec.ts`, `site/src/tests/unit/filter.test.ts`) — do not weaken assertions; re-express them.
+- [x] T029 Run `cd site && pnpm check && pnpm lint`; fix type/lint issues.
+- [x] T030 Run the full suites: `cd site && pnpm exec vitest run && pnpm test:e2e`; confirm green including the no-`Plotly.react` probe.
+- [x] T031 Run `.specify/scripts/bash/constitution-check.sh --full`; verify no committed data/secrets and no new gitignored-root writes (this is a UI-only change; localStorage only).
+- [x] T032 Run `specs/021-atlas-cart-lasso/quickstart.md` verification across all three modes (`VITE_SITE_MODE=atlas-root|neuroscape|ohbm2026`).
 - [ ] T033 [P] Add a combined-intersection e2e (in `site/src/tests/e2e/selection_highlight.spec.ts` or `cart_only_parity.spec.ts`) covering **SC-008**: search + lasso + facets + "Cart only" all active at once → the result list, facet counts, AND scatter highlight each show exactly the four-way intersection, with no filter clobbering another. (Cross-cutting — runs after US1+US2+US3.)
 - [ ] T034 Verify **FR-014** drift detection still fires: add/keep a test asserting the cross-parquet drift banner surfaces (never a silent partial result) when "Cart only" or lasso resolves a selection against sibling-parquet geometry, after the filter/highlight changes land.
 
