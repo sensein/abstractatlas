@@ -81,8 +81,11 @@ export function backdropOpacity(renderedCount: number, zoomFactor: number): numb
  * (today's behaviour) so an un-lassoed cloud still reads at every zoom.
  */
 /** Ceiling on unselected-point opacity while a selection is active. Selected
- *  points are 1.0, so this guarantees a ≥0.5 contrast gap. */
-export const SELECTION_UNSELECTED_MAX = 0.5;
+ *  points are 1.0, so this guarantees a strong contrast gap so the selection
+ *  pops at every zoom level. Kept low (the surrounding cloud fades back to a
+ *  faint context layer, like a focus/dim highlight) — 0.5 was too gentle to
+ *  read against a dense, same-coloured cloud (spec 021 US3 feedback). */
+export const SELECTION_UNSELECTED_MAX = 0.15;
 
 /**
  * Unselected-point opacity given the current base (density+zoom) opacity and

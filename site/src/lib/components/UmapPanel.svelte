@@ -1462,9 +1462,17 @@
 		// unselected opacity == the base, so the surrounding cloud stays exactly
 		// as visible during/after a lasso; only the SELECTED points pop to 1.0.
 		// `selectedpoints` is set only once we have a completed lasso set.
+		// Spec 021 (US3) — when a selection is active, dim the unselected cloud
+		// hard (and bump the selected marker size) so the selection pops at
+		// EVERY zoom level, including the default view (the cap used to engage
+		// only via applyAtlasZoomOpacity on a zoom event). With no selection,
+		// unselected == base so the un-lassoed cloud reads normally.
+		const backdropSelectionActive = backdropSelectedIdx.length > 0;
 		const backdropSelectedConfig = {
-			selected: { marker: { opacity: 1 } },
-			unselected: { marker: { opacity: backdropEffectiveOpacity } },
+			selected: { marker: { opacity: 1, size: 6 } },
+			unselected: {
+				marker: { opacity: unselectedOpacity(backdropEffectiveOpacity, backdropSelectionActive) }
+			},
 			...(backdropSelectedIdx.length ? { selectedpoints: backdropSelectedIdx } : {})
 		};
 		// Backdrop hover TOOLTIP is intentionally off (461k-point
@@ -1518,8 +1526,8 @@
 			// Match the backdrop's always-on selection style so a lasso drag
 			// doesn't dim the rest-tier detail points to Plotly's dark default —
 			// keeps the deep-zoom cloud visible while lassoing.
-			selected: { marker: { opacity: 1 } },
-			unselected: { marker: { opacity: lodNowOpacity } },
+			selected: { marker: { opacity: 1, size: 6 } },
+			unselected: { marker: { opacity: unselectedOpacity(lodNowOpacity, backdropSelectedIdx.length > 0) } },
 			hoverinfo: 'none',
 			showlegend: false,
 			customdata: lodNow ? lodNow.customdata : []
@@ -1539,7 +1547,7 @@
 			// unselected stays legible while the selected pop to full opacity.
 			const overlaySelectedConfig = {
 				selected: { marker: { opacity: 1 } },
-				unselected: { marker: { opacity: 0.45 } },
+				unselected: { marker: { opacity: unselectedOpacity(0.45, overlaySelectedIdx.length > 0) } },
 				...(overlaySelectedIdx.length ? { selectedpoints: overlaySelectedIdx } : {})
 			};
 			// Record this trace's index so the zoom restyle can grow its markers.

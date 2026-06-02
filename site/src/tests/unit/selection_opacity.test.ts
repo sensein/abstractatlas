@@ -43,8 +43,9 @@ describe('unselectedOpacity() — selection contrast gap', () => {
 
 	it('cap only lowers, never raises, the base opacity', () => {
 		// A faint base (below the cap) is left untouched even when active.
-		expect(unselectedOpacity(0.2, true)).toBe(0.2);
-		// A bright base (at the CAP) is pulled down to the ceiling.
+		expect(unselectedOpacity(0.1, true)).toBe(0.1);
+		// A base above the ceiling is pulled down to it.
+		expect(unselectedOpacity(0.4, true)).toBe(SELECTION_UNSELECTED_MAX);
 		expect(unselectedOpacity(BACKDROP_OPACITY_CAP, true)).toBe(SELECTION_UNSELECTED_MAX);
 	});
 });
