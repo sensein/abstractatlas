@@ -24,7 +24,20 @@ All findings are grounded in the current `site/` code (cited as `file:line`). De
 - *Add a size/outline/colour emphasis channel for selected points*: the user chose opacity-gap-only for now; emphasis channel deferred.
 - *`Plotly.react` dual traces in 3D*: the leaking path (plotly.js#6365).
 
-**Verification spike (3D only)**: confirm a `restyle` of a per-point `marker.opacity` array on the live `scatter3d` trace does not recreate the WebGL context (render/context-count probe in e2e). If it does, fall back to a precomputed `marker.color` rgba array (alpha baked in) — still a pure restyle, still no `react`.
+**Verification spike (3D only) — RESOLVED by code inspection (T025 follow-up):**
+`scatter3d` **silently ignores a per-point `marker.opacity` array** — it only
+honors a SCALAR opacity (confirmed at `UmapPanel.svelte:2123`, where the OHBM
+3D path works around this by splitting into selected/unselected dual traces,
+each with a scalar opacity). That dual-trace split is exactly what triggers a
+`Plotly.react` per selection change → the WebGL-context leak the atlas/
+neuroscape 3D path was built to avoid (hence it passes empty sets today).
+
+⇒ The leak-free 3D highlight for atlas/neuroscape MUST use the H7 fallback: a
+per-point **`marker.color` rgba array** (alpha baked in) applied via in-place
+`Plotly.restyle` — `marker.color` is already a per-point array there (points
+are coloured by cluster), so dimming the unselected entries' alpha and
+restyling that one array reflects the selection with no trace rebuild and no
+`react`. This is the concrete path for T025 (still pending implementation).
 
 ## R-002 — Where the intersection composition lives (two data paths)
 

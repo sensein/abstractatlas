@@ -83,7 +83,7 @@ Web frontend, single SvelteKit project at `site/`. Source in `site/src/`, tests 
 ### Tests for User Story 2 (write first, ensure they FAIL) ⚠️
 
 - [ ] T015 [P] [US2] FAILING unit test `site/src/tests/unit/panel_matched_ids.test.ts`: `NeuroscapeBrowsePanel`/`AtlasRootBrowsePanel` expose their final matched-id set (binding/event) for a fixture corpus + query (R-003 single source of truth).
-- [ ] T016 [P] [US2] FAILING e2e (search section of `site/src/tests/e2e/selection_highlight.spec.ts`): query on neuroscape highlights matching scatter points; bulk "Add N to cart" adds the matched set.
+- [x] T016 [P] [US2] FAILING e2e (search section of `site/src/tests/e2e/selection_highlight.spec.ts`): query on neuroscape highlights matching scatter points; bulk "Add N to cart" adds the matched set.
 
 ### Implementation for User Story 2
 
