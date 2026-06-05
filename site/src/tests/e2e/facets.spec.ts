@@ -88,3 +88,37 @@ test.describe('US4: interactive facets', () => {
 		expect(await resultCount(page)).toBe(before);
 	});
 });
+
+/**
+ * Stage 23 (spec 023) — the four research-classification dimensions appear as
+ * filterable facet sections and narrow the result set like any peer facet
+ * (FR-008 / FR-009 / SC-003).
+ */
+test.describe('Stage 23: research-classification dimension facets', () => {
+	test.skip(!DATA_AVAILABLE, 'Data package not deployed in this run');
+
+	test('the four dimension facets render and narrow the corpus', async ({ page }) => {
+		await page.goto('./');
+		await waitForHomeReady(page);
+		await page.getByTestId('result-card').first().waitFor({ timeout: 10_000 });
+
+		// All four dimension facet sections must be present (non-empty options).
+		for (const key of ['focus', 'research_modality', 'theory_scope', 'epistemic_basis']) {
+			await expect(page.getByTestId(`facet-${key}`)).toHaveCount(1);
+		}
+
+		const before = await resultCount(page);
+		const focus = page.getByTestId('facet-focus');
+		const header = focus.locator('.facet-header');
+		if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
+		await focus.getByTestId('facet-option-focus').first().click();
+		await page.waitForTimeout(200);
+		const after = await resultCount(page);
+		expect(after).toBeGreaterThan(0);
+		expect(after).toBeLessThanOrEqual(before);
+
+		await page.getByTestId('facets-clear').click();
+		await page.waitForTimeout(200);
+		expect(await resultCount(page)).toBe(before);
+	});
+});

@@ -183,3 +183,51 @@ describe('recomputeFacets', () => {
 		expect(a).toEqual(b);
 	});
 });
+
+// Stage 23 (spec 023) — the four research-classification dimensions behave as
+// peer multi-valued facets: counted across the corpus, OR-membership within a
+// dimension, and narrowing other facets when selected.
+describe('research-classification dimensions as facets', () => {
+	const dims: AbstractRecord[] = [
+		mkAbstract(11, {
+			facets: {
+				keywords: [], methods: [], study_type: [], population: [],
+				field_strength: [], processing_packages: [], species: [],
+				recording_technology: [], brain_regions: [], brain_networks: [],
+				focus: ['Translational', 'Clinical'],
+				research_modality: ['Computational'],
+				theory_scope: ['Domain Framework'],
+				epistemic_basis: ['Data-driven']
+			} as AbstractRecord['facets']
+		}),
+		mkAbstract(12, {
+			facets: {
+				keywords: [], methods: [], study_type: [], population: [],
+				field_strength: [], processing_packages: [], species: [],
+				recording_technology: [], brain_regions: [], brain_networks: [],
+				focus: ['Fundamental'],
+				research_modality: ['Experimental'],
+				theory_scope: [],
+				epistemic_basis: ['Hypothesis-driven']
+			} as AbstractRecord['facets']
+		})
+	];
+
+	it('counts each dimension option across the corpus', () => {
+		const counts = recomputeFacets(dims, NO_FILTERS, null);
+		const focus = Object.fromEntries((counts.get('focus') ?? []).map((o) => [o.value, o.count]));
+		expect(focus).toEqual({ Translational: 1, Clinical: 1, Fundamental: 1 });
+		const eb = Object.fromEntries((counts.get('epistemic_basis') ?? []).map((o) => [o.value, o.count]));
+		expect(eb).toEqual({ 'Data-driven': 1, 'Hypothesis-driven': 1 });
+	});
+
+	it('filters with OR-membership within a dimension (multi-label match)', () => {
+		// Abstract 11 has focus = [Translational, Clinical]; filtering Clinical
+		// must include it.
+		const filters = toggleFilter(NO_FILTERS, 'focus', 'Clinical');
+		const counts = recomputeFacets(dims, filters, null);
+		// Other facets narrow to the Clinical-focus subset (just abstract 11):
+		const eb = Object.fromEntries((counts.get('epistemic_basis') ?? []).map((o) => [o.value, o.count]));
+		expect(eb).toEqual({ 'Data-driven': 1 });
+	});
+});

@@ -485,6 +485,7 @@
 						 (cluster membership + neighbour rails) follows below. -->
 					{@render claimsBlock()}
 					{@render figuresBlock()}
+					{@render dimensionsBlock()}
 					{@render clusterBlock()}
 					{@render relatedBlock()}
 				</div>
@@ -732,6 +733,34 @@
 					{/each}
 				</ul>
 			</section>
+		{/if}
+		{/snippet}
+
+		<!-- Stage 23 (spec 023): research-classification dimensions as computed
+			 insights. Each renders only when it has ≥1 value (FR-007 — no
+			 empty/placeholder chip). Data comes from the per-record `facets`
+			 block (same source as the sidebar facets). -->
+		{#snippet dimensionsBlock()}
+		{#if !compact}
+			{#each [
+				['focus', 'Focus'],
+				['research_modality', 'Research modality'],
+				['theory_scope', 'Theory scope'],
+				['epistemic_basis', 'Epistemic basis']
+			] as [dkey, dlabel] (dkey)}
+				{@const raw = abstract.facets?.[dkey]}
+				{@const vals = Array.isArray(raw) ? raw : raw ? [raw] : []}
+				{#if vals.length}
+					<section class="extra facet-dimension" data-testid={`extra-${dkey}`} data-zone="computed">
+						<h2>{dlabel}</h2>
+						<ul class="chips">
+							{#each vals as v (v)}
+								<li>{v}</li>
+							{/each}
+						</ul>
+					</section>
+				{/if}
+			{/each}
 		{/if}
 		{/snippet}
 
