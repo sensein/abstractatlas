@@ -169,7 +169,35 @@ Current canonical defaults (the UI consumes these):
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at `specs/022-r2-edge-caching/plan.md`. Stage 22 (Track A,
+at `specs/023-atlas-research-dimensions/plan.md`. Stage 23 (Track A,
+`src/ohbm2026/ui_data/`) ingests four externally-computed research-
+classification dimensions (`focus`, `research_modality`, `theory_scope`,
+`epistemic_basis`) from an operator-supplied `abstracts.detail.json`
+(Mario's NeuroScape dimension analysis, keyed by Oxford submission id) and
+surfaces them in the `/ohbm2026/` atlas as new per-abstract **computed
+insights** and **filterable facets**. Integration is a left-join inside the
+Stage 6 UI-data builder: `ui_data/abstracts.iter_abstracts` already yields
+each *exported* record with its `abstract_id` (the join key) + a `facets`
+dict, so the 4 dimensions become 4 more list-of-string entries in `facets`
+and ride the existing parquet STRUCT / manifest catalog / generic site
+facet loader. Clarified: the export is authoritative — a left-join that
+NEVER pulls in abstracts absent from the export (unmatched file entries are
+counted/logged via `unmatched_in_file`); surfaced as BOTH facets AND detail
+chips, no scatter color-overlay. New module `ui_data/dimensions.py`
+(`load_research_dimensions`, `compute_dimension_coverage`, typed
+`DimensionInputError(Stage6BuildError)`); new optional `--dimensions PATH`
+build flag (opt-in — absent ⇒ 4 empty facets); provenance recorded in the
+manifest's `research_dimensions` block (basename+sha256+per-dim coverage,
+no abs paths). Site edits are narrow: 4 keys in `facets.ts`
+(FACETS_FROM_BLOCK / FACET_KEYS_ORDERED / FACET_LABELS — sidebar + valuesFor
+are generic) and 4 chip blocks in `DetailPanel.svelte`'s computed-insights
+zone. `facets` LinkML slot is already `range: Any` (doc note only); atlas-
+root/neuroscape untouched (they don't consume ohbm2026.parquet facets).
+Companions: `research.md`, `data-model.md`,
+`contracts/{dimension-input,facets-and-detail}.md`, `quickstart.md`.
+
+The immediately-prior Stage 22 plan is at
+`specs/022-r2-edge-caching/plan.md` (shipped via PR #62). Stage 22 (Track A,
 `src/ohbm2026/atlas_hosting/`) makes the R2 data host
 (`aadata.cirrusscience.org`) actually edge-cached — the dashboard showed a
 0% cache rate. Key finding: the uploader ALREADY sets
