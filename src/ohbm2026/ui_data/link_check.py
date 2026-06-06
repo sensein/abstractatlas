@@ -32,7 +32,16 @@ __all__ = [
 ]
 
 DEFAULT_TIMEOUT = 10.0
-DEFAULT_USER_AGENT = "ohbm2026-link-check/1.0 (+https://github.com/sensein/ohbm2026)"
+# Use a browser-like User-Agent. A bot-shaped UA
+# ("ohbm2026-link-check/1.0 …") is now 403-blocked by openalex.org and
+# 429-rate-limited by huggingface.co, producing false-negative link failures
+# for genuinely-reachable citations (both return 200 to a browser UA). The
+# checker still verifies the URL resolves; it just stops self-identifying as a
+# scraper to hosts that block scrapers.
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 
 @dataclass(frozen=True)
