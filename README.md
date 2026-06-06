@@ -132,6 +132,32 @@ PYTHONPATH=src .venv/bin/python scripts/build_ui_data.py \
 cd site && pnpm install && pnpm dev    # http://localhost:5173
 ```
 
+#### Research-classification dimensions (Stage 23 / spec 023)
+
+Four externally-computed dimensions — `focus`, `research_modality`,
+`theory_scope`, `epistemic_basis` (the NeuroScape dimension analysis) — can be
+surfaced in the `/ohbm2026/` atlas as computed insights + filterable facets.
+The build consumes a **slim** file (id + the four label lists only), distilled
+from the operator-supplied `abstracts.detail.json`:
+
+```bash
+# 1. Distil the bulky detail file (~120 MB) to the slim build input (~600 KB).
+PYTHONPATH=src .venv/bin/python scripts/distill_dimensions.py \
+  --in  data/inputs/neuroscape-dimensions/abstracts.detail.json \
+  --out data/inputs/neuroscape-dimensions/dimensions.slim.json
+
+# 2. Pass the slim file to the build (optional flag; omit ⇒ the 4 facets are empty).
+PYTHONPATH=src .venv/bin/python scripts/build_ui_data.py \
+  ... --dimensions data/inputs/neuroscape-dimensions/dimensions.slim.json \
+  --output site/static/data
+```
+
+Both files are gitignored under `data/inputs/neuroscape-dimensions/` (the
+distiller regenerates the slim file deterministically). The build left-joins by
+Oxford submission id onto the exported corpus only (never pulls in extra
+abstracts), logs per-dimension coverage, and records a `research_dimensions`
+provenance block (slim-file basename + sha256 + coverage) in the manifest.
+
 Run the JS test suite:
 
 ```bash

@@ -67,12 +67,69 @@ test.describe('FR-011 — detail panel renders only Topics + Methods extras', ()
 			'Topics',
 			'References',
 			'Cluster membership',
-			'Related abstracts'
+			'Related abstracts',
+			// Stage 23 (spec 023) — research-classification dimensions render as
+			// computed insights (FR-006); a deliberate exception to the FR-011
+			// "only Topics + Methods extras" rule, NOT submitter extras.
+			'Focus',
+			'Research modality',
+			'Theory scope',
+			'Epistemic basis'
 		];
 		for (const h of headings) {
 			const trimmed = h.trim();
 			const ok = allowedLeads.some((lead) => trimmed.startsWith(lead));
 			expect(ok, `heading "${trimmed}" not in allowedLeads`).toBe(true);
 		}
+	});
+});
+
+/**
+ * Stage 23 (spec 023) — the four research-classification dimensions render as
+ * computed-insight chip groups in the full detail view (FR-006/FR-007). With
+ * ~99% corpus coverage, scanning the first handful of abstracts reliably finds
+ * one carrying ≥1 dimension; each present block must have ≥1 chip and a known
+ * label, and empty dimensions must not render an empty block.
+ */
+test.describe('Stage 23 — research-classification dimensions in the detail panel', () => {
+	test.skip(!DATA_AVAILABLE, 'Data package not deployed in this run');
+
+	const DIM_KEYS = ['focus', 'research_modality', 'theory_scope', 'epistemic_basis'];
+	const DIM_LABELS: Record<string, string> = {
+		focus: 'Focus',
+		research_modality: 'Research modality',
+		theory_scope: 'Theory scope',
+		epistemic_basis: 'Epistemic basis'
+	};
+
+	test('a classified abstract shows dimension chip groups; empty ones are omitted', async ({
+		page
+	}) => {
+		await page.goto('./');
+		await expect(page.getByTestId('result-card').first()).toBeVisible({ timeout: 5000 });
+		const cards = page.getByTestId('result-card');
+		const n = Math.min(await cards.count(), 8);
+
+		let foundWithDimension = false;
+		for (let i = 0; i < n; i++) {
+			const posterId = await cards.nth(i).getAttribute('data-poster-id');
+			await page.goto(`./abstract/${encodeURIComponent(posterId!)}/`);
+			await expect(page.getByTestId('detail-panel')).toBeVisible();
+
+			for (const key of DIM_KEYS) {
+				const block = page.getByTestId(`extra-${key}`);
+				if (await block.count()) {
+					foundWithDimension = true;
+					// A rendered block must have a heading + at least one chip
+					// (FR-007 — no empty/placeholder block).
+					await expect(block.locator('h2')).toHaveText(new RegExp(`^${DIM_LABELS[key]}`));
+					expect(await block.locator('.chips li').count()).toBeGreaterThan(0);
+				}
+			}
+			if (foundWithDimension) break;
+			await page.goto('./');
+			await expect(cards.first()).toBeVisible({ timeout: 5000 });
+		}
+		expect(foundWithDimension, 'no dimension chip group found in first 8 abstracts').toBe(true);
 	});
 });

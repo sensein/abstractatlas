@@ -32,7 +32,25 @@ __all__ = [
 ]
 
 DEFAULT_TIMEOUT = 10.0
-DEFAULT_USER_AGENT = "ohbm2026-link-check/1.0 (+https://github.com/sensein/ohbm2026)"
+# Use a browser-like User-Agent. A bot-shaped UA
+# ("ohbm2026-link-check/1.0 …") is now 403-blocked by openalex.org and
+# 429-rate-limited by huggingface.co, producing false-negative link failures
+# for genuinely-reachable citations (both return 200 to a browser UA). The
+# checker still verifies the URL resolves; it just stops self-identifying as a
+# scraper to hosts that block scrapers.
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
+# Statuses where the host *responded* but is gating automated/datacenter
+# access (auth wall, anti-scraping, rate-limit) rather than the link being
+# broken. These are a non-fatal WARN: the citation still resolves for a human
+# in a browser, and GitHub-hosted runners hit these from datacenter IPs that
+# openalex.org / huggingface.co block regardless of User-Agent. A genuinely
+# broken link (404/410/5xx) or a dead host (DNS/timeout/refused) is still a
+# hard failure that blocks the deploy (FR-017).
+SOFT_STATUSES = frozenset({401, 403, 429})
 
 
 @dataclass(frozen=True)
@@ -45,6 +63,7 @@ class LinkCheckResult:
     status: int | None  # None when the request raised before HTTP
     ok: bool
     reason: str  # short human-facing reason, e.g. '200', 'timeout', 'dns'
+    warn: bool = False  # host responded but gates automated access (401/403/429)
 
 
 def iter_references(payload: Mapping[str, Any]) -> Iterable[dict[str, Any]]:
@@ -120,20 +139,23 @@ def link_check(
         title = str(ref.get("title", "-"))
         status, reason = head_url(url, timeout=timeout, session=s)
         ok = status is not None and 200 <= status < 400
+        warn = status in SOFT_STATUSES
         results.append(
-            LinkCheckResult(url=url, section=section, title=title, status=status, ok=ok, reason=reason)
+            LinkCheckResult(url=url, section=section, title=title, status=status, ok=ok, reason=reason, warn=warn)
         )
     if not results:
         return (3, [LinkCheckResult(url=str(path), section="-", title="-", status=None, ok=False, reason="no-references")])
 
-    any_fail = any(not r.ok for r in results)
-    return (3 if any_fail else 0, results)
+    # Hard-fail only on genuinely broken links: not 2xx/3xx AND not a soft
+    # auth/rate-limit gate (those resolve for a human, see SOFT_STATUSES).
+    hard_fail = any(not r.ok and not r.warn for r in results)
+    return (3 if hard_fail else 0, results)
 
 
 def _format_results(results: list[LinkCheckResult]) -> str:
     lines = ["section            status  url"]
     for r in results:
-        flag = "OK " if r.ok else "FAIL"
+        flag = "OK  " if r.ok else ("WARN" if r.warn else "FAIL")
         st = str(r.status) if r.status is not None else "---"
         lines.append(f"{r.section:18s}{flag} {st:5s} {r.url}  ({r.reason})")
     return "\n".join(lines)
@@ -151,8 +173,9 @@ def main(argv: list[str] | None = None) -> int:
     if not args.quiet:
         print(_format_results(results))
     ok = sum(1 for r in results if r.ok)
-    fail = sum(1 for r in results if not r.ok)
-    print(f"link_check: ok={ok} fail={fail} → exit {code}", file=sys.stderr)
+    warn = sum(1 for r in results if r.warn)
+    fail = sum(1 for r in results if not r.ok and not r.warn)
+    print(f"link_check: ok={ok} warn={warn} fail={fail} → exit {code}", file=sys.stderr)
     return code
 
 

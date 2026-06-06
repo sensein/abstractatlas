@@ -27,7 +27,14 @@ const FACETS_FROM_BLOCK = [
 	'species',
 	'recording_technology',
 	'brain_regions',
-	'brain_networks'
+	'brain_networks',
+	// Stage 23 (spec 023) — research-classification dimensions, joined into
+	// each record's `facets` block from the slim dimensions file. Multi-valued,
+	// OR-membership — identical in shape to the lists above.
+	'focus',
+	'research_modality',
+	'theory_scope',
+	'epistemic_basis'
 ] as const;
 
 export type FacetKey =
@@ -51,6 +58,10 @@ export const FACET_KEYS_ORDERED: FacetKey[] = [
 	'recording_technology',
 	'brain_regions',
 	'brain_networks',
+	'focus',
+	'research_modality',
+	'theory_scope',
+	'epistemic_basis',
 	'keywords',
 	'standby_block',
 	'accepted_for'
@@ -71,8 +82,25 @@ export const FACET_LABELS: Record<FacetKey, string> = {
 	recording_technology: 'Recording technology',
 	brain_regions: 'Brain regions',
 	brain_networks: 'Brain networks',
+	focus: 'Focus',
+	research_modality: 'Research modality',
+	theory_scope: 'Theory scope',
+	epistemic_basis: 'Epistemic basis',
 	standby_block: 'Stand-by time'
 };
+
+/**
+ * Facets whose values are AI-computed (Stage 23 / spec 023 — the NeuroScape
+ * dimension analysis) rather than submitter-provided or regex-derived. The
+ * sidebar tags these with a ✨ AI pill and starts them collapsed so the
+ * provenance distinction is visible without adding vertical noise.
+ */
+export const AI_FACET_KEYS: ReadonlySet<FacetKey> = new Set<FacetKey>([
+	'focus',
+	'research_modality',
+	'theory_scope',
+	'epistemic_basis'
+]);
 
 /**
  * Per-(model, input) cell-specific context for facets that derive their
