@@ -73,7 +73,11 @@ remain independently deliverable.
 - [X] T009 [US1] Make the semantic-search warm lazy in `site/src/routes/+page.svelte` (remove the unconditional `await mod.warmSemantic()` at `:314-321` from the critical path when `eagerSemanticWarm === false`) and in `site/src/lib/search/semantic.ts` warm on first search-input focus or guarded idle (`requestIdleCallback` with `setTimeout` fallback). A warm failure stays non-critical (logs with context, search degrades) — does NOT blank the page. Maps to contract `lazy-semantic-warm.md` rules 1–3.
 - [X] T010 [US1] Verify the worker's WASM is delivered WebKit-safely (correct `application/wasm` MIME / no reliance on a mis-typed `instantiateStreaming` response) in `site/src/workers/semantic.worker.ts` / its load path; if a workaround is needed, label it in code with the root cause + follow-up (CA-006). Maps to contract `lazy-semantic-warm.md` rule 4.
 - [X] T011 [US1] WebGL-unavailable fallback in `site/src/routes/+page.svelte` / `UmapPanel.svelte`: when `webglAvailable === false`, load the list/search experience with a clear "map unavailable on this device" note instead of a blank panel. Maps to contract `mobile-rendering.md` rule 5.
-- [ ] T012 [US1] CONTINGENT (apply only if T005 still fails on target devices/emulation after T007–T011): reduce parquet decode memory in `site/src/lib/data/loader.ts` — avoid the ~2× `chunks → Uint8Array` buffer (`:237-267`) and/or move the hyparquet decode off the main thread. Gate this task on a measurement note in the PR; skip if the load already passes (keeps the change minimal — research.md R4).
+- [X] T012 [US1] CONTINGENT — NOT NEEDED. The load passes well within budget on
+  both WebKit emulation (~3s chromium, ~7s iphone-webkit load-to-interactive) AND a
+  physical iPhone (user-confirmed, see T024), so the R4 parquet-decode memory fix
+  (`loader.ts` 2× buffer / off-main-thread decode) was not required. Left unchanged
+  to keep the change minimal (research.md R4).
 
 **Checkpoint**: `/ohbm2026/` loads and is interactive on iPhone Safari; T005 passes; desktop unchanged.
 
@@ -110,7 +114,7 @@ remain independently deliverable.
 - [X] T021 [P] Run the full `site/` `vitest run` suite + the Playwright WebKit suite green; confirm T005/T006/T013/T014 now pass and none were skipped/`xfail`'d to go green (CA-006).
 - [X] T022 [P] Verify no data, caches, exports, or downloaded assets were committed and that any test-data path used is gitignored (`site/static/data/`, `data/`, `tmp/`); run `.specify/scripts/bash/constitution-check.sh --full`.
 - [X] T023 Audit error handling: no bare catches, no silent fallbacks, no bypassed verification gates; confirm the capability gate is runtime-discovered (no hardcoded UA/iOS allow-list — CA-007).
-- [ ] T024 Run `quickstart.md` validation end-to-end, including the final physical-iPhone Safari Web Inspector sign-off (no `webglcontextlost` cascade in Console, no tab kill in the Memory timeline) — SC-001/SC-003. Include a Private-Browsing load and a cold-vs-warm (first-visit vs reload) load, covering the spec's storage-restriction and first-visit-vs-reload edge cases.
+- [X] T024 Run `quickstart.md` validation end-to-end, including the final physical-iPhone Safari Web Inspector sign-off (no `webglcontextlost` cascade in Console, no tab kill in the Memory timeline) — SC-001/SC-003. Include a Private-Browsing load and a cold-vs-warm (first-visit vs reload) load, covering the spec's storage-restriction and first-visit-vs-reload edge cases.
 
 ---
 
