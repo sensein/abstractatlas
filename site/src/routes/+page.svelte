@@ -34,6 +34,8 @@
 	import FacetSidebar from '$lib/components/FacetSidebar.svelte';
 	import { semanticEnabled } from '$lib/stores/searchMode';
 	import { semanticStatus } from '$lib/search/semantic';
+	import { settleCriticalLoad } from '$lib/load/load_state';
+	import { detectCapability } from '$lib/device/capability';
 	import { cartStore, cartItems } from '$lib/stores/cart';
 	import { compose } from '$lib/selection/compose';
 	import { savedInCorpus, shownIds } from '$lib/selection/cart_scope';
@@ -166,6 +168,11 @@
 	let abstractsById: Map<number, AbstractRecord> = new Map();
 	let loaded = false;
 	let dataMissing = false;
+	// Stage 24 (specs/024-fix-ios-safari-load) — when the critical bootstrap
+	// load throws (e.g. an iOS WebKit tab-pressure abort, a failed data fetch),
+	// this holds a human-readable reason and the render shows a visible error
+	// instead of an endless "Loading…" spinner. `null` ⇒ no failure.
+	let loadError: string | null = null;
 	// `showMap` is now backed by a localStorage-persistent store
 	// (`$lib/stores/selection.showMap`) so a browser reload keeps the
 	// user's chosen view. Read/write via the `$showMap` Svelte sugar.
@@ -275,50 +282,79 @@
 			/* malformed query param — ignore */
 		}
 
-		const [m, a, au] = await Promise.all([loadManifest(), loadAbstracts(), loadAuthors()]);
-		manifest = m;
-		if (a && au) {
-			abstracts = a.abstracts;
-			defaultRank = buildRandomRank(abstracts);
-			authorsById = new Map(au.authors.map((x) => [x.author_id, x]));
-			abstractsByPosterId = new Map(
-				a.abstracts.filter((x) => x.poster_id).map((x) => [x.poster_id, x])
-			);
-			abstractsById = new Map(a.abstracts.map((x) => [x.poster_id, x]));
-			// Publish the OHBM title lookup so the unifying cart drawer
-			// can render rich rows for OHBM items saved from any subsite.
-			ohbmTitleLookup.set(
-				new Map(
-					a.abstracts
-						.filter((x) => x.poster_id)
-						.map((x) => {
-							const leadId = x.author_ids[0];
-							const lead = leadId !== undefined ? au.authors.find((y) => y.author_id === leadId)?.name : undefined;
-							return [x.poster_id, { title: x.title, lead_author: lead }];
-						})
-				)
-			);
-			// Test-only debug global used by Playwright accepted-only invariant guard.
-			if (typeof window !== 'undefined') {
-				(window as unknown as { __abstracts: AbstractRecord[] }).__abstracts = abstracts;
-			}
-		} else {
-			dataMissing = true;
-		}
-		loaded = true;
-		if (!dataMissing) {
-			// Warm the semantic worker in the background so the model is ready
-			// the moment the user types. The worker does NOT influence ordering
-			// while the search box is empty — the reactive block below nulls
-			// `semanticScores` whenever `$searchQuery` is blank.
-			void (async () => {
-				try {
-					const mod = await import('$lib/search/semantic');
-					await mod.warmSemantic();
-				} catch (err) {
-					console.warn('semantic search unavailable:', err);
+		// Stage 24 — run the critical data load through `settleCriticalLoad`
+		// so a thrown await never leaves the page stuck on the spinner. On
+		// failure we surface a visible, human-readable error (Constitution VI).
+		const outcome = await settleCriticalLoad(async () => {
+			const [m, a, au] = await Promise.all([loadManifest(), loadAbstracts(), loadAuthors()]);
+			manifest = m;
+			if (a && au) {
+				abstracts = a.abstracts;
+				defaultRank = buildRandomRank(abstracts);
+				authorsById = new Map(au.authors.map((x) => [x.author_id, x]));
+				abstractsByPosterId = new Map(
+					a.abstracts.filter((x) => x.poster_id).map((x) => [x.poster_id, x])
+				);
+				abstractsById = new Map(a.abstracts.map((x) => [x.poster_id, x]));
+				// Publish the OHBM title lookup so the unifying cart drawer
+				// can render rich rows for OHBM items saved from any subsite.
+				ohbmTitleLookup.set(
+					new Map(
+						a.abstracts
+							.filter((x) => x.poster_id)
+							.map((x) => {
+								const leadId = x.author_ids[0];
+								const lead = leadId !== undefined ? au.authors.find((y) => y.author_id === leadId)?.name : undefined;
+								return [x.poster_id, { title: x.title, lead_author: lead }];
+							})
+					)
+				);
+				// Test-only debug global used by Playwright accepted-only invariant guard.
+				if (typeof window !== 'undefined') {
+					(window as unknown as { __abstracts: AbstractRecord[] }).__abstracts = abstracts;
 				}
-			})();
+			} else if (getDataPackageUrl()) {
+				// A data-package URL IS configured but the loader returned null —
+				// i.e. a genuine fetch/parse failure (the loader logs + swallows it
+				// to null at loader.ts:275). On a deployed site that's a real error,
+				// not a "data not built yet" state, so fail loudly (Constitution VI)
+				// into the visible load-error branch rather than the dev placeholder.
+				throw new Error(
+					'The abstract data could not be loaded. Check your connection and reload.'
+				);
+			} else {
+				// No URL configured → local/dev build without a data package wired.
+				dataMissing = true;
+			}
+		});
+		// ALWAYS leave the loading state, whatever happened.
+		loaded = true;
+		if (!outcome.ready) {
+			loadError = outcome.reason;
+			console.error('[ohbm2026] atlas failed to load:', outcome.reason);
+			return;
+		}
+		if (!dataMissing) {
+			// Stage 24 (R3) — gate the eager ONNX/WASM semantic-worker warm on
+			// device capability. On desktop we warm in the background so the
+			// model is ready the moment the user types. On mobile / low-budget
+			// devices (iOS Safari) we DON'T warm eagerly — stacking the WASM
+			// compile + model weights onto first paint pushed the tab past
+			// WebKit's per-tab memory ceiling. The worker still initialises
+			// lazily on the first `semanticSearch()` call, so search keeps
+			// working; it's just no longer on the critical load path. The
+			// worker's own failure is caught here and never blanks the page.
+			const capability = detectCapability();
+			if (capability.eagerSemanticWarm) {
+				void (async () => {
+					try {
+						const mod = await import('$lib/search/semantic');
+						await mod.warmSemantic();
+					} catch (err) {
+						console.warn('semantic search unavailable:', err);
+					}
+				})();
+			}
 			// Pre-build the lexical inverted index off the critical render
 			// path. `lexicalSearch` lazy-builds + caches in a WeakMap; running
 			// it once with a no-match token populates the cache. Schedule via
@@ -2582,11 +2618,24 @@
 	     The OHBM home publishes its abstracts + authors into the shared
 	     `ohbmTitleLookup` store, so cart rows render with rich titles. -->
 
-	{#if $showMap && loaded && !dataMissing}
+	{#if $showMap && loaded && !dataMissing && !loadError}
 		<UmapPanel {abstracts} selection={filteredIds} />
 	{/if}
 
-	{#if !loaded}
+	{#if loadError}
+		<section class="placeholder" data-testid="load-error" role="alert">
+			<h2>The atlas couldn’t load</h2>
+			<p class="committish-callout">{loadError}</p>
+			<p>
+				This can happen on older devices or flaky connections. Reload to try
+				again — and if it keeps failing on a phone, opening the atlas on a
+				laptop usually works.
+			</p>
+			<p>
+				<button type="button" class="reload-btn" on:click={() => location.reload()}>Reload</button>
+			</p>
+		</section>
+	{:else if !loaded}
 		<p class="status">Loading…</p>
 	{:else if dataMissing}
 		<section class="placeholder" data-testid="data-missing">
@@ -2996,6 +3045,16 @@
 	.status {
 		color: var(--text-muted);
 		font-style: italic;
+	}
+	/* Stage 24 (specs/024-fix-ios-safari-load) — visible load-error reload. */
+	.reload-btn {
+		cursor: pointer;
+		font: inherit;
+		padding: 0.4rem 0.9rem;
+		border-radius: 0.4rem;
+		border: 1px solid currentColor;
+		background: transparent;
+		color: inherit;
 	}
 	code {
 		background: var(--bg-sunken);
