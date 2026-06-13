@@ -5,6 +5,7 @@
 	import { loadCell, loadTopics, type CellShard, type TopicShard } from '$lib/shards';
 	import type { AbstractRecord } from '$lib/shards';
 	import { decimate3dBackdrop } from '$lib/lod3d';
+	import { computeCapability } from '$lib/device/capability';
 	import {
 		geometryFromPlotlySelection,
 		type LassoGeometry
@@ -224,12 +225,35 @@
 	const hasWebGL =
 		typeof document === 'undefined' ? true : detectWebGL();
 
-	// 3D pane gating: any WebGL context is enough for Plotly's
-	// scatter3d to TRY to render. If the trace then fails because
-	// of a missing extension, Plotly shows its own error overlay
-	// (we can't pre-empt that without a full render attempt).
-	// OHBM mode is small enough that we never gate it.
-	$: show3dPane = mode === 'ohbm' || hasWebGL;
+	// Stage 24 (specs/024-fix-ios-safari-load) — runtime device-capability
+	// gate. iPhone Safari killed the OHBM atlas on load because it mounted the
+	// 2D scattergl + 3D scatter3d + HUD (≈3 WebGL contexts) at once and
+	// auto-rotated, exhausting mobile WebKit's tight GL-context budget. The
+	// capability is detected at runtime (Constitution VII / CA-007), never from
+	// a UA/iOS allow-list. `hasWebGL` is reused as the probe so we don't open a
+	// second throwaway context.
+	const capability = computeCapability({
+		webglAvailable: hasWebGL,
+		deviceMemoryGb:
+			typeof navigator !== 'undefined' &&
+			typeof (navigator as unknown as { deviceMemory?: unknown }).deviceMemory === 'number'
+				? (navigator as unknown as { deviceMemory: number }).deviceMemory
+				: null,
+		viewportWidth: typeof window !== 'undefined' ? window.innerWidth : 1280,
+		prefersReducedMotion:
+			typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+				? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+				: false
+	});
+
+	// 3D pane gating. On a normal-budget device (desktop) the 3D scatter3d
+	// mounts on first paint as before. On mobile / low-budget devices it is
+	// deferred behind an explicit toggle so the page loads with a single 2D
+	// WebGL context. `user3dOverride` records an explicit user opt-in/out;
+	// until then we follow the capability default.
+	const default3dPane = hasWebGL && capability.allow3dByDefault;
+	let user3dOverride: boolean | null = null;
+	$: show3dPane = user3dOverride ?? default3dPane;
 
 	// Auto-rotate default policy:
 	//   - OHBM mode (per-community ~3k-point scatter): on by default
@@ -244,7 +268,12 @@
 	//     sustained GPU stress also triggered `webglcontextlost`
 	//     revocations. Default off everywhere for the big corpus; the
 	//     user can opt in via the rotate button and accept the cost.
-	let autoRotate = mode === 'ohbm';
+	// Stage 24 — auto-rotate only when the device can afford it and the user
+	// hasn't asked for reduced motion. On mobile/low-budget (iOS Safari) the
+	// sustained per-frame GPU relayout was a prime `webglcontextlost` trigger,
+	// so OHBM mode no longer auto-rotates there; the user can still opt in via
+	// the rotate button.
+	let autoRotate = mode === 'ohbm' && capability.allowAutoRotate;
 	let rotateFrame: number | null = null;
 	let rotateAngle = 0;
 
@@ -2596,11 +2625,35 @@
 		</div>
 	</header>
 
-	<div class="charts" data-testid="umap-chart-wrap" class:two-up={show3dPane}>
+	{#if !hasWebGL}
+		<!-- Stage 24 (T011) — no usable WebGL on this device. The page itself
+		     still works (the result list + search render below); we just can't
+		     draw the interactive map, so say so instead of showing a blank pane. -->
+		<p class="map-unavailable" data-testid="umap-unavailable" role="status">
+			The interactive map isn’t available on this device. Use the list and
+			search below to explore the abstracts.
+		</p>
+	{/if}
+	<div class="charts" data-testid="umap-chart-wrap" class:two-up={show3dPane} hidden={!hasWebGL}>
 		<figure class="chart-card">
 			<figcaption>2D <span class="caption-aside">{mobile ? 'tap to filter by community' : 'lasso to filter'}</span></figcaption>
 			<div bind:this={chart2dEl} class="chart" data-testid="umap-chart-2d"></div>
 		</figure>
+		{#if !show3dPane && hasWebGL}
+			<!-- Stage 24 (T008) — 3D is deferred on mobile/low-budget devices to
+			     keep the load to a single WebGL context. Let the user opt in. -->
+			<div class="show-3d-cta">
+				<button
+					type="button"
+					class="show-3d-btn"
+					on:click={() => (user3dOverride = true)}
+					data-testid="umap-show-3d"
+				>
+					Show 3D map
+				</button>
+				<span class="show-3d-hint">3D is off by default on phones to keep the map fast.</span>
+			</div>
+		{/if}
 		{#if show3dPane}
 			<figure class="chart-card">
 				<figcaption>
@@ -2615,6 +2668,20 @@
 						>
 							{autoRotate ? '⏸ pause' : '▶ rotate'}
 						</button>
+						{#if capability.webglContextBudget === 'low'}
+							<!-- Stage 24 — on low-budget devices let the user release the
+							     3D WebGL context again. Setting `user3dOverride = false`
+							     removes the 3D figure, whose `chartCleanupAction` destroy
+							     hook + `destroyChart` free the context (no leak). -->
+							<button
+								type="button"
+								on:click={() => (user3dOverride = false)}
+								class="rotate-btn"
+								data-testid="umap-hide-3d"
+							>
+								✕ hide 3D
+							</button>
+						{/if}
 					</span>
 				</figcaption>
 				<div class="chart-3d-wrap" class:context-lost={chart3dContextLost}>
@@ -2768,6 +2835,36 @@
 	.caption-aside {
 		color: var(--text-faint);
 		font-size: 0.75rem;
+	}
+	/* Stage 24 — deferred-3D opt-in + no-WebGL fallback (specs/024). */
+	.map-unavailable {
+		color: var(--text-faint);
+		font-size: 0.9rem;
+		padding: 0.75rem 0;
+	}
+	.show-3d-cta {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		padding: 1rem;
+		text-align: center;
+	}
+	.show-3d-btn {
+		cursor: pointer;
+		font: inherit;
+		font-size: 0.85rem;
+		padding: 0.4rem 0.9rem;
+		border-radius: 0.4rem;
+		border: 1px solid var(--accent);
+		background: transparent;
+		color: var(--accent);
+	}
+	.show-3d-hint {
+		color: var(--text-faint);
+		font-size: 0.72rem;
+		max-width: 18rem;
 	}
 	.rotate-btn {
 		all: unset;

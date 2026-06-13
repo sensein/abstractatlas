@@ -142,7 +142,15 @@
 			/* sessionStorage / location may be blocked; falling through is fine */
 		}
 
-		manifest = await loadManifest();
+		// Stage 24 (specs/024-fix-ios-safari-load) — the manifest only feeds the
+		// build-info footer here (the page route owns the critical corpus load),
+		// so a failure must NOT blank the layout or leave an unhandled rejection
+		// in onMount. Log loudly with context and carry on (Constitution VI).
+		try {
+			manifest = await loadManifest();
+		} catch (err) {
+			console.error('[ohbm2026] layout manifest load failed (footer build-info only):', err);
+		}
 	});
 </script>
 
