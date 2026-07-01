@@ -64,6 +64,12 @@ export function setEnd(window: YearWindow, year: number, bounds: YearBounds): Ye
  */
 export function moveWindow(window: YearWindow, deltaYears: number, bounds: YearBounds): YearWindow {
 	const width = window.end - window.start;
+	// If the window is at least as wide as the bounds (invalid/stale state,
+	// or a degenerate single-year corpus), there is nowhere to slide it —
+	// collapse to the full span rather than clamp `start` below `lo`.
+	if (width >= bounds.hi - bounds.lo) {
+		return { start: bounds.lo, end: bounds.hi };
+	}
 	// Largest range the start may occupy while keeping the full width inside bounds.
 	const minStart = bounds.lo;
 	const maxStart = bounds.hi - width;

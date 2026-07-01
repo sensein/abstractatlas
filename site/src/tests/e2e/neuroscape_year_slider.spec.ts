@@ -57,21 +57,33 @@ test.describe('Spec 025: /neuroscape/ year range slider', () => {
 		test.setTimeout(180_000);
 		await page.goto(neuroscapeUrl(), { waitUntil: 'domcontentloaded' });
 		await page.getByTestId('search-input').waitFor({ state: 'visible', timeout: 30_000 });
-		// Wait for the backdrop/result list to populate so the year
-		// bounds are real (slider is disabled at the pre-load {0,0} bound).
+		// Wait for the backdrop/result list to populate AND settle. The
+		// 461k-article corpus streams over several seconds and
+		// `yearBounds` is derived from the loaded points, so the slider's
+		// upper bound keeps ticking up (e.g. 2022→2023) until the load
+		// finishes. Poll until the row count is STABLE across two reads
+		// (mirrors semantic.spec.ts) so a full-span handle isn't still
+		// tracking a moving bound while a test captures a baseline.
+		let previous = -1;
 		await expect
-			.poll(() => page.getByTestId('neuroscape-result-row').count(), {
-				timeout: 120_000,
-				intervals: [1_000, 2_000, 3_000]
-			})
-			.toBeGreaterThan(0);
+			.poll(
+				async () => {
+					const cur = await page.getByTestId('neuroscape-result-row').count();
+					if (cur === 0) return 'empty';
+					const settled = cur === previous;
+					previous = cur;
+					return settled ? 'stable' : 'changing';
+				},
+				{ timeout: 120_000, intervals: [1_000, 2_000, 3_000] }
+			)
+			.toBe('stable');
 		// On the narrow mobile project the facet sidebar is behind the
 		// "🔍 Filters" toggle; open it if the slider isn't already shown.
 		const slider = page.getByTestId('neuroscape-year-slider');
 		if (!(await slider.isVisible())) {
 			await page.getByTestId('toggle-facets').click();
 		}
-		await slider.waitFor({ state: 'visible', timeout: 10_000 });
+		await slider.waitFor({ state: 'visible', timeout: 30_000 });
 	});
 
 	test('U1: two handles at the corpus bounds, no active year filter', async ({ page }) => {
@@ -97,7 +109,11 @@ test.describe('Spec 025: /neuroscape/ year range slider', () => {
 		await dragToFraction(page, 'neuroscape-year-handle-start', 0.3);
 		const after = await readout(page);
 		expect(after.start).toBeGreaterThan(before.start);
-		expect(after.end).toBe(before.end);
+		// Dragging the START handle never lowers the end. It stays equal,
+		// except the initial full-span end tracks the corpus upper bound,
+		// which may still tick up as the corpus finishes streaming — so
+		// assert "does not decrease" rather than strict equality.
+		expect(after.end).toBeGreaterThanOrEqual(before.end);
 		// The year filter is now active (FR-007/FR-008 badge).
 		await expect(page.getByTestId('neuroscape-facets-clear')).toBeVisible();
 	});
@@ -125,12 +141,21 @@ test.describe('Spec 025: /neuroscape/ year range slider', () => {
 	});
 
 	test('U5: Clear resets both handles to the bounds and drops the filter', async ({ page }) => {
-		const full = await readout(page);
 		await dragToFraction(page, 'neuroscape-year-handle-start', 0.4);
 		await expect(page.getByTestId('neuroscape-facets-clear')).toBeVisible();
 		await page.getByTestId('neuroscape-facets-clear').click();
-		const reset = await readout(page);
-		expect(reset).toEqual(full);
+		// After Clear the window is full span: each handle sits at its
+		// bound. Assert against the handles' live aria-valuemin/max rather
+		// than a baseline captured before the corpus finished streaming
+		// (the bounds can shift mid-load).
+		const startHandle = page.getByTestId('neuroscape-year-handle-start');
+		const endHandle = page.getByTestId('neuroscape-year-handle-end');
+		expect(await startHandle.getAttribute('aria-valuenow')).toBe(
+			await startHandle.getAttribute('aria-valuemin')
+		);
+		expect(await endHandle.getAttribute('aria-valuenow')).toBe(
+			await endHandle.getAttribute('aria-valuemax')
+		);
 		await expect(page.getByTestId('neuroscape-facets-clear')).toHaveCount(0);
 	});
 

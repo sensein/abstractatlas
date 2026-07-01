@@ -54,6 +54,7 @@
 	}
 
 	function yearFromClientX(clientX: number): number {
+		if (!trackEl) return bounds.lo;
 		const rect = trackEl.getBoundingClientRect();
 		if (rect.width <= 0) return bounds.lo;
 		const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
@@ -83,6 +84,7 @@
 		} else if (dragging === 'end') {
 			commit(setEnd(win, yearFromClientX(e.clientX), bounds));
 		} else {
+			if (!trackEl) return;
 			const rect = trackEl.getBoundingClientRect();
 			const deltaYears =
 				rect.width <= 0 ? 0 : Math.round(((e.clientX - bandStartX) / rect.width) * span);
@@ -90,6 +92,7 @@
 		}
 	}
 
+	// Also cleared on pointercancel (e.g. a touch interrupted by a scroll).
 	function onPointerUp() {
 		dragging = null;
 	}
@@ -130,9 +133,12 @@
 			data-testid="neuroscape-year-band"
 			style="left:{startPct}%; width:{Math.max(0, endPct - startPct)}%"
 			aria-label="Move selected year range"
+			tabindex="-1"
+			{disabled}
 			on:pointerdown={onBandDown}
 			on:pointermove={onPointerMove}
 			on:pointerup={onPointerUp}
+			on:pointercancel={onPointerUp}
 		></button>
 
 		<button
@@ -146,9 +152,11 @@
 			aria-valuemax={bounds.hi}
 			aria-valuenow={win.start}
 			aria-disabled={disabled}
+			{disabled}
 			on:pointerdown={(e) => onThumbDown('start', e)}
 			on:pointermove={onPointerMove}
 			on:pointerup={onPointerUp}
+			on:pointercancel={onPointerUp}
 			on:keydown={(e) => onThumbKey('start', e)}
 		></button>
 
@@ -163,9 +171,11 @@
 			aria-valuemax={bounds.hi}
 			aria-valuenow={win.end}
 			aria-disabled={disabled}
+			{disabled}
 			on:pointerdown={(e) => onThumbDown('end', e)}
 			on:pointermove={onPointerMove}
 			on:pointerup={onPointerUp}
+			on:pointercancel={onPointerUp}
 			on:keydown={(e) => onThumbKey('end', e)}
 		></button>
 	</div>

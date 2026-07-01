@@ -90,6 +90,11 @@ describe('moveWindow() — case 6 (stops at bound, width preserved)', () => {
 		expect(moved).toEqual({ start: 1999, end: 2004 });
 		expect(moved.end - moved.start).toBe(5);
 	});
+	it('collapses to the full span if the window is at least as wide as the bounds', () => {
+		// Stale/invalid state where width >= (hi - lo): nowhere to slide.
+		expect(moveWindow({ start: 1990, end: 2030 }, 5, BOUNDS)).toEqual({ start: 1999, end: 2023 });
+		expect(moveWindow({ start: 1999, end: 2023 }, 3, BOUNDS)).toEqual({ start: 1999, end: 2023 });
+	});
 });
 
 describe('isFullSpan() — case 7', () => {
