@@ -40,8 +40,13 @@ async function renderedBackdropCount(page: Page): Promise<number> {
 }
 
 async function resultCount(page: Page): Promise<number> {
-	const t = (await page.getByTestId('result-count').textContent())?.trim() ?? '0';
-	return Number.parseInt(t.replace(/[^0-9]/g, ''), 10) || 0;
+	// NeuroScape's count testid is `neuroscape-result-count` (the OHBM-only
+	// `result-count` does not exist here). Text is e.g.
+	// "461,316 matches · showing first 200" — parse only the LEADING number
+	// so the "showing first N" suffix isn't concatenated in.
+	const t = (await page.getByTestId('neuroscape-result-count').textContent())?.trim() ?? '';
+	const m = t.match(/[\d,]+/);
+	return m ? Number(m[0].replace(/,/g, '')) : 0;
 }
 
 /** Drag a slider handle to an absolute fraction of the track width. */
