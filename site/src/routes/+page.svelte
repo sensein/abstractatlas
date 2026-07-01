@@ -99,6 +99,7 @@
 	} from '$lib/data_package/loader';
 	import { selectIdsInGeometry, type LassoGeometry } from '$lib/geo/lasso_select';
 	import { resolveAtlasSelection, type AtlasSelection } from '$lib/atlas/select';
+	import { calibrate, yearAwareSample, type DensityCalibration } from '$lib/atlas/year_density';
 	import { loadClusterCentroids } from '$lib/shards';
 	// Spec 019 / FR-002 — full cluster-routed semantic ranker. Wired in
 	// when the `neuroscape_vectors.parquet` sidecar URL is configured;
@@ -837,8 +838,38 @@
 	// blue-noise representative tiers (lod_level <= cap) while the result
 	// list keeps the full `filteredBackdrop`. Derived from `scatterBackdrop`
 	// so facet filters still apply to the map.
+	// Spec 026 — year-aware backdrop density. Calibrate the dots-per-√article
+	// constant ONCE from the loaded corpus (targetBudget = today's full-span
+	// base-sample size = points with lod_level ≤ cap). Reactive on
+	// atlasBackdrop so it self-heals when the full corpus wave lands after the
+	// coarse first paint; `null` until neuroscape corpus + cap are resident.
+	$: densityCalibration = ((): DensityCalibration | null => {
+		if (SITE_MODE !== 'neuroscape' || neuroscapeLodCap === null || atlasBackdrop.length === 0) {
+			return null;
+		}
+		const cap = neuroscapeLodCap;
+		let targetBudget = 0;
+		for (const p of atlasBackdrop) {
+			const lv = (p as { lod_level?: number }).lod_level;
+			if (lv === undefined || lv <= cap) targetBudget++;
+		}
+		return calibrate(atlasBackdrop as unknown as { pubmed_id: number; year: number; lod_level?: number }[], targetBudget);
+	})();
+
+	// The SCATTER base sample. Full span (no year filter) → today's spatial
+	// `lod_level ≤ cap` cover, UNCHANGED. Year filter active → the
+	// compressed-proportional per-year sample (√count, shape-preserving within
+	// each year), so a fixed-width window shows comparable density as it slides
+	// (spec 026, FR-001/004). `scatterBackdrop` is already year+cluster filtered.
 	$: scatterBackdropForMap = (() => {
 		if (SITE_MODE !== 'neuroscape' || neuroscapeLodCap === null) return scatterBackdrop;
+		const yearActive = filterMinYear !== null || filterMaxYear !== null;
+		if (yearActive && densityCalibration !== null) {
+			return yearAwareSample(
+				scatterBackdrop as unknown as { pubmed_id: number; year: number; lod_level?: number }[],
+				densityCalibration
+			) as unknown as typeof scatterBackdrop;
+		}
 		const cap = neuroscapeLodCap;
 		return scatterBackdrop.filter((p) => {
 			const lv = (p as { lod_level?: number }).lod_level;
