@@ -8,11 +8,15 @@
   Facets:
     - Clusters: 175-option multi-select, same as atlas-root.
     - Years: a range filter (min / max bounded by the corpus' min/max
-      year). Two number inputs in the OHBM `.opt` rail visual.
+      year). Spec 025 — a dual-handle <YearRangeSlider>: drag each handle
+      to set an endpoint, drag the band between them to move the whole
+      window. Replaces the former two `From`/`To` number inputs; the
+      `update` event payload is unchanged.
 -->
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { normalize } from '$lib/filter';
+	import YearRangeSlider from '$lib/components/YearRangeSlider.svelte';
 
 	type Cluster = {
 		cluster_id: number;
@@ -76,22 +80,11 @@
 		notify({ cluster_ids: new Set(), min_year: null, max_year: null });
 	}
 
-	function onMinYear(e: Event) {
-		const v = (e.target as HTMLInputElement).value;
-		const n = v === '' ? null : Number(v);
+	function onYears(detail: { min_year: number | null; max_year: number | null }) {
 		notify({
 			cluster_ids: selectedClusterIds,
-			min_year: Number.isFinite(n as number) ? (n as number) : null,
-			max_year: maxYear
-		});
-	}
-	function onMaxYear(e: Event) {
-		const v = (e.target as HTMLInputElement).value;
-		const n = v === '' ? null : Number(v);
-		notify({
-			cluster_ids: selectedClusterIds,
-			min_year: minYear,
-			max_year: Number.isFinite(n as number) ? (n as number) : null
+			min_year: detail.min_year,
+			max_year: detail.max_year
 		});
 	}
 </script>
@@ -123,32 +116,12 @@
 			<span class="facet-count">{yearBounds.lo}–{yearBounds.hi}</span>
 		</button>
 		{#if yearsOpen}
-			<div class="year-row">
-				<label class="year-input">
-					<span>From</span>
-					<input
-						type="number"
-						min={yearBounds.lo}
-						max={yearBounds.hi}
-						value={minYear ?? ''}
-						placeholder={String(yearBounds.lo)}
-						on:input={onMinYear}
-						data-testid="neuroscape-year-min"
-					/>
-				</label>
-				<label class="year-input">
-					<span>To</span>
-					<input
-						type="number"
-						min={yearBounds.lo}
-						max={yearBounds.hi}
-						value={maxYear ?? ''}
-						placeholder={String(yearBounds.hi)}
-						on:input={onMaxYear}
-						data-testid="neuroscape-year-max"
-					/>
-				</label>
-			</div>
+			<YearRangeSlider
+				{minYear}
+				{maxYear}
+				bounds={yearBounds}
+				on:change={(e) => onYears(e.detail)}
+			/>
 		{/if}
 	</section>
 
@@ -274,28 +247,6 @@
 	.facet-active {
 		color: var(--accent-soft-text, var(--accent));
 		font-size: 0.7rem;
-	}
-	.year-row {
-		display: flex;
-		gap: 0.5rem;
-		padding: 0 0 0.35rem 1.1rem;
-	}
-	.year-input {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
-		font-size: 0.72rem;
-		color: var(--text-faint);
-	}
-	.year-input input {
-		padding: 0.25rem 0.4rem;
-		border: 1px solid var(--border);
-		border-radius: 3px;
-		background: var(--bg-elevated);
-		color: var(--text);
-		font-size: 0.85rem;
-		font-variant-numeric: tabular-nums;
 	}
 	.cluster-search {
 		padding: 0.3rem 0.5rem;
