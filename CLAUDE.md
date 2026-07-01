@@ -169,7 +169,36 @@ Current canonical defaults (the UI consumes these):
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at `specs/025-neuroscape-year-range-slider/plan.md`. Stage 25 (Track A,
+at `specs/026-neuroscape-year-density/plan.md`. Stage 26 (Track A,
+UI-only, `site/`, neuroscape mode only) makes the NeuroScape scatter
+backdrop's density **year-aware** when a year filter is active: each year
+in the window contributes dots ∝ √(that year's count in the filtered set)
+— compressed-proportional, tempering the 1999→2023 volume growth without
+flattening it — with each year's dots picked by ascending `lod_level` so
+the selection stays a shape-preserving spatial cover (reuses the existing
+per-point LOD rank; no new data). Fixes the reported problem: sliding a
+fixed-width year window showed 10×+ dot-density swings (sparse early years,
+dense recent). Client-side only: the sole change is a NEW pure module
+`site/src/lib/atlas/year_density.ts` (`calibrate` / `yearQuota` /
+`yearAwareSample`, vitest-tested) wired into the existing
+`scatterBackdropForMap` derivation (`+page.svelte:840`) — full-span (no
+year filter) keeps today's `lod_level ≤ cap` path UNCHANGED (FR-004), so
+the default landing view, atlas-root, and `/ohbm2026/` are untouched.
+Calibration constant `k = targetBudget / Σ√count_y` (targetBudget ≈ the
+current full-span base-sample size) is computed once from the loaded
+corpus (runtime-discovered, never a hardcoded 1999–2023 table). No change
+to filtering semantics (result list/counts still report true filtered
+totals — FR-006); `UmapPanel` unchanged; `backdropFull` viewport detail is
+already year-filtered so zoom respects the window (FR-008). No corpus/
+pipeline rerun and no data-package re-publish (byte-identical preserved).
+Verified failing-first via `vitest run` (9 sampler cases in
+`contracts/year-density-sampler.md`) + a `neuroscape_year_density` e2e
+(dot-count-band B1–B6 in `contracts/render-integration.md`). Companions:
+`research.md`, `data-model.md`,
+`contracts/{year-density-sampler,render-integration}.md`, `quickstart.md`.
+
+The immediately-prior Stage 25 plan is at
+`specs/025-neuroscape-year-range-slider/plan.md`. Stage 25 (Track A,
 UI-only, `site/`, neuroscape mode only) replaces the NeuroScape atlas
 "Years" facet's two free-text number boxes (`From`/`To` in
 `NeuroscapeFacets.svelte:126–151`) with a **dual-handle range slider**
