@@ -23,15 +23,18 @@ test.use({ viewport: { width: 420, height: 560 } });
 const MANY = Array.from({ length: 40 }, (_, i) => i + 1).join(',');
 
 test('cart drawer footer stays on-screen with a full cart (no overflow)', async ({ page }) => {
+	// Pre-set the analytics-consent choice so the first-visit consent banner
+	// never appears — it otherwise overlays the drawer's footer buttons and
+	// intercepts pointer events on a fresh context.
+	await page.addInitScript(() => {
+		try {
+			localStorage.setItem('ohbm2026.analytics.consent.v1', 'denied');
+		} catch {
+			/* storage unavailable — banner will show; not this test's concern */
+		}
+	});
 	await page.goto(`./?cart=ohbm2026:${MANY}`);
 	await expect(page.getByTestId('header-cart')).toBeVisible({ timeout: 20_000 });
-	// Dismiss the first-visit analytics consent banner so it doesn't overlay the
-	// drawer's footer buttons (it intercepts pointer events on a fresh context).
-	const consent = page.getByTestId('consent-decline');
-	if (await consent.isVisible().catch(() => false)) {
-		await consent.click();
-		await expect(page.getByTestId('consent-banner')).toHaveCount(0, { timeout: 5_000 });
-	}
 
 	await page.getByTestId('header-cart').click();
 	await expect(page.getByTestId('cart-drawer')).toBeVisible({ timeout: 5_000 });
