@@ -54,7 +54,12 @@ async function dragToFraction(page: Page, testid: string, frac: number): Promise
 
 test.describe('Spec 025: /neuroscape/ year range slider', () => {
 	test.beforeEach(async ({ page }) => {
-		test.setTimeout(180_000);
+		// Heavy suite: every handle/band drag recomputes the year filter
+		// over the 461k-article corpus + re-renders the backdrop (~30-60s
+		// each on the preview infra), and U4 chains three drags after the
+		// stabilisation wait. 180s tips over on the busiest test; budget
+		// 240s to match the semantic suite and stop riding the timeout.
+		test.setTimeout(240_000);
 		await page.goto(neuroscapeUrl(), { waitUntil: 'domcontentloaded' });
 		await page.getByTestId('search-input').waitFor({ state: 'visible', timeout: 30_000 });
 		// Wait for the backdrop/result list to populate AND settle. The
