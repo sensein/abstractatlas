@@ -143,6 +143,31 @@ describe('yearAwareSample() — case 7 (empty input)', () => {
 	});
 });
 
+describe('yearAwareSample() — invalid year / lod_level are ignored deterministically', () => {
+	it('drops points with non-finite year (never a NaN/undefined bucket key)', () => {
+		const dirty: DensityPoint[] = [
+			...pts(2010, 100),
+			{ pubmed_id: 999999, year: NaN as unknown as number, lod_level: 0 },
+			{ pubmed_id: 999998, year: undefined as unknown as number, lod_level: 0 }
+		];
+		const calib = calibrate(dirty, 10); // Σ√ counts only the valid year (2010)
+		const out = yearAwareSample(dirty, calib);
+		expect(out.every((p) => p.year === 2010)).toBe(true);
+		expect(out.some((p) => p.pubmed_id === 999999 || p.pubmed_id === 999998)).toBe(false);
+	});
+	it('non-finite lod_level sorts as the rest tier (comparator never returns NaN)', () => {
+		const yr: DensityPoint[] = [
+			{ pubmed_id: 1, year: 2010, lod_level: NaN as unknown as number },
+			{ pubmed_id: 2, year: 2010, lod_level: 0 },
+			{ pubmed_id: 3, year: 2010, lod_level: 1 }
+		];
+		const calib = { targetBudget: 2, k: 2 / Math.sqrt(3) }; // quota = round(k√3) = 2
+		const out = yearAwareSample(yr, calib);
+		// lowest finite lod_levels (0,1 → pubmed 2,3) win; the NaN one is last.
+		expect(out.map((p) => p.pubmed_id).sort((a, b) => a - b)).toEqual([2, 3]);
+	});
+});
+
 describe('yearAwareSample() — case 8 (legacy: no lod_level)', () => {
 	it('deterministic, reproducible selection when lod_level is absent', () => {
 		const yr: DensityPoint[] = Array.from({ length: 10 }, (_, i) => ({

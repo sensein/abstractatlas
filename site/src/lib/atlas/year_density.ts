@@ -33,10 +33,15 @@ export interface DensityCalibration {
 	k: number;
 }
 
-/** Per-year article counts from a point list. */
+/** Per-year article counts from a point list. Points without a finite
+ *  `year` are ignored so a NaN/undefined key can never enter the map and
+ *  break the deterministic year sort downstream. */
 function countsByYear(points: readonly DensityPoint[]): Map<number, number> {
 	const counts = new Map<number, number>();
-	for (const p of points) counts.set(p.year, (counts.get(p.year) ?? 0) + 1);
+	for (const p of points) {
+		if (!Number.isFinite(p.year)) continue;
+		counts.set(p.year, (counts.get(p.year) ?? 0) + 1);
+	}
 	return counts;
 }
 
@@ -74,9 +79,12 @@ export function yearAwareSample(
 ): DensityPoint[] {
 	if (points.length === 0 || calib.k <= 0) return [];
 
-	// Bucket by year.
+	// Bucket by year, skipping points without a finite year so the year
+	// keys stay strictly numeric (a NaN/undefined key would make the
+	// ascending-year sort below non-deterministic).
 	const byYear = new Map<number, DensityPoint[]>();
 	for (const p of points) {
+		if (!Number.isFinite(p.year)) continue;
 		const bucket = byYear.get(p.year);
 		if (bucket) bucket.push(p);
 		else byYear.set(p.year, [p]);
@@ -97,8 +105,12 @@ export function yearAwareSample(
 		// tiebreak ascending pubmed_id. Missing lod_level sorts as +∞ so
 		// legacy builds fall back to a deterministic pubmed_id order.
 		const ranked = [...bucket].sort((a, b) => {
-			const la = a.lod_level ?? Number.POSITIVE_INFINITY;
-			const lb = b.lod_level ?? Number.POSITIVE_INFINITY;
+			// `?? +Inf` handles null/undefined; `Number.isFinite` additionally
+			// treats NaN (and ±Inf) as the rest tier, so the comparator can
+			// never return NaN → the sort stays deterministic. Legacy builds
+			// (no lod_level) fall through to the pubmed_id tiebreak.
+			const la = Number.isFinite(a.lod_level) ? (a.lod_level as number) : Number.POSITIVE_INFINITY;
+			const lb = Number.isFinite(b.lod_level) ? (b.lod_level as number) : Number.POSITIVE_INFINITY;
 			if (la !== lb) return la - lb;
 			return a.pubmed_id - b.pubmed_id;
 		});
