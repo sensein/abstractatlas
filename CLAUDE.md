@@ -169,7 +169,38 @@ Current canonical defaults (the UI consumes these):
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at `specs/024-fix-ios-safari-load/plan.md`. Stage 24 (Track A, UI-only,
+at `specs/025-neuroscape-year-range-slider/plan.md`. Stage 25 (Track A,
+UI-only, `site/`, neuroscape mode only) replaces the NeuroScape atlas
+"Years" facet's two free-text number boxes (`From`/`To` in
+`NeuroscapeFacets.svelte:126–151`) with a **dual-handle range slider**
+that (a) sets the start/end endpoints by dragging each handle and (b)
+shifts the whole selected window — width preserved — by dragging the band
+between the handles (FR-004). No new npm dependency: the slider is built
+in-house from a `<div>` track + two `role="slider"` thumbs + a draggable
+fill, driven by Pointer Events (mouse+touch one path) + arrow/Home/End
+keyboard (research R1). The window math (clamp, setStart/setEnd,
+moveWindow with width-preserving clamp, resolveSpan for crossed handles,
+isFullSpan, toFilter/fromFilter) is extracted into a pure, vitest-tested
+module NEW `site/src/lib/filter/year_range.ts` (co-located with the
+existing `$lib/filter` `normalize`); the NEW
+`site/src/lib/components/YearRangeSlider.svelte` owns only DOM/gesture
+concerns. The existing state plumbing is REUSED UNCHANGED: `+page.svelte`
+keeps `filterMinYear`/`filterMaxYear: number|null` (`null` ⇒ unbounded /
+full-span = inactive, FR-007) and the derived `yearBounds {lo,hi}` (min/max
+year over the loaded backdrop — runtime-discovered, never hardcoded
+1999–2023, CA-007); `NeuroscapeFacets` keeps emitting the same `update`
+payload `{cluster_ids,min_year,max_year}`, so the downstream year filter
+(`yLo = filterMinYear ?? yearBounds.lo` etc.) and the `activeCount`/Clear
+logic are untouched (no filtering-semantics regression, SC-003). Verified
+failing-first via `vitest run` unit tests (9 helper cases in
+`contracts/year-range-helper.md`) + a Playwright `neuroscape_year_slider`
+e2e (U1–U6 in `contracts/slider-ui.md`). Client-side only; no corpus/
+pipeline rerun and no data-package re-publish (byte-identical preserved).
+Companions: `research.md`, `data-model.md`,
+`contracts/{year-range-helper,slider-ui}.md`, `quickstart.md`.
+
+The immediately-prior Stage 24 plan is at
+`specs/024-fix-ios-safari-load/plan.md`. Stage 24 (Track A, UI-only,
 `site/`) fixes the `/ohbm2026/` atlas failing to load on iPhone Safari
 (blank screen / endless spinner). Root cause is NOT a JS build-target
 issue (the SvelteKit default `modules` target parses on modern iOS) but a
