@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.provenance.normalise_path``.
+"""Tests for ``abstractatlas.atlas_package.provenance.normalise_path``.
 
 Spec: ``specs/015-neuroscape-context/`` — CA-008 + research R-009
 ``AtlasProvenanceError`` contract. Every Stage 15 provenance field
@@ -17,8 +17,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from ohbm2026 import exceptions
-from ohbm2026.atlas_package import provenance
+from abstractatlas import exceptions
+from abstractatlas.atlas_package import provenance
 
 
 class NormalisePathHappyPathTests(unittest.TestCase):

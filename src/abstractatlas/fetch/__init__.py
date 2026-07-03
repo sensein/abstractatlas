@@ -4,6 +4,6 @@ Public surface re-exported here so callers can use the package-level
 import path instead of dipping into submodules.
 """
 
-from ohbm2026.fetch import schema_diff, stage
+from abstractatlas.fetch import schema_diff, stage
 
 __all__ = ["schema_diff", "stage"]

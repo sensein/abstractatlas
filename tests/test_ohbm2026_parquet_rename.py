@@ -8,7 +8,7 @@ inside the file are unchanged for the same input envelope.
 
 This module enforces the byte-identity property at the Python level:
 
-- The module-level :data:`ohbm2026.ui_data.formats.parquet_single.DEFAULT_OUTPUT_FILENAME`
+- The module-level :data:`abstractatlas.ui_data.formats.parquet_single.DEFAULT_OUTPUT_FILENAME`
   constant equals the new name.
 - A real ``build_ui_data_package`` run with the parquet-single emitter
   produces a file at the new path (``<out>/ohbm2026.parquet``) and NOT
@@ -31,8 +31,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ohbm2026.ui_data.builder import build_ui_data_package
-from ohbm2026.ui_data.formats import parquet_single
+from abstractatlas.ui_data.builder import build_ui_data_package
+from abstractatlas.ui_data.formats import parquet_single
 
 from tests._ui_data_fixtures import BUILD_INFO, write_fixtures
 

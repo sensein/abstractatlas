@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.centroids` (US3).
+"""Tests for `abstractatlas.analyze.centroids` (US3).
 
 Coverage per spec FR-008 / CA-002 / CA-007:
 - `spherical_mean` produces unit-norm direction means matching the
@@ -26,7 +26,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from ohbm2026.analyze.centroids import (
+from abstractatlas.analyze.centroids import (
     STAGE2_DIM,
     CentroidTable,
     assign_nearest_centroid,
@@ -34,7 +34,7 @@ from ohbm2026.analyze.centroids import (
     spherical_mean,
     write_neuroscape_clusters_bundle,
 )
-from ohbm2026.exceptions import (
+from abstractatlas.exceptions import (
     AnalysisError,
     CentroidTableMissing,
     CentroidTableVersionMismatch,

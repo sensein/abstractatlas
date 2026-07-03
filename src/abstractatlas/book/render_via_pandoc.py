@@ -23,7 +23,7 @@ import shutil
 import subprocess
 from importlib import resources
 
-from ohbm2026.exceptions import BookBuildError
+from abstractatlas.exceptions import BookBuildError
 
 
 def _which_or_raise(binary: str, hint: str) -> str:
@@ -111,7 +111,7 @@ def _prewarm_tectonic_cache(pandoc_path: str, engine_binary: str) -> None:
     # Lazy import to avoid the circular dep render_via_pandoc <→
     # render_per_abstract (both reference each other for the
     # production pipeline).
-    from ohbm2026.book.render_per_abstract import per_abstract_header_path
+    from abstractatlas.book.render_per_abstract import per_abstract_header_path
 
     # Minimal markdown that exercises the per-abstract preamble:
     # geometry + longtable + textsuperscript + math.
@@ -162,7 +162,7 @@ def _header_includes_path(style: str, *, margins: str = "tight") -> pathlib.Path
     The Tufte style is independent of the margins flag — Tufte's
     sidenote layout has its own geometry contract.
     """
-    pkg = resources.files("ohbm2026.book.templates")
+    pkg = resources.files("abstractatlas.book.templates")
     if style == "tufte":
         return pathlib.Path(str(pkg.joinpath("header-includes-tufte.tex")))
     if margins == "loose":
@@ -187,7 +187,7 @@ def to_pdf(
     Parameters
     ----------
     book :
-        Loaded :class:`ohbm2026.book.model.Book`. The renderer iterates
+        Loaded :class:`abstractatlas.book.model.Book`. The renderer iterates
         ``book.entries`` and uses ``book.author_index`` for the
         appendix.
     output_dir :
@@ -214,12 +214,12 @@ def to_pdf(
     cache hit/miss counts. The CLI hands this to the provenance writer.
     """
 
-    from ohbm2026.book.assemble_pdf import assemble
-    from ohbm2026.book.model import (
+    from abstractatlas.book.assemble_pdf import assemble
+    from abstractatlas.book.model import (
         AbstractPdfChunk,
         PerAbstractFailure,
     )
-    from ohbm2026.book.render_per_abstract import (
+    from abstractatlas.book.render_per_abstract import (
         per_abstract_header_path,
         render_one,
     )
@@ -334,7 +334,7 @@ def to_pdf(
     # If v2's page count drifts from v1 (rare, only when title widths
     # vary enough to change line wrap), warn + use v2 anyway; the
     # offsets stay correct because `assemble` re-measures via pikepdf.
-    from ohbm2026.book.assemble_pdf import _build_toc_markdown
+    from abstractatlas.book.assemble_pdf import _build_toc_markdown
 
     sorted_entries = tuple(c for c in surviving)  # already in --sort order
     # Map of poster_id → BookEntry for the TOC's title column.
@@ -477,14 +477,14 @@ def _render_front_matter(
 
     import pikepdf
 
-    from ohbm2026.book.cache import (
+    from abstractatlas.book.cache import (
         cache_pdf_path,
         compute_cache_key,
         hash_header_includes,
         load_cached_pdf,
         store_cached_pdf_from_path,
     )
-    from ohbm2026.book.model import AbstractPdfChunk
+    from abstractatlas.book.model import AbstractPdfChunk
 
     header_hash = hash_header_includes(header_includes_path)
     key = compute_cache_key(

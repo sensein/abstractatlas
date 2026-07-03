@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from ohbm2026.exceptions import HostingComparisonError
+from abstractatlas.exceptions import HostingComparisonError
 
 SCHEMA_VERSION = "data_hosting_comparison.v1"
 _ORDER = ("ohbm2026", "neuroscape", "atlas", "neuroscape_vectors")

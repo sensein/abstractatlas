@@ -14,7 +14,7 @@ import hashlib
 import re
 from typing import Any, Literal
 
-from ohbm2026.exceptions import EnrichmentError
+from abstractatlas.exceptions import EnrichmentError
 
 __all__ = [
     "ReferencesRunSummary",
@@ -129,7 +129,7 @@ def run_references_component(
         # seam requires a separate spec round (Stage 2.2 candidate).
         # Operators can pass an explicit resolver via the
         # `resolver=` kwarg to plug richer resolution in.
-        from ohbm2026.enrich import openalex as _openalex
+        from abstractatlas.enrich import openalex as _openalex
 
         def _local_resolver(reference_text: str, strategy_id: str) -> list[dict]:
             lines = _split_references(reference_text)

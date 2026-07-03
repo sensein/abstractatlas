@@ -53,7 +53,7 @@ from typing import Any
 
 import numpy as np
 
-from ohbm2026.exceptions import UmapCacheError, UmapFitError
+from abstractatlas.exceptions import UmapCacheError, UmapFitError
 
 __all__ = [
     "UmapFitParams",
@@ -108,7 +108,7 @@ class UmapFitResult:
 
     ``embedded`` is the (N, n_components) float32 projection. ``model``
     is the fitted ``umap.UMAP`` instance — the OHBM projector
-    (:mod:`ohbm2026.atlas_package.ohbm_projector`, T024) uses
+    (:mod:`abstractatlas.atlas_package.ohbm_projector`, T024) uses
     ``model.transform`` to land out-of-sample vectors in the same
     space without re-fitting.
     """
@@ -327,7 +327,7 @@ def fit(
 
     _validate_input(vectors)
 
-    # Lazy import keeps ``ohbm2026.atlas_package`` lightweight; umap is
+    # Lazy import keeps ``abstractatlas.atlas_package`` lightweight; umap is
     # only needed inside fit/transform paths.
     import umap  # type: ignore[import-untyped]
 

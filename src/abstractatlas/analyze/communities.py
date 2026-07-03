@@ -33,7 +33,7 @@ from typing import Any
 
 import numpy as np
 
-from ohbm2026.exceptions import AnalysisError, CommunityResolutionDegenerate
+from abstractatlas.exceptions import AnalysisError, CommunityResolutionDegenerate
 
 
 __all__ = [
@@ -453,7 +453,7 @@ def write_communities_bundle(
     left as `None` for the topics-skipping path (`--skip-llm-topics`
     without the local fallback wired yet).
     """
-    from ohbm2026.analyze.storage import write_analysis_bundle
+    from abstractatlas.analyze.storage import write_analysis_bundle
 
     if ids.shape[0] != result.community_ids.shape[0]:
         raise ValueError(

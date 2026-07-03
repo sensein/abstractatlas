@@ -8,7 +8,7 @@ from `load_stage1_bundle(path)` to `compose_recipe([...], model_key=...)`
 with a single-line change.
 
 Lives here (not in `neuroscape.py`) so the Stage 3 surface stays
-self-contained: every Stage 3 caller imports from `ohbm2026.embed_*`.
+self-contained: every Stage 3 caller imports from `abstractatlas.embed_*`.
 The NeuroScape Stage-2 application helper is also Stage-3 logic
 (operates on Voyage matrices to produce NeuroScape-projected
 matrices) and lives here for the same reason.
@@ -25,7 +25,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ohbm2026.exceptions import EmbeddingError
+from abstractatlas.exceptions import EmbeddingError
 
 __all__ = [
     "compose_recipe",
@@ -197,7 +197,7 @@ def apply_published_stage2_to_matrix(
     """
     import numpy as np
     # Lazy import to avoid pulling in torch on import time of this module.
-    from ohbm2026.embed import neuroscape as ns_stage2
+    from abstractatlas.embed import neuroscape as ns_stage2
 
     if voyage_matrix.shape[1] != 1024:
         raise EmbeddingError(

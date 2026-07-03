@@ -28,12 +28,12 @@ from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, Field
 
-from ohbm2026.enrich import flex_tier as flex_tier
-from ohbm2026.enrich.markdown_render import (
+from abstractatlas.enrich import flex_tier as flex_tier
+from abstractatlas.enrich.markdown_render import (
     build_claim_manuscript_markdown,
     build_sections_markdown,
 )
-from ohbm2026.exceptions import ContextLengthExceededError, EnrichmentError
+from abstractatlas.exceptions import ContextLengthExceededError, EnrichmentError
 
 __all__ = [
     "Claim",
@@ -101,7 +101,7 @@ def load_eco_vocabulary() -> dict[str, Any]:
     global _VOCABULARY_CACHE
     if _VOCABULARY_CACHE is not None:
         return _VOCABULARY_CACHE
-    raw = resources.files("ohbm2026.data").joinpath("eco_top_codes.json").read_text(encoding="utf-8")
+    raw = resources.files("abstractatlas.data").joinpath("eco_top_codes.json").read_text(encoding="utf-8")
     data = json.loads(raw)
     data["_id_set"] = frozenset(entry["eco_id"] for entry in data["codes"])
     _VOCABULARY_CACHE = data

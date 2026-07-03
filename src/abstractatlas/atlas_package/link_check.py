@@ -40,7 +40,7 @@ from typing import Any, Callable, Sequence
 
 import requests
 
-from ohbm2026.exceptions import AtlasLinkCheckError
+from abstractatlas.exceptions import AtlasLinkCheckError
 
 __all__ = [
     "DEFAULT_LINKS",

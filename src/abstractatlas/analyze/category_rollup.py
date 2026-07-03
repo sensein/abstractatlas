@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ohbm2026 import artifacts
-from ohbm2026.util.json_io import write_json
+from abstractatlas import artifacts
+from abstractatlas.util.json_io import write_json
 
 ROLLUP_BANDS = ("coarse", "mid", "fine")
 DEFAULT_TOP_CANDIDATES = 3

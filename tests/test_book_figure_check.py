@@ -6,7 +6,7 @@ import pathlib
 import tempfile
 import unittest
 
-from ohbm2026.book.figure_check import (
+from abstractatlas.book.figure_check import (
     PUBLICATION_DPI_THRESHOLD,
     effective_dpi,
     probe_figure,

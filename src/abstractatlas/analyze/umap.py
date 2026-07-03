@@ -30,7 +30,7 @@ from typing import Any
 
 import numpy as np
 
-from ohbm2026.exceptions import (
+from abstractatlas.exceptions import (
     AnalysisError,
     ProjectionDimensionMismatch,
     UnsupportedProjectionAlgorithm,

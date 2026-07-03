@@ -33,12 +33,12 @@ from typing import Any
 
 import numpy as np
 
-from ohbm2026 import artifacts
-from ohbm2026.analyze.clusters import (
+from abstractatlas import artifacts
+from abstractatlas.analyze.clusters import (
     _cluster_distance_metrics,
     detect_semantic_communities,
 )
-from ohbm2026.analyze.storage import (
+from abstractatlas.analyze.storage import (
     DEFAULT_EMBEDDING_FIELDS,
     NeuroScapeError,
     build_distinct_color_map,

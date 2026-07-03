@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 
 
-_VOCAB_PATH = Path(__file__).resolve().parents[1] / "src" / "ohbm2026" / "data" / "eco_top_codes.json"
+_VOCAB_PATH = Path(__file__).resolve().parents[1] / "src" / "abstractatlas" / "data" / "eco_top_codes.json"
 _SCHEMA_PATH = (
     Path(__file__).resolve().parents[1]
     / "specs"

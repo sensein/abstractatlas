@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.ohbm_projector``.
+"""Tests for ``abstractatlas.atlas_package.ohbm_projector``.
 
 Spec: ``specs/015-neuroscape-context/`` — research R-002 (OHBM 2026
 projection into the UMAP space via ``umap.transform``) + R-009
@@ -6,7 +6,7 @@ projection into the UMAP space via ``umap.transform``) + R-009
 
 The projector lands OHBM 2026 Stage-2 vectors into the same 2D/3D
 UMAP solution previously fitted on the NeuroScape corpus by
-:func:`ohbm2026.atlas_package.umap_fit.fit`. Per R-002 it does NOT
+:func:`abstractatlas.atlas_package.umap_fit.fit`. Per R-002 it does NOT
 re-fit the UMAP — it uses the fitted model's ``transform`` method.
 
 Per R-009 the projector aggregates failures across the entire OHBM
@@ -22,8 +22,8 @@ import unittest
 
 import numpy as np
 
-from ohbm2026 import exceptions
-from ohbm2026.atlas_package import ohbm_projector, umap_fit
+from abstractatlas import exceptions
+from abstractatlas.atlas_package import ohbm_projector, umap_fit
 
 
 def _synthetic_vectors(n: int, dim: int = 64, seed: int = 0) -> np.ndarray:

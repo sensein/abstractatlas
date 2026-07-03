@@ -22,7 +22,7 @@ from typing import Any, Callable, Literal
 
 import openai
 
-from ohbm2026.exceptions import ContextLengthExceededError, EnrichmentError
+from abstractatlas.exceptions import ContextLengthExceededError, EnrichmentError
 
 __all__ = [
     "FlexTierResult",

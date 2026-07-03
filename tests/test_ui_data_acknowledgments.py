@@ -39,7 +39,7 @@ class TestAcknowledgmentsField(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.ui_data.abstracts import iter_abstracts
+            from abstractatlas.ui_data.abstracts import iter_abstracts
         except ImportError as exc:
             raise unittest.SkipTest(f"abstracts module not importable: {exc}")
         cls.iter_abstracts = staticmethod(iter_abstracts)

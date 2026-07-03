@@ -15,7 +15,7 @@ from __future__ import annotations
 import time
 from typing import Any, Iterable
 
-from ohbm2026.exceptions import (
+from abstractatlas.exceptions import (
     EmbeddingContractError,
     EmbeddingProviderError,
 )

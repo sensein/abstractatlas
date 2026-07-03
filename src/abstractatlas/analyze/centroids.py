@@ -34,7 +34,7 @@ from typing import Any
 
 import numpy as np
 
-from ohbm2026.exceptions import (
+from abstractatlas.exceptions import (
     AnalysisError,
     CentroidTableMissing,
     CentroidTableVersionMismatch,
@@ -352,7 +352,7 @@ def write_neuroscape_clusters_bundle(
     The bundle does NOT ship a `topics.json` — labels join from
     `cluster_table.csv` via the rollup writer.
     """
-    from ohbm2026.analyze.storage import write_analysis_bundle
+    from abstractatlas.analyze.storage import write_analysis_bundle
 
     if ids.shape[0] != cluster_ids.shape[0] or ids.shape[0] != distances.shape[0]:
         raise ValueError(

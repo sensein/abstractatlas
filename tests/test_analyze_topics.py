@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.topics` (US5).
+"""Tests for `abstractatlas.analyze.topics` (US5).
 
 Coverage per FR-009 + CA-002:
 - Phrase extraction returns canonicalized noun-chunks + entities.
@@ -23,14 +23,14 @@ from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 
-from ohbm2026.analyze.topics import (
+from abstractatlas.analyze.topics import (
     DEFAULT_KEYWORD_OUT_N,
     build_topics_artifact,
     compute_ctfidf,
     extract_cluster_phrases_local,
     group_phrases_via_llm,
 )
-from ohbm2026.exceptions import AnalysisError, TopicGroupingHallucination
+from abstractatlas.exceptions import AnalysisError, TopicGroupingHallucination
 
 
 @contextmanager

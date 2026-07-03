@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ohbm2026.layout import poster_layout, poster_sequencing
+from abstractatlas.layout import poster_layout, poster_sequencing
 
 
 def _response(parent: str, subcategory: str) -> dict[str, str]:

@@ -22,16 +22,16 @@ from pathlib import Path
 import numpy as np
 
 # Ensure runners register on import.
-import ohbm2026.analyze  # noqa: F401
-from ohbm2026.analyze.centroids import STAGE2_DIM
-from ohbm2026.analyze.runners import neuroscape_clusters_runner
-from ohbm2026.analyze.stage import (
+import abstractatlas.analyze  # noqa: F401
+from abstractatlas.analyze.centroids import STAGE2_DIM
+from abstractatlas.analyze.runners import neuroscape_clusters_runner
+from abstractatlas.analyze.stage import (
     AnalysisConfig,
     KIND_RUNNERS,
     PlanEntry,
     run_matrix,
 )
-from ohbm2026.exceptions import AnalysisError
+from abstractatlas.exceptions import AnalysisError
 
 
 @contextmanager
@@ -181,7 +181,7 @@ class NeuroscapeClustersRunnerTests(unittest.TestCase):
     def test_checkpoint_sha_mismatch_raises(self) -> None:
         """Centroid metadata and Stage 3 neuroscape provenance must agree
         on the domain-model checkpoint SHA (FR-008 step (c))."""
-        from ohbm2026.exceptions import CentroidTableVersionMismatch
+        from abstractatlas.exceptions import CentroidTableVersionMismatch
 
         with _isolated_cwd():
             _seed_neuroscape_stage3_bundle("abc123def456", n_rows=3)

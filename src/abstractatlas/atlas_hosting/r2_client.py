@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-from ohbm2026.exceptions import R2CredentialsError, R2UploadError
+from abstractatlas.exceptions import R2CredentialsError, R2UploadError
 
 PathLike = Union[str, Path]
 

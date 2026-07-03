@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from ohbm2026.util.json_io import write_json
+from abstractatlas.util.json_io import write_json
 
 # Stage-6 deterministic mtime (2026-01-01 UTC) — preserves tarball
 # byte-identity across rebuilds for Dropbox share-link inode stability.

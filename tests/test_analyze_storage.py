@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.storage.write_analysis_bundle`.
+"""Tests for `abstractatlas.analyze.storage.write_analysis_bundle`.
 
 Per spec FR-010 + contracts/bundle.md, every Stage 4 bundle ships an
 atomic-rename write of `ids.npy` + payload `*.npy` + `metadata.json` +
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ohbm2026.analyze.storage import write_analysis_bundle, iter_analysis_bundles
+from abstractatlas.analyze.storage import write_analysis_bundle, iter_analysis_bundles
 
 
 class WriteAnalysisBundleTests(unittest.TestCase):

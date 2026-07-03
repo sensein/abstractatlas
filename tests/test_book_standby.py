@@ -11,7 +11,7 @@ import pathlib
 import tempfile
 import unittest
 
-from ohbm2026.standby import (
+from abstractatlas.standby import (
     StandbyTimes as _ParserStandbyTimes,
     load_standby_csv,
     parse_window,
@@ -58,7 +58,7 @@ class TestParser(unittest.TestCase):
 
 class TestLoadBookWithStandby(unittest.TestCase):
     def setUp(self) -> None:
-        from ohbm2026.book.corpus import load_book
+        from abstractatlas.book.corpus import load_book
 
         self.book = load_book(
             corpus_path=_FIX / "abstracts.json",
@@ -94,7 +94,7 @@ class TestLoadBookWithStandby(unittest.TestCase):
         )
 
     def test_no_standby_when_path_omitted(self) -> None:
-        from ohbm2026.book.corpus import load_book
+        from abstractatlas.book.corpus import load_book
 
         book = load_book(
             corpus_path=_FIX / "abstracts.json",
@@ -110,10 +110,10 @@ class TestLoadBookWithStandby(unittest.TestCase):
 class TestMarkdownStandbyLine(unittest.TestCase):
     def setUp(self) -> None:
         from dataclasses import replace
-        from ohbm2026.book.author_index import build_author_index
-        from ohbm2026.book.corpus import load_book
-        from ohbm2026.book.render_markdown import emit_book_md
-        from ohbm2026.book.sort import by_poster_id
+        from abstractatlas.book.author_index import build_author_index
+        from abstractatlas.book.corpus import load_book
+        from abstractatlas.book.render_markdown import emit_book_md
+        from abstractatlas.book.sort import by_poster_id
 
         self.tmp = tempfile.TemporaryDirectory()
         self.outdir = pathlib.Path(self.tmp.name)

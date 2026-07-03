@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from ohbm2026 import artifacts
+from abstractatlas import artifacts
 from scipy.cluster.hierarchy import leaves_list, linkage, optimal_leaf_ordering
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components, laplacian
@@ -18,7 +18,7 @@ from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 from sklearn.neighbors import NearestNeighbors
 
-from ohbm2026.layout.poster_layout import (
+from abstractatlas.layout.poster_layout import (
     BLOCK_TO_SESSIONS,
     BLOCK_LABELS,
     SESSION_LABELS,

@@ -3,7 +3,7 @@
 Spec: ``specs/015-neuroscape-context/`` — research R-002 + R-009.
 
 The Stage-15 orchestrator fits UMAP once on the NeuroScape corpus
-(:func:`ohbm2026.atlas_package.umap_fit.fit`), then lands the ~3K
+(:func:`abstractatlas.atlas_package.umap_fit.fit`), then lands the ~3K
 OHBM 2026 abstracts into the same coordinate frame via this module.
 We **never** re-fit UMAP on the OHBM 2026 vectors alone (R-002): a
 union-fit would shift the NeuroScape points across rebuilds, and a
@@ -30,7 +30,7 @@ from typing import Iterable
 
 import numpy as np
 
-from ohbm2026.exceptions import OhbmProjectionError
+from abstractatlas.exceptions import OhbmProjectionError
 
 from .umap_fit import UmapFitResult
 

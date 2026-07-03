@@ -8,7 +8,7 @@
 
 1. **Consistent search** semantics across `ohbm2026`, `atlas-root`, `neuroscape` — same query grammar, same ranking contract, same result-assembly shape.
 2. **Exhaustive reachability** — despite NeuroScape/atlas-root scale (~461k articles), the algorithm must provide a path to search the *entire* corpus, not a sample or a single routed cluster.
-3. **UMAP-independent search** — what is rendered in the scatter must never gate search results on atlas-root or neuroscape. The scatter is display-only. It may *filter* results only when the user explicitly acts (facet selection, lasso) — exactly like ohbm2026.
+3. **UMAP-independent search** — what is rendered in the scatter must never gate search results on atlas-root or neuroscape. The scatter is display-only. It may *filter* results only when the user explicitly acts (facet selection, lasso) — exactly like abstractatlas.
 
 ---
 

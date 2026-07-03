@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from ohbm2026.analyze.clusters import (
+from abstractatlas.analyze.clusters import (
     align_semantic_records,
     build_cluster_benchmark_parser,
     build_knn_graph,
@@ -21,7 +21,7 @@ from ohbm2026.analyze.clusters import (
     summarize_semantic_clusters,
     summarize_stage2_clusters,
 )
-from ohbm2026.analyze.projections import (
+from abstractatlas.analyze.projections import (
     build_projection_compare_parser,
     build_projection_graph,
     build_projection_optimize_parser,
@@ -36,7 +36,7 @@ from ohbm2026.analyze.projections import (
     umap_main,
     write_projection_comparison_outputs,
 )
-from ohbm2026.analyze.storage import (
+from abstractatlas.analyze.storage import (
     DEFAULT_EMBEDDING_FIELDS,
     build_claim_embedding_text,
     build_distinct_color_map,
@@ -54,7 +54,7 @@ from ohbm2026.analyze.storage import (
     normalize_embedding_fields,
     parse_string_list_value,
 )
-from ohbm2026.embed.neuroscape import (
+from abstractatlas.embed.neuroscape import (
     apply_pretrained_stage2_main,
     build_apply_pretrained_stage2_parser,
     load_pretrained_stage2_model,
@@ -870,7 +870,7 @@ class NeuroScapeHelpersTest(unittest.TestCase):
     def test_projection_traces_share_legend_groups_across_methods(self) -> None:
         import numpy as np
         from plotly.subplots import make_subplots
-        import ohbm2026.analyze.projections as neuroscape_module
+        import abstractatlas.analyze.projections as neuroscape_module
 
         records = [
             {"id": 1, "title": "One", "accepted_for": "Poster", "primary_topic": "MRI", "keywords": ["a"]},
@@ -1253,8 +1253,8 @@ class NeuroScapeHelpersTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with mock.patch("ohbm2026.analyze.projections.compute_umap_projection", return_value=np.asarray([[0.1, 0.2], [0.3, 0.4]])), \
-                 mock.patch("ohbm2026.analyze.projections.write_umap_outputs") as write_umap_outputs_mock, \
+            with mock.patch("abstractatlas.analyze.projections.compute_umap_projection", return_value=np.asarray([[0.1, 0.2], [0.3, 0.4]])), \
+                 mock.patch("abstractatlas.analyze.projections.write_umap_outputs") as write_umap_outputs_mock, \
                  mock.patch("builtins.print") as fake_print:
                 result = umap_main(
                     [
@@ -1327,13 +1327,13 @@ class NeuroScapeHelpersTest(unittest.TestCase):
             enriched_path.write_text(json.dumps({"abstracts": [{"id": 1}, {"id": 2}]}), encoding="utf-8")
 
             with mock.patch(
-                "ohbm2026.analyze.projections.compute_umap_projection",
+                "abstractatlas.analyze.projections.compute_umap_projection",
                 return_value=np.asarray([[0.1, 0.2], [0.3, 0.4]], dtype=np.float32),
             ), mock.patch(
-                "ohbm2026.analyze.projections.compute_tsne_projection",
+                "abstractatlas.analyze.projections.compute_tsne_projection",
                 return_value=np.asarray([[1.1, 1.2], [1.3, 1.4]], dtype=np.float32),
             ), mock.patch(
-                "ohbm2026.analyze.projections.write_projection_comparison_outputs"
+                "abstractatlas.analyze.projections.write_projection_comparison_outputs"
             ) as write_projection_comparison_outputs_mock, mock.patch("builtins.print") as fake_print:
                 result = projection_compare_main(
                     [
@@ -1385,7 +1385,7 @@ class NeuroScapeHelpersTest(unittest.TestCase):
                 "results": [{"method": "umap"}, {"method": "tsne"}],
             }
             with mock.patch(
-                "ohbm2026.analyze.projections.optimize_projection_parameters",
+                "abstractatlas.analyze.projections.optimize_projection_parameters",
                 return_value=optimization_payload,
             ) as optimize_mock, mock.patch("builtins.print") as fake_print:
                 result = projection_optimize_main(
@@ -1432,10 +1432,10 @@ class NeuroScapeHelpersTest(unittest.TestCase):
             fake_model = object()
             projected = np.asarray([[0.1] * 64, [0.2] * 64], dtype=np.float32)
             with mock.patch(
-                "ohbm2026.embed.neuroscape.load_pretrained_stage2_model",
+                "abstractatlas.embed.neuroscape.load_pretrained_stage2_model",
                 return_value=(fake_model, "cpu"),
             ) as load_model_mock, mock.patch(
-                "ohbm2026.embed.neuroscape.apply_stage2_model",
+                "abstractatlas.embed.neuroscape.apply_stage2_model",
                 return_value=projected,
             ) as apply_mock, mock.patch(
                 "builtins.print"

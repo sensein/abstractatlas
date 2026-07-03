@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.lod`` — quadtree blue-noise LOD.
+"""Tests for ``abstractatlas.atlas_package.lod`` — quadtree blue-noise LOD.
 
 Spec: ``specs/019-neuroscape-semantic-search/plan-lod-backdrop.md``.
 
@@ -17,7 +17,7 @@ import unittest
 
 import numpy as np
 
-from ohbm2026.atlas_package import lod
+from abstractatlas.atlas_package import lod
 
 
 def _grid_cell(coords: np.ndarray, resolution: int) -> np.ndarray:

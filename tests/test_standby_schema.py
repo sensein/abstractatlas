@@ -30,13 +30,13 @@ class TestDeriveStandbySlots(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.ui_data.standby_slots import (
+            from abstractatlas.ui_data.standby_slots import (
                 build_poster_to_index_map,
                 derive_standby_slots,
             )
         except ImportError as exc:
             raise unittest.SkipTest(
-                f"ohbm2026.ui_data.standby_slots not yet implemented: {exc}"
+                f"abstractatlas.ui_data.standby_slots not yet implemented: {exc}"
             )
         cls.derive = staticmethod(derive_standby_slots)
         cls.build_map = staticmethod(build_poster_to_index_map)
@@ -132,7 +132,7 @@ class TestParquetSchemaVersionBump(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.ui_data.formats import parquet_single  # noqa: F401
+            from abstractatlas.ui_data.formats import parquet_single  # noqa: F401
         except ImportError as exc:
             raise unittest.SkipTest(f"parquet_single module not importable: {exc}")
         cls.module = parquet_single

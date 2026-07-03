@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.neuroscape_loader``.
+"""Tests for ``abstractatlas.atlas_package.neuroscape_loader``.
 
 Spec: ``specs/015-neuroscape-context/`` — research R-001 + data-model
 ``NeuroScapeArticle`` / ``NeuroScapeCluster`` + research R-009
@@ -20,8 +20,8 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 
-from ohbm2026 import exceptions
-from ohbm2026.atlas_package import neuroscape_loader
+from abstractatlas import exceptions
+from abstractatlas.atlas_package import neuroscape_loader
 
 from tests._atlas_fixtures import (
     FIXTURE_CLUSTERS_TOP_LEVEL,

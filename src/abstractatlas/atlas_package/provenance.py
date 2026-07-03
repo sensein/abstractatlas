@@ -10,7 +10,7 @@ VIII — no absolute or user-home paths anywhere in the record).
 This module exposes ``normalise_path``, the gate used by every Stage
 15 callsite that records a filesystem path into provenance. The
 function returns a repo-relative ``str`` on the happy path and raises
-:class:`ohbm2026.exceptions.AtlasProvenanceError` with structured
+:class:`abstractatlas.exceptions.AtlasProvenanceError` with structured
 kwargs on violation.
 
 Per Principle VI the rejection is loud — there is no silent fallback
@@ -22,7 +22,7 @@ from __future__ import annotations
 from pathlib import Path, PurePosixPath
 from typing import Union
 
-from ohbm2026.exceptions import AtlasProvenanceError
+from abstractatlas.exceptions import AtlasProvenanceError
 
 __all__ = ["normalise_path"]
 

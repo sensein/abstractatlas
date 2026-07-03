@@ -41,7 +41,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from ohbm2026.exceptions import VectorsParquetWriteError
+from abstractatlas.exceptions import VectorsParquetWriteError
 
 __all__ = ["write_neuroscape_vectors_parquet", "ROW_GROUP_SIZE", "VECTOR_DIM"]
 

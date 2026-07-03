@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ohbm2026 import artifacts
-from ohbm2026.util.json_io import load_json, write_json
+from abstractatlas import artifacts
+from abstractatlas.util.json_io import load_json, write_json
 
 DEFAULT_TITLE_MODIFICATIONS_OUTPUT = str(artifacts.TITLE_MODIFICATIONS_PATH)
 

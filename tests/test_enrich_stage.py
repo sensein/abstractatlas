@@ -193,7 +193,7 @@ def _patch_components(
     backend_availability=None,
 ):
     """Patch the three Stage 2.1 per-abstract production seams + the
-    backend-availability classifier on `ohbm2026.enrich.stage`. Each
+    backend-availability classifier on `abstractatlas.enrich.stage`. Each
     runner is a callable that takes a per-abstract signature and
     returns a `(records_list, RunSummary)` tuple.
 
@@ -204,7 +204,7 @@ def _patch_components(
     behavior even though the production path runs references
     corpus-wide before per-abstract dispatch.
     """
-    from ohbm2026.enrich import stage as enrich_stage
+    from abstractatlas.enrich import stage as enrich_stage
 
     patches = []
     if figure_runner is not None:
@@ -310,7 +310,7 @@ class _StackedPatches:
 
 
 def _default_backend_availability():
-    from ohbm2026.enrich import stage as enrich_stage
+    from abstractatlas.enrich import stage as enrich_stage
 
     return enrich_stage.BackendAvailability(
         figures_backend="openai",
@@ -333,9 +333,9 @@ def _ref_count(record: dict) -> int:
 def _default_runners():
     """Standard per-abstract runners that return deterministic synthetic
     `(records_list, RunSummary)` tuples for the new Stage 2.1 seams."""
-    from ohbm2026.enrich import figures as stage2_figures
-    from ohbm2026.enrich import claims as stage2_claims
-    from ohbm2026.enrich import references as stage2_references
+    from abstractatlas.enrich import figures as stage2_figures
+    from abstractatlas.enrich import claims as stage2_claims
+    from abstractatlas.enrich import references as stage2_references
 
     figure_calls = []
     claims_calls = []
@@ -415,11 +415,11 @@ def _seed_assets(tmp: Path, abstracts: list[dict]) -> None:
 
 
 def _run_and_capture(tmp: Path, argv: list[str], env: dict[str, str] | None = None) -> int:
-    from ohbm2026.enrich import stage as enrich_stage
+    from abstractatlas.enrich import stage as enrich_stage
 
     env = env or {"OPENAI_API_KEY": "fake-key", "OPENALEX_API": "fake-alex"}
     with mock.patch.dict(os.environ, env, clear=False):
-        with mock.patch("ohbm2026.enrich.stage.Path.cwd", return_value=tmp):
+        with mock.patch("abstractatlas.enrich.stage.Path.cwd", return_value=tmp):
             return enrich_stage.main(argv)
 
 
@@ -470,7 +470,7 @@ class InputContractTests(_RepoFixture):
     def test_missing_required_api_key_exits_non_zero(self) -> None:
         """A configured backend that needs OPENAI_API_KEY MUST refuse to
         run with no key (Principle VI: fail loudly, no fallback)."""
-        from ohbm2026.enrich import stage as enrich_stage
+        from abstractatlas.enrich import stage as enrich_stage
 
         tmp = self.tmp_repo()
         _write_source_corpus(tmp, [_abstract(1)])
@@ -481,7 +481,7 @@ class InputContractTests(_RepoFixture):
         )
         with _StackedPatches(_patch_components(backend_availability=unavailable)):
             with mock.patch.dict(os.environ, {}, clear=True):
-                with mock.patch("ohbm2026.enrich.stage.Path.cwd", return_value=tmp):
+                with mock.patch("abstractatlas.enrich.stage.Path.cwd", return_value=tmp):
                     rc = enrich_stage.main([])
         self.assertNotEqual(rc, 0)
 
@@ -569,7 +569,7 @@ class OutputContractTests(_RepoFixture):
             rc = _run_and_capture(tmp, [])
         self.assertEqual(rc, 0)
 
-        from ohbm2026.enrich import storage as enrich_storage
+        from abstractatlas.enrich import storage as enrich_storage
         meta = enrich_storage.corpus_metadata(tmp / "data" / "primary" / "abstracts_enriched.sqlite")
         self.assertEqual(meta["storage_version"], enrich_storage.STORAGE_VERSION)
         self.assertEqual(meta["corpus_kind"], "accepted")
@@ -663,7 +663,7 @@ class ProvenanceContractTests(_RepoFixture):
 
 class ErrorContractTests(_RepoFixture):
     def test_figure_failure_threshold_exceeded_exits_five(self) -> None:
-        from ohbm2026 import exceptions as exc_mod  # noqa: F401
+        from abstractatlas import exceptions as exc_mod  # noqa: F401
 
         tmp = self.tmp_repo()
         abstracts = [_abstract(i) for i in range(1, 11)]
@@ -682,7 +682,7 @@ class ErrorContractTests(_RepoFixture):
         self.assertEqual(rc, 5)
 
     def test_claim_failure_threshold_exceeded_exits_five(self) -> None:
-        from ohbm2026 import exceptions as exc_mod
+        from abstractatlas import exceptions as exc_mod
 
         tmp = self.tmp_repo()
         abstracts = [_abstract(i) for i in range(1, 11)]
@@ -702,7 +702,7 @@ class ErrorContractTests(_RepoFixture):
 
     def test_generic_enrichment_error_below_threshold_completes(self) -> None:
         """Per-record failures BELOW threshold are tolerated (FR-010)."""
-        from ohbm2026 import exceptions as exc_mod
+        from abstractatlas import exceptions as exc_mod
 
         tmp = self.tmp_repo()
         abstracts = [_abstract(i) for i in range(1, 21)]
@@ -737,7 +737,7 @@ class ErrorContractTests(_RepoFixture):
         self.assertEqual(rc, 4)
 
     def test_cache_version_mismatch_exits_seven(self) -> None:
-        from ohbm2026.enrich import storage as enrich_storage
+        from abstractatlas.enrich import storage as enrich_storage
 
         tmp = self.tmp_repo()
         abstracts = [_abstract(1)]
@@ -754,7 +754,7 @@ class ErrorContractTests(_RepoFixture):
         # Approach: write a wildcard entry that the orchestrator
         # tries to load OR provide a config-level cache_version
         # override. We use the latter via a hidden test seam.
-        from ohbm2026.enrich import stage as enrich_stage
+        from abstractatlas.enrich import stage as enrich_stage
 
         fr, cr, rr, *_ = _default_runners()
         patches = _patch_components(
@@ -783,7 +783,7 @@ class ResumabilityContractTests(_RepoFixture):
         """SC-009: start a run; raise mid-loop; no partial enriched
         corpus on disk. Re-invoke; the second run reuses every
         already-cached entry."""
-        from ohbm2026 import exceptions as exc_mod
+        from abstractatlas import exceptions as exc_mod
 
         tmp = self.tmp_repo()
         abstracts = [_abstract(i) for i in range(1, 11)]
@@ -850,7 +850,7 @@ class ResumabilityContractTests(_RepoFixture):
 class DiscoveryContractTests(_RepoFixture):
     def test_malformed_figure_response_raises_enrichment_error(self) -> None:
         """CA-007: LLM-response schema drift surfaces loudly."""
-        from ohbm2026 import exceptions as exc_mod
+        from abstractatlas import exceptions as exc_mod
 
         tmp = self.tmp_repo()
         _write_source_corpus(tmp, [_abstract(1)])
@@ -871,7 +871,7 @@ class DiscoveryContractTests(_RepoFixture):
         self.assertEqual(rc, 5)
 
     def test_classify_backend_availability_returns_typed_dataclass(self) -> None:
-        from ohbm2026.enrich import stage as enrich_stage
+        from abstractatlas.enrich import stage as enrich_stage
 
         result = enrich_stage._classify_backend_availability(
             env={"OPENAI_API_KEY": "k"}, dotenv_path=None,
@@ -1246,7 +1246,7 @@ class ConcurrencyContractTests(_RepoFixture):
         self.assertGreater(max_observed["n"], 1)
 
     def test_default_concurrency_is_30(self) -> None:
-        from ohbm2026.enrich import stage as enrich_stage
+        from abstractatlas.enrich import stage as enrich_stage
         parser = enrich_stage._build_parser()
         args = parser.parse_args([])
         self.assertEqual(args.concurrency_figures, 30)

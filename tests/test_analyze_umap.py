@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.umap.project_into_umap` (US2).
+"""Tests for `abstractatlas.analyze.umap.project_into_umap` (US2).
 
 Coverage per spec FR-005 / FR-006 / CA-002:
 - `native` round-trip + within-convex-hull behavior.
@@ -21,14 +21,14 @@ from pathlib import Path
 
 import numpy as np
 
-from ohbm2026.analyze.umap import (
+from abstractatlas.analyze.umap import (
     fit_parametric_mlp,
     fit_umap_2d,
     fit_umap_3d,
     project_into_umap,
     write_projections_bundle,
 )
-from ohbm2026.exceptions import (
+from abstractatlas.exceptions import (
     ProjectionDimensionMismatch,
     UnsupportedProjectionAlgorithm,
     AnalysisError,

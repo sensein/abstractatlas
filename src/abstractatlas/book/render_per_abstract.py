@@ -17,7 +17,7 @@ abstract identically.
 The CLI provides a separate `__main__` so an operator can re-render
 one abstract in isolation for debugging:
 
-    PYTHONPATH=src .venv/bin/python -m ohbm2026.book.render_per_abstract \\
+    PYTHONPATH=src .venv/bin/python -m abstractatlas.book.render_per_abstract \\
         --corpus data/primary/abstracts.json --poster-id 0042 --style plain
 """
 
@@ -36,21 +36,21 @@ from importlib import resources
 
 import pikepdf
 
-from ohbm2026.book.cache import (
+from abstractatlas.book.cache import (
     cache_pdf_path,
     compute_cache_key,
     hash_header_includes,
     load_cached_pdf,
     store_cached_pdf_from_path,
 )
-from ohbm2026.book.model import AbstractPdfChunk, BookEntry
-from ohbm2026.book.render_markdown import entry_to_md
-from ohbm2026.exceptions import BookBuildError
+from abstractatlas.book.model import AbstractPdfChunk, BookEntry
+from abstractatlas.book.render_markdown import entry_to_md
+from abstractatlas.exceptions import BookBuildError
 
 
 def per_abstract_header_path() -> pathlib.Path:
     """Path to the stripped-down per-abstract LaTeX preamble."""
-    pkg = resources.files("ohbm2026.book.templates")
+    pkg = resources.files("abstractatlas.book.templates")
     return pathlib.Path(str(pkg.joinpath("per-abstract.tex.template")))
 
 
@@ -210,7 +210,7 @@ def _tail(text: str, *, max_bytes: int) -> str:
 
 def _debug_main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
-        prog="python -m ohbm2026.book.render_per_abstract",
+        prog="python -m abstractatlas.book.render_per_abstract",
         description=(
             "Render a single abstract in isolation, populating the "
             "per-abstract PDF cache. Useful for diagnosing a chunk "
@@ -235,8 +235,8 @@ def _debug_main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
 
-    from ohbm2026.book.corpus import load_book
-    from ohbm2026.book.render_via_pandoc import preflight, resolve_pdf_engine
+    from abstractatlas.book.corpus import load_book
+    from abstractatlas.book.render_via_pandoc import preflight, resolve_pdf_engine
 
     try:
         versions = preflight(need_xelatex=True)

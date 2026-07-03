@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.cluster_palette``.
+"""Tests for ``abstractatlas.atlas_package.cluster_palette``.
 
 Spec: ``specs/015-neuroscape-context/`` — FR-010 + research R-003.
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import unittest
 
-from ohbm2026.atlas_package import cluster_palette
+from abstractatlas.atlas_package import cluster_palette
 
 
 class AssignPaletteShapeTests(unittest.TestCase):

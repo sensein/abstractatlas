@@ -12,7 +12,7 @@ import unittest
 from importlib import resources
 
 
-_TEMPLATES = resources.files("ohbm2026.book.templates")
+_TEMPLATES = resources.files("abstractatlas.book.templates")
 
 
 class TestGeometryPreamble(unittest.TestCase):
@@ -52,7 +52,7 @@ class TestHeaderIncludesPathSelection(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.book.render_via_pandoc import _header_includes_path
+            from abstractatlas.book.render_via_pandoc import _header_includes_path
         except ImportError as exc:
             raise unittest.SkipTest(f"_header_includes_path not yet implemented: {exc}")
         cls._select = staticmethod(_header_includes_path)
@@ -79,7 +79,7 @@ class TestCliMarginsFlag(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.book.cli import _build_parser
+            from abstractatlas.book.cli import _build_parser
         except ImportError as exc:
             raise unittest.SkipTest(f"book CLI not importable: {exc}")
         cls._build_parser = staticmethod(_build_parser)

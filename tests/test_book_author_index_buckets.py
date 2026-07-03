@@ -15,7 +15,7 @@ class TestBucketLetter(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.book.assemble_pdf import _bucket_letter
+            from abstractatlas.book.assemble_pdf import _bucket_letter
         except ImportError as exc:
             raise unittest.SkipTest(f"_bucket_letter not yet implemented: {exc}")
         cls._bucket = staticmethod(_bucket_letter)
@@ -46,8 +46,8 @@ class TestBuildIndexMarkdownBuckets(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.book.assemble_pdf import _build_index_markdown
-            from ohbm2026.book.model import AuthorIndexEntry
+            from abstractatlas.book.assemble_pdf import _build_index_markdown
+            from abstractatlas.book.model import AuthorIndexEntry
         except ImportError as exc:
             raise unittest.SkipTest(f"index helpers not yet implemented: {exc}")
         cls._build = staticmethod(_build_index_markdown)

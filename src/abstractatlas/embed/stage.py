@@ -37,13 +37,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
-from ohbm2026.embed import components as embed_components
-from ohbm2026.embed import hf as embed_hf
-from ohbm2026.embed import openai as embed_openai
-from ohbm2026.embed import provenance as embed_provenance
-from ohbm2026.embed import storage as embed_storage
-from ohbm2026.embed import voyage as embed_voyage
-from ohbm2026.exceptions import (
+from abstractatlas.embed import components as embed_components
+from abstractatlas.embed import hf as embed_hf
+from abstractatlas.embed import openai as embed_openai
+from abstractatlas.embed import provenance as embed_provenance
+from abstractatlas.embed import storage as embed_storage
+from abstractatlas.embed import voyage as embed_voyage
+from abstractatlas.exceptions import (
     ComponentAssemblyError,
     EmbeddingBudgetError,
     EmbeddingContractError,
@@ -888,7 +888,7 @@ def _run_neuroscape_derivation(
             f"is missing; run `--models voyage,neuroscape` together"
         )
     # Lazy-import to avoid pulling in torch when only local-text models are used.
-    from ohbm2026.embed import compose as embed_compose
+    from abstractatlas.embed import compose as embed_compose
     start = time.perf_counter()
     output_dir = Path(embeddings_root) / "neuroscape" / f"{component}__{corpus_state_key}"
     bundle = embed_storage.load_bundle(voyage_bundle_dir)

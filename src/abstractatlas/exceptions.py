@@ -20,19 +20,19 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     # Re-exported via module-level __getattr__ to avoid a circular
     # import: fetch/__init__.py loads fetch.stage, which itself imports
-    # `from ohbm2026.exceptions import ...`. Eager-importing
-    # `ohbm2026.fetch.graphql_api` at the top of THIS module triggers
+    # `from abstractatlas.exceptions import ...`. Eager-importing
+    # `abstractatlas.fetch.graphql_api` at the top of THIS module triggers
     # fetch/__init__.py before exceptions.py finishes loading, which
-    # explodes any direct `from ohbm2026.exceptions import X` outside
+    # explodes any direct `from abstractatlas.exceptions import X` outside
     # the cli/dispatch sequence (e.g. a new stage module like
-    # `ohbm2026.book.corpus`). Deferring to runtime resolution via
+    # `abstractatlas.book.corpus`). Deferring to runtime resolution via
     # __getattr__ keeps the public surface unchanged.
-    from ohbm2026.fetch.graphql_api import GraphQLAPIError  # noqa: F401
+    from abstractatlas.fetch.graphql_api import GraphQLAPIError  # noqa: F401
 
 
 def __getattr__(name: str):
     if name == "GraphQLAPIError":
-        from ohbm2026.fetch.graphql_api import GraphQLAPIError
+        from abstractatlas.fetch.graphql_api import GraphQLAPIError
 
         return GraphQLAPIError
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -156,7 +156,7 @@ class UIBuildError(RuntimeError):
 class Stage6Error(OhbmStageError):
     """Base class for Stage 6 (UI data-package build) failures.
 
-    Subclassed by :class:`ohbm2026.ui_data.state_key.Stage6BuildError` and
+    Subclassed by :class:`abstractatlas.ui_data.state_key.Stage6BuildError` and
     other Stage 6 callsites. Distinct from :class:`UIBuildError` (which
     covers the legacy ``ui.py`` export path) so callers can differentiate.
     """
@@ -345,7 +345,7 @@ class TopicGroupingHallucination(AnalysisError):
 class BookBuildError(OhbmStageError):
     """Stage 11 (book-of-abstracts) precondition failed or render aborted.
 
-    Raised by `ohbm2026.book` when the canonical corpus inputs are
+    Raised by `abstractatlas.book` when the canonical corpus inputs are
     missing/empty, the filtered entry set is empty, the output root
     is unwritable, a required system dep (`pandoc` / `xelatex`) is
     absent from PATH, or pandoc returns non-zero. `details` captures
@@ -443,7 +443,7 @@ class UmapFitError(Stage15Error):
 class UmapCacheError(Stage15Error):
     """The UMAP fit on-disk cache is unreadable or inconsistent.
 
-    Raised by :func:`ohbm2026.atlas_package.umap_fit.fit` when a cache
+    Raised by :func:`abstractatlas.atlas_package.umap_fit.fit` when a cache
     entry exists at the expected ``<cache_root>/<state_key>/`` path
     but cannot be loaded (corrupted joblib, missing companion file,
     embedded-shape mismatch with the requested ``n_components``). The
@@ -469,7 +469,7 @@ class KnnCacheError(Stage15Error):
     """The k-NN neighbour-index on-disk cache is unreadable or
     inconsistent.
 
-    Raised by :func:`ohbm2026.atlas_package.neighbour_index.build_knn`
+    Raised by :func:`abstractatlas.atlas_package.neighbour_index.build_knn`
     when a cache entry exists at the expected
     ``<cache_root>/<state_key>/`` path but cannot be loaded (missing
     companion array, unreadable ``.npy``, shape mismatch with the
@@ -604,7 +604,7 @@ class Stage19SemanticError(Stage15Error):
 class EmbeddingComputeError(Stage19SemanticError):
     """The corpus-side MiniLM embedding compute failed.
 
-    Raised by ``ohbm2026.atlas_package.vectors_compute`` when
+    Raised by ``abstractatlas.atlas_package.vectors_compute`` when
     sentence-transformers fails to load the pinned model
     (``Xenova/all-MiniLM-L6-v2``), or inference produces a vector matrix
     with the wrong shape / non-finite values. Carries (``reason``,
@@ -628,7 +628,7 @@ class VectorsParquetWriteError(Stage19SemanticError):
     """The semantic-vectors parquet writer detected an invariant violation
     before/during write.
 
-    Raised by ``ohbm2026.atlas_package.semantic_index.write_neuroscape_vectors_parquet``
+    Raised by ``abstractatlas.atlas_package.semantic_index.write_neuroscape_vectors_parquet``
     when the set of ``pubmed_id`` rows about to be written does not
     match the articles table on ``neuroscape.parquet`` (INV-003), or
     when the per-cluster row-group sort order would defeat predicate
@@ -702,7 +702,7 @@ class Stage20Error(OhbmStageError):
 class R2CredentialsError(Stage20Error):
     """A required R2 S3 credential is missing or blank.
 
-    Raised by ``ohbm2026.atlas_hosting.r2_client`` before any network
+    Raised by ``abstractatlas.atlas_hosting.r2_client`` before any network
     call when one of ``R2_ACCOUNT_ID`` / ``R2_ACCESS_KEY_ID`` /
     ``R2_SECRET_ACCESS_KEY`` / ``R2_BUCKET`` / ``R2_PUBLIC_BASE_URL`` is
     absent from the environment and the ``.env`` file. Carries the
@@ -718,7 +718,7 @@ class R2CredentialsError(Stage20Error):
 class R2UploadError(Stage20Error):
     """An R2 S3 operation (head/upload) failed.
 
-    Raised by ``ohbm2026.atlas_hosting.r2_client`` when a ``head_object``
+    Raised by ``abstractatlas.atlas_hosting.r2_client`` when a ``head_object``
     or ``upload_file`` call fails for any reason other than the expected
     404-not-found (which is handled as "object absent"). Carries
     (``key``, ``bucket``, ``op``, ``reason``) so the failure is
@@ -748,7 +748,7 @@ class ContentHashMismatchError(Stage20Error):
 
     A key of the form ``<sha256>/<filename>`` must only ever hold bytes
     whose sha256 equals ``<sha256>``. Raised by
-    ``ohbm2026.atlas_hosting.uploader`` when ``head_object`` reports a
+    ``abstractatlas.atlas_hosting.uploader`` when ``head_object`` reports a
     ``ContentLength`` that differs from the local file's size for the
     same key — a corruption / key-scheme violation that must fail loudly
     rather than overwrite. Carries (``key``, ``expected``, ``actual``).
@@ -772,7 +772,7 @@ class ArtifactDiscoveryError(Stage20Error):
     """The built atlas-package directory does not match the expected
     artifact set.
 
-    Raised by ``ohbm2026.atlas_hosting.uploader`` when a required parquet
+    Raised by ``abstractatlas.atlas_hosting.uploader`` when a required parquet
     (``ohbm2026`` / ``neuroscape`` / ``atlas``) is missing from the
     package dir, or when an unexpected ``*.parquet`` outside the known
     set is present (no silent inclusion — Principle VII). Carries
@@ -798,7 +798,7 @@ class HostingComparisonError(Stage20Error):
 
     Distinct from a *failed verdict* (a probe that ran and returned a
     negative result, which is RECORDED in the report, not raised — see
-    FR-015): this is raised by ``ohbm2026.atlas_hosting.compare`` only
+    FR-015): this is raised by ``abstractatlas.atlas_hosting.compare`` only
     when a probe cannot be performed at all — a malformed URL, or a
     channel missing a required artifact. Carries (``url``, ``probe``,
     ``reason``).

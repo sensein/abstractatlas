@@ -15,8 +15,8 @@ import unittest
 from pathlib import Path
 from PIL import Image, ImageDraw
 
-from ohbm2026.enrich import figures as stage2_figures
-from ohbm2026.exceptions import EnrichmentError
+from abstractatlas.enrich import figures as stage2_figures
+from abstractatlas.exceptions import EnrichmentError
 
 
 def _make_png(path: Path, size: tuple[int, int] = (2000, 1500), color: tuple = (200, 200, 200)) -> int:
@@ -280,7 +280,7 @@ class FallbackModelTests(unittest.TestCase):
         self.assertEqual(summary.fallback_model_used, "gpt-5.4")
 
     def test_no_fallback_when_unset_propagates_typed_error(self) -> None:
-        from ohbm2026.exceptions import ContextLengthExceededError
+        from abstractatlas.exceptions import ContextLengthExceededError
         abstract = _abstract_with_figures(1, cwd=self.fx.tmp)
         client = _FallbackClientFigures(
             [], primary_model_id="gpt-5.4-mini", fallback_model_id="gpt-5.4",

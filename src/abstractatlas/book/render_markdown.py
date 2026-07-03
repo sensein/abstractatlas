@@ -35,7 +35,7 @@ try:
 except ImportError:
     pass
 
-from ohbm2026.book.model import (
+from abstractatlas.book.model import (
     Author,
     AuthorIndexEntry,
     Book,
@@ -166,7 +166,7 @@ def entry_to_md(entry: BookEntry) -> str:
     """Render one abstract section as markdown (Stage 11.1 public helper).
 
     Stable wrapper around `_entry_md` for the per-abstract PDF pipeline
-    in :mod:`ohbm2026.book.render_per_abstract`. Discards the figure-
+    in :mod:`abstractatlas.book.render_per_abstract`. Discards the figure-
     filename side-effect list — figures are still written by
     :func:`emit_book_md` for the markdown bundle; the per-abstract
     render reads them via pandoc's ``--resource-path``.
@@ -179,7 +179,7 @@ def entry_to_md(entry: BookEntry) -> str:
     Tectonic time (the dominant Stage-11.1 failure cluster).
     """
 
-    from ohbm2026.book.html_to_md import normalise_for_latex
+    from abstractatlas.book.html_to_md import normalise_for_latex
 
     return normalise_for_latex(_entry_md(entry, fig_filenames=[]))
 
@@ -308,7 +308,7 @@ def _author_index_back_matter_md(index: tuple[AuthorIndexEntry, ...]) -> str:
 
 def _read_template() -> str:
     # importlib.resources keeps the templates packaged-with-the-code.
-    pkg = resources.files("ohbm2026.book.templates")
+    pkg = resources.files("abstractatlas.book.templates")
     return pkg.joinpath("book.md.template").read_text(encoding="utf-8")
 
 
@@ -362,7 +362,7 @@ def emit_book_md(
     # itself injected (e.g. `→` in the anchor-link back matter) that
     # never went through `html_to_pandoc_md`. Idempotent on
     # already-converted spans.
-    from ohbm2026.book.html_to_md import normalise_for_latex
+    from abstractatlas.book.html_to_md import normalise_for_latex
 
     full = normalise_for_latex(full)
     (output_dir / "book.md").write_text(full, encoding="utf-8")

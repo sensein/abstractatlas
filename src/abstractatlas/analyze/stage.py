@@ -40,15 +40,15 @@ from typing import Any, Callable, Iterable
 
 import numpy as np
 
-from ohbm2026.analyze.provenance import (
+from abstractatlas.analyze.provenance import (
     write_bundle_provenance,
     write_run_provenance,
 )
-from ohbm2026.analyze.rollup import (
+from abstractatlas.analyze.rollup import (
     load_neuroscape_cluster_table,
     write_rollup,
 )
-from ohbm2026.exceptions import AnalysisError, InputBundleMissing
+from abstractatlas.exceptions import AnalysisError, InputBundleMissing
 
 __all__ = [
     "DEFAULT_MODELS",

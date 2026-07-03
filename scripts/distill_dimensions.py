@@ -33,7 +33,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    from ohbm2026.ui_data.dimensions import DimensionInputError, distill_dimensions
+    from abstractatlas.ui_data.dimensions import DimensionInputError, distill_dimensions
 
     try:
         summary = distill_dimensions(args.in_path, args.out_path)

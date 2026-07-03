@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ohbm2026.ui_data.state_key import (
+from abstractatlas.ui_data.state_key import (
     Stage6BuildError,
     discover_corpus_state_key,
     discover_rollup_state_key,

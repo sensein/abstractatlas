@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ohbm2026.layout.poster_layout import DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS, DEFAULT_CLAIMS_CLUSTER_SUMMARIES, load_layout_inputs
-from ohbm2026.layout.poster_sequencing import sweep_global_path_diffusion_from_files
+from abstractatlas.layout.poster_layout import DEFAULT_CLAIMS_CLUSTER_ASSIGNMENTS, DEFAULT_CLAIMS_CLUSTER_SUMMARIES, load_layout_inputs
+from abstractatlas.layout.poster_sequencing import sweep_global_path_diffusion_from_files
 
 
 def _parse_int_list(value: str) -> tuple[int, ...]:

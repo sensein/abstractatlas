@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import unittest
 
-from ohbm2026 import exceptions
+from abstractatlas import exceptions
 
 
 class Stage15ExceptionTreeTests(unittest.TestCase):

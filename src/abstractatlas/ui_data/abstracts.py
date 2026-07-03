@@ -14,9 +14,9 @@ from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from ohbm2026.analyze.storage import parse_string_list_value
-from ohbm2026.titles import cleaned_abstract_title
-from ohbm2026.ui_data.questions import (
+from abstractatlas.analyze.storage import parse_string_list_value
+from abstractatlas.titles import cleaned_abstract_title
+from abstractatlas.ui_data.questions import (
     PRIMARY_TOPIC_QUESTION,
     QUESTION_MAP,
     SECONDARY_TOPIC_QUESTION,
@@ -26,8 +26,8 @@ from ohbm2026.ui_data.questions import (
     topic_pair_from_questions,
     topic_subcategory,
 )
-from ohbm2026.ui_data.dimensions import DIMENSION_KEYS
-from ohbm2026.ui_data.state_key import Stage6BuildError
+from abstractatlas.ui_data.dimensions import DIMENSION_KEYS
+from abstractatlas.ui_data.state_key import Stage6BuildError
 
 
 SCHEMA_VERSION = "abstracts.v1"
@@ -109,7 +109,7 @@ def _prepare_math_for_ui(text: str) -> str:
     book pipeline's `$\\alpha$` wrap-per-glyph would split math regions
     in unhelpful ways for UI display).
     """
-    from ohbm2026.book.html_to_md import (
+    from abstractatlas.book.html_to_md import (
         _autowrap_bare_math,
         _normalise_latex_aliases,
         _strip_control_chars,
@@ -289,7 +289,7 @@ def _load_references_by_id(references_path: Path | None) -> dict[int, list[dict[
 def _load_enriched_by_id(enriched_path: Path | None) -> dict[int, dict[str, Any]]:
     """Load enriched-abstract markdown blobs from the Stage 2 SQLite store.
 
-    The schema lives in ``ohbm2026.enrich.storage``; we read by abstract id.
+    The schema lives in ``abstractatlas.enrich.storage``; we read by abstract id.
     Returns an empty mapping when the file is absent so the manifest build
     still succeeds in the placeholder/skeleton case.
     """
@@ -297,7 +297,7 @@ def _load_enriched_by_id(enriched_path: Path | None) -> dict[int, dict[str, Any]
     if enriched_path is None or not Path(enriched_path).exists():
         return {}
     try:
-        from ohbm2026.enrich.storage import iter_enriched
+        from abstractatlas.enrich.storage import iter_enriched
     except ImportError:
         return {}
     out: dict[int, dict[str, Any]] = {}
@@ -458,7 +458,7 @@ def iter_abstracts(
     """Yield per-abstract rows (accepted-only, poster_id-keyed).
 
     Stage-10 entry point: the format-agnostic row stream every candidate
-    emitter under ``ohbm2026.ui_data.formats`` consumes. Rows match the
+    emitter under ``abstractatlas.ui_data.formats`` consumes. Rows match the
     ``AbstractRow`` shape in ``types.py``. Identical record contents to
     ``build_abstracts_records()`` — that wrapper is now ``list(iter_abstracts(...))``.
 
@@ -478,7 +478,7 @@ def iter_abstracts(
     # the program-committee FINAL schedule; the old CSV was a draft.
     standby_by_sid = _load_standby_times(standby_times_path)
     if standby_final_csv_path is not None and abstract_to_poster is not None:
-        from ohbm2026.standby import key_by_submission_id, load_standby_csv
+        from abstractatlas.standby import key_by_submission_id, load_standby_csv
 
         poster_to_sub = {pid: sid for sid, pid in abstract_to_poster.items()}
         try:

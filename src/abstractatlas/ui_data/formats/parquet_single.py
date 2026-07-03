@@ -346,7 +346,7 @@ def write(
 
     # Stage 11.1 US2 — derive the standby_slots table once, then thread
     # the per-poster INT8 lookup map into the abstracts emitter.
-    from ohbm2026.ui_data.standby_slots import (
+    from abstractatlas.ui_data.standby_slots import (
         build_poster_to_index_map,
         derive_standby_slots,
     )

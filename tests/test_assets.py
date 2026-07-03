@@ -4,8 +4,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from ohbm2026 import artifacts
-from ohbm2026.assets import (
+from abstractatlas import artifacts
+from abstractatlas.assets import (
     asset_stem,
     build_database,
     build_parser,
@@ -191,9 +191,9 @@ class AssetHelpersTest(unittest.TestCase):
             snapshot_dir = root / "inputs"
 
             with (
-                mock.patch("ohbm2026.assets.fetch_abstract_ids", return_value=([1], [123])),
+                mock.patch("abstractatlas.assets.fetch_abstract_ids", return_value=([1], [123])),
                 mock.patch(
-                    "ohbm2026.assets.fetch_abstract_content",
+                    "abstractatlas.assets.fetch_abstract_content",
                     return_value=[
                         {
                             "id": 123,
@@ -238,7 +238,7 @@ class TestBatchedFetchHooks(unittest.TestCase):
         }
 
     def test_on_batch_complete_fires_once_per_batch(self) -> None:
-        from ohbm2026 import assets as assets_module
+        from abstractatlas import assets as assets_module
 
         captured_batches: list[list[int]] = []
 
@@ -265,7 +265,7 @@ class TestBatchedFetchHooks(unittest.TestCase):
         self.assertEqual([r["id"] for r in results], [1, 2, 3, 4, 5])
 
     def test_on_record_state_change_fires_for_every_record(self) -> None:
-        from ohbm2026 import assets as assets_module
+        from abstractatlas import assets as assets_module
 
         seen: list[tuple[int, str]] = []
 
@@ -307,12 +307,12 @@ class TestPerRecordStateTransitions(unittest.TestCase):
     """
 
     def test_pending_can_advance_to_corpus_fetched(self) -> None:
-        from ohbm2026.assets import advance_record_state
+        from abstractatlas.assets import advance_record_state
 
         self.assertEqual(advance_record_state("pending", "corpus_fetched"), "corpus_fetched")
 
     def test_corpus_fetched_can_advance_to_figures_in_progress(self) -> None:
-        from ohbm2026.assets import advance_record_state
+        from abstractatlas.assets import advance_record_state
 
         self.assertEqual(
             advance_record_state("corpus_fetched", "figures_in_progress"),
@@ -320,12 +320,12 @@ class TestPerRecordStateTransitions(unittest.TestCase):
         )
 
     def test_corpus_fetched_can_advance_directly_to_done_when_no_figures(self) -> None:
-        from ohbm2026.assets import advance_record_state
+        from abstractatlas.assets import advance_record_state
 
         self.assertEqual(advance_record_state("corpus_fetched", "done"), "done")
 
     def test_figures_in_progress_can_advance_to_done_or_failed_retryable(self) -> None:
-        from ohbm2026.assets import advance_record_state
+        from abstractatlas.assets import advance_record_state
 
         self.assertEqual(advance_record_state("figures_in_progress", "done"), "done")
         self.assertEqual(
@@ -334,7 +334,7 @@ class TestPerRecordStateTransitions(unittest.TestCase):
         )
 
     def test_backwards_transition_raises(self) -> None:
-        from ohbm2026.assets import advance_record_state
+        from abstractatlas.assets import advance_record_state
 
         with self.assertRaises(ValueError):
             advance_record_state("done", "pending")
@@ -367,7 +367,7 @@ class TestFetchContentBatchesFigureResolution(unittest.TestCase):
         }
 
     def test_figure_download_skipped_when_assets_dir_is_none(self) -> None:
-        from ohbm2026 import assets as assets_module
+        from abstractatlas import assets as assets_module
 
         def fake_fetch_abstract_content(api_key, ids, **kwargs):
             return [
@@ -392,8 +392,8 @@ class TestFetchContentBatchesFigureResolution(unittest.TestCase):
         self.assertEqual(results[0]["local_assets"], [])
 
     def test_figure_download_runs_and_populates_local_assets(self) -> None:
-        from ohbm2026 import assets as assets_module
-        from ohbm2026.assets import AssetDownload
+        from abstractatlas import assets as assets_module
+        from abstractatlas.assets import AssetDownload
 
         def fake_fetch_abstract_content(api_key, ids, **kwargs):
             return [
@@ -438,8 +438,8 @@ class TestFetchContentBatchesFigureResolution(unittest.TestCase):
         path here so the reuse semantics are exercised end to end —
         we just pre-seed the destination directory with a file at the
         expected stem."""
-        from ohbm2026 import assets as assets_module
-        from ohbm2026.assets import asset_stem
+        from abstractatlas import assets as assets_module
+        from abstractatlas.assets import asset_stem
 
         source_url = "https://example.org/abstract-1.png"
         abstract_id = 1
@@ -482,7 +482,7 @@ class TestNormalizeAuthor(unittest.TestCase):
     affiliations order. ORCID and other non-PII fields are preserved."""
 
     def test_email_is_stripped(self) -> None:
-        from ohbm2026.assets import normalize_author
+        from abstractatlas.assets import normalize_author
 
         raw = {
             "id": 42,
@@ -499,7 +499,7 @@ class TestNormalizeAuthor(unittest.TestCase):
         self.assertEqual(out["orcid_id"], "0000-0001-2345-6789")
 
     def test_affiliations_sorted_by_order_then_id(self) -> None:
-        from ohbm2026.assets import normalize_author
+        from abstractatlas.assets import normalize_author
 
         raw = {
             "id": 1,
@@ -517,7 +517,7 @@ class TestNormalizeAuthor(unittest.TestCase):
         self.assertEqual(ids, [100, 150, 200])
 
     def test_missing_fields_become_none(self) -> None:
-        from ohbm2026.assets import normalize_author
+        from abstractatlas.assets import normalize_author
 
         raw = {"id": 99, "affiliations": None}
         out = normalize_author(raw)

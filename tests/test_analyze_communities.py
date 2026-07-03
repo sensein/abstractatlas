@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.communities` (US4).
+"""Tests for `abstractatlas.analyze.communities` (US4).
 
 Coverage per spec FR-007 + CA-002:
 - FAISS `IndexFlatIP` kNN over L2-normalized vectors returns sensible
@@ -20,7 +20,7 @@ import warnings
 
 import numpy as np
 
-from ohbm2026.analyze.communities import (
+from abstractatlas.analyze.communities import (
     DEFAULT_KNN_K,
     build_faiss_knn,
     detect_communities,
@@ -31,7 +31,7 @@ from ohbm2026.analyze.communities import (
     select_plateau_resolution,
     ResolutionSweepEntry,
 )
-from ohbm2026.exceptions import CommunityResolutionDegenerate
+from abstractatlas.exceptions import CommunityResolutionDegenerate
 
 
 def _three_cluster_corpus(

@@ -5,7 +5,7 @@ multiple candidate containers (Parquet, SQLite, DuckDB, Arrow IPC, …) — see
 ``specs/010-export-redesign/research.md``. Every candidate consumes the same
 row stream produced by the per-entity ``iter_*()`` functions; this module
 locks the row shapes so the candidate emitters under
-``ohbm2026.ui_data.formats`` can share one canonical input contract.
+``abstractatlas.ui_data.formats`` can share one canonical input contract.
 
 Why ``TypedDict`` and not ``dataclass`` / ``pydantic``:
 

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ohbm2026.ui_data.abstracts import build_abstracts, build_abstracts_records
+from abstractatlas.ui_data.abstracts import build_abstracts, build_abstracts_records
 
 from tests._ui_data_fixtures import BUILD_INFO, write_fixtures
 
@@ -74,7 +74,7 @@ class TestResearchDimensionsJoin(unittest.TestCase):
         )
 
     def test_dimensions_injected_into_facets(self) -> None:
-        from ohbm2026.ui_data.dimensions import load_research_dimensions
+        from abstractatlas.ui_data.dimensions import load_research_dimensions
 
         with TemporaryDirectory() as tmp:
             paths = write_fixtures(Path(tmp))
@@ -117,7 +117,7 @@ class TestHtmlToTextSupSub(unittest.TestCase):
     """
 
     def test_sup_digits_become_unicode_superscript(self) -> None:
-        from ohbm2026.ui_data.abstracts import _html_to_text
+        from abstractatlas.ui_data.abstracts import _html_to_text
 
         out = _html_to_text("<p>reference<sup>1,2</sup>.</p>")
         self.assertIn("¹,²", out)
@@ -125,17 +125,17 @@ class TestHtmlToTextSupSub(unittest.TestCase):
         self.assertNotIn("reference1,2", out)
 
     def test_sup_single_digit(self) -> None:
-        from ohbm2026.ui_data.abstracts import _html_to_text
+        from abstractatlas.ui_data.abstracts import _html_to_text
 
         self.assertIn("mm³", _html_to_text("4 mm<sup>3</sup>"))
 
     def test_sub_digits(self) -> None:
-        from ohbm2026.ui_data.abstracts import _html_to_text
+        from abstractatlas.ui_data.abstracts import _html_to_text
 
         self.assertIn("H₂O", _html_to_text("H<sub>2</sub>O"))
 
     def test_math_delimiters_pass_through(self) -> None:
-        from ohbm2026.ui_data.abstracts import _html_to_text
+        from abstractatlas.ui_data.abstracts import _html_to_text
 
         # KaTeX picks these up client-side; the stripper leaves them
         # intact.
@@ -146,7 +146,7 @@ class TestHtmlToTextSupSub(unittest.TestCase):
         """Stage 12.2 — author-pasted raw LaTeX without `$...$` wrapping
         gets wrapped server-side so KaTeX can render it client-side.
         Poster 2094 in the real corpus was the canary."""
-        from ohbm2026.ui_data.abstracts import _html_to_text
+        from abstractatlas.ui_data.abstracts import _html_to_text
 
         out = _html_to_text(
             r"<p>similarity was defined as \rho\left(s,j\right)=corr(z,j). next sentence</p>"
@@ -156,7 +156,7 @@ class TestHtmlToTextSupSub(unittest.TestCase):
         self.assertIn(r"$\rho\left(s,j\right)=corr(z,j)$", out)
 
     def test_bare_matrix_wrapped_for_katex(self) -> None:
-        from ohbm2026.ui_data.abstracts import _html_to_text
+        from abstractatlas.ui_data.abstracts import _html_to_text
 
         out = _html_to_text(
             r"<p>encoder inputs are \begin{matrix}a&b\\c&d\end{matrix} done.</p>"
@@ -165,7 +165,7 @@ class TestHtmlToTextSupSub(unittest.TestCase):
         self.assertIn(r"\end{matrix}$$", out)
 
     def test_thinsp_alias_normalised(self) -> None:
-        from ohbm2026.ui_data.abstracts import _html_to_text
+        from abstractatlas.ui_data.abstracts import _html_to_text
 
         out = _html_to_text(
             r"<p>yields \mathrm{out}\mathrm{\thinsp} more text</p>"

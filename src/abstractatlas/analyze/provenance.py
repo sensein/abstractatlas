@@ -19,7 +19,7 @@ import os
 from pathlib import Path
 from typing import Iterable
 
-from ohbm2026.exceptions import ProvenanceError
+from abstractatlas.exceptions import ProvenanceError
 
 __all__ = [
     "PROVENANCE_SCHEMA_VERSION",

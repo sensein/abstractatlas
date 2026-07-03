@@ -17,7 +17,7 @@ The CLI loads the OHBM 2026 corpus by:
    corpus ``state_key``.
 2. Reading the abstracts row group to recover ``(submission_id,
    poster_id, title)`` triples.
-3. Calling :func:`ohbm2026.embed.compose.compose_recipe` with the
+3. Calling :func:`abstractatlas.embed.compose.compose_recipe` with the
    five-component voyage_stage2_published recipe to land the
    per-abstract Stage-2 vectors.
 4. Joining the two by ``submission_id``.
@@ -37,7 +37,7 @@ from typing import Any
 
 import numpy as np
 
-from ohbm2026.exceptions import (
+from abstractatlas.exceptions import (
     AtlasLinkCheckError,
     AtlasProvenanceError,
     CrossParquetDriftError,
@@ -367,7 +367,7 @@ def load_ohbm_corpus(
       submission_id from the published parquet, but the embedding
       bundles still key on it.
     - Stage-2 vectors come via
-      :func:`ohbm2026.embed.compose.compose_recipe` with the five-
+      :func:`abstractatlas.embed.compose.compose_recipe` with the five-
       component voyage_stage2_published recipe.
 
     Abstracts present in the corpus but missing a Stage-2 vector are
@@ -377,7 +377,7 @@ def load_ohbm_corpus(
     *input* omission, not a *projection* failure).
     """
 
-    from ohbm2026.embed.compose import compose_recipe
+    from abstractatlas.embed.compose import compose_recipe
 
     ohbm2026_state_key = read_ohbm2026_state_key(ohbm2026_parquet)
     headers = _read_ohbm_corpus_headers(

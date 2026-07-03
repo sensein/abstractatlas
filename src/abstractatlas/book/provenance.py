@@ -15,12 +15,12 @@ import json
 import pathlib
 import subprocess
 
-from ohbm2026.book.figure_check import (
+from abstractatlas.book.figure_check import (
     PUBLICATION_DPI_THRESHOLD,
     effective_dpi,
 )
-from ohbm2026.book.model import Book
-from ohbm2026.exceptions import ProvenanceError
+from abstractatlas.book.model import Book
+from abstractatlas.exceptions import ProvenanceError
 
 
 _PROVENANCE_VERSION = 1
@@ -216,7 +216,7 @@ def write_provenance(
         # Stage 12 US2 / FR-006 — figure-normalisation audit fields.
         # Read the module-level fallback registry from render_markdown
         # then reset it so the next build starts clean.
-        from ohbm2026.book.render_markdown import (
+        from abstractatlas.book.render_markdown import (
             get_normalise_fallbacks,
             reset_normalise_fallbacks,
         )

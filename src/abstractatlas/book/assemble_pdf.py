@@ -33,13 +33,13 @@ from typing import Sequence
 
 import pikepdf
 
-from ohbm2026.book.model import (
+from abstractatlas.book.model import (
     AbstractPdfChunk,
     AssembledBook,
     AuthorIndexEntry,
     PerAbstractFailure,
 )
-from ohbm2026.exceptions import BookBuildError
+from abstractatlas.exceptions import BookBuildError
 
 
 def assemble(

@@ -23,7 +23,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from ohbm2026.ui_data.state_key import Stage6BuildError
+from abstractatlas.ui_data.state_key import Stage6BuildError
 
 __all__ = [
     "DIMENSION_KEYS",

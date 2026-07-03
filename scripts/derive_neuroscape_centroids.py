@@ -195,7 +195,7 @@ def _iter_h5_vectors(shard: Path) -> "Iterable[tuple[str, np.ndarray]]":
 def main(argv: list[str] | None = None) -> int:
     import numpy as np
 
-    from ohbm2026.analyze.centroids import spherical_mean
+    from abstractatlas.analyze.centroids import spherical_mean
 
     parser = argparse.ArgumentParser(
         prog="derive_neuroscape_centroids",

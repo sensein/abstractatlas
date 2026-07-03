@@ -11,16 +11,16 @@ from typing import Any
 
 import numpy as np
 
-from ohbm2026 import artifacts
-from ohbm2026.analyze.clusters import (
+from abstractatlas import artifacts
+from abstractatlas.analyze.clusters import (
     build_knn_graph,
     compute_clustering_metrics,
 )
-from ohbm2026.analyze.storage import (
+from abstractatlas.analyze.storage import (
     load_embedding_bundle,
     parse_string_list_value,
 )
-from ohbm2026.util.json_io import write_json
+from abstractatlas.util.json_io import write_json
 
 
 class CategoryEvaluationError(Exception):

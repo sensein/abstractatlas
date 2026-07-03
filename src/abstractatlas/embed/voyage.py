@@ -19,7 +19,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from ohbm2026.exceptions import (
+from abstractatlas.exceptions import (
     EmbeddingBudgetError,
     EmbeddingContractError,
     EmbeddingProviderError,

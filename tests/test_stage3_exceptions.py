@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import unittest
 
-from ohbm2026 import exceptions
+from abstractatlas import exceptions
 
 
 class Stage3ExceptionTreeTests(unittest.TestCase):

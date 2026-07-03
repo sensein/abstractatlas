@@ -98,16 +98,16 @@ def _patch_upstream(
     withdrawn_submission_ids: list[int] | None = None,
 ):
     """Context-manager helper: patches every upstream call in
-    `ohbm2026.fetch.graphql_api` AND its name-imported reference inside
-    `ohbm2026.assets` so fetch_stage.main() can run hermetically.
+    `abstractatlas.fetch.graphql_api` AND its name-imported reference inside
+    `abstractatlas.assets` so fetch_stage.main() can run hermetically.
 
     Both targets are patched because `assets.py` imports
     `fetch_abstract_content` by name (a local reference); patching
     only the upstream module would leave the local binding active
     and the test would silently hit the live endpoint.
     """
-    from ohbm2026 import assets as assets_module
-    from ohbm2026.fetch import graphql_api as graphql_api
+    from abstractatlas import assets as assets_module
+    from abstractatlas.fetch import graphql_api as graphql_api
 
     introspection = introspection or _fake_introspection()
     submission_ids = submission_ids if submission_ids is not None else [1, 2, 3]
@@ -169,23 +169,23 @@ class InputContractTests(unittest.TestCase):
     missing → typed error, no upstream call attempted."""
 
     def test_missing_api_key_exits_non_zero_with_typed_error_message(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(os.environ, {}, clear=True):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main(["--env-file", str(tmp / ".env-missing")])
         self.assertNotEqual(exit_code, 0)
 
     def test_env_var_value_never_appears_in_provenance(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         secret = "sk-" + "x" * 32
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": secret}, clear=False
         ), _StackedPatches(_patch_upstream(submission_ids=[1])):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main([])
             self.assertEqual(exit_code, 0)
 
@@ -202,13 +202,13 @@ class OutputContractTests(unittest.TestCase):
     are written at the expected paths; checkpoint is deleted on success."""
 
     def test_clean_run_writes_all_three_primary_outputs_and_deletes_checkpoint(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
         ), _StackedPatches(_patch_upstream(submission_ids=[1, 2])):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main([])
             self.assertEqual(exit_code, 0)
 
@@ -228,13 +228,13 @@ class ProvenanceContractTests(unittest.TestCase):
     absolute or ~-prefixed paths, env-var names only."""
 
     def test_provenance_record_has_required_fields_and_no_absolute_paths(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
         ), _StackedPatches(_patch_upstream(submission_ids=[1])):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main([])
             self.assertEqual(exit_code, 0)
 
@@ -266,7 +266,7 @@ class ErrorContractTests(unittest.TestCase):
     figure-failure-rate over threshold exits 5."""
 
     def test_hard_contract_drift_exits_two_without_overwriting_corpus(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
@@ -280,7 +280,7 @@ class ErrorContractTests(unittest.TestCase):
             sentinel = corpus_path.read_text(encoding="utf-8")
 
             # First run: write a schema artifact baseline.
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
                 _patch_upstream(submission_ids=[1])
             ):
                 first = fetch_stage.main([])
@@ -293,7 +293,7 @@ class ErrorContractTests(unittest.TestCase):
             # Second run: the SAME field set the live query asks for is
             # now missing from upstream — HARD-contract drift.
             broken_intro = {"queryType": {"name": "Query"}, "types": []}
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
                 _patch_upstream(introspection=broken_intro, submission_ids=[1])
             ):
                 second = fetch_stage.main([])
@@ -305,24 +305,24 @@ class ErrorContractTests(unittest.TestCase):
             )
 
     def test_semantically_empty_corpus_exits_six_by_default(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
         ), _StackedPatches(_patch_upstream(submission_ids=[])):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main([])
         self.assertEqual(exit_code, 6, "semantically empty corpus must exit code 6")
 
     def test_allow_empty_flag_permits_zero_abstract_corpus(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
         ), _StackedPatches(_patch_upstream(submission_ids=[])):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main(["--allow-empty"])
         self.assertEqual(exit_code, 0)
 
@@ -332,7 +332,7 @@ class ResumabilityContractTests(unittest.TestCase):
     fetches only pending records."""
 
     def test_resume_after_mid_batch_interruption_completes_without_refetching_done_records(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         all_ids = [1, 2, 3, 4]
         seen_ids: list[int] = []
@@ -347,7 +347,7 @@ class ResumabilityContractTests(unittest.TestCase):
             tmp = Path(tmp_name)
             # First run: complete normally so we have a schema baseline +
             # know the run's state_key.
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
                 _patch_upstream(submission_ids=all_ids)
             ):
                 first = fetch_stage.main([])
@@ -388,7 +388,7 @@ class ResumabilityContractTests(unittest.TestCase):
             # Second run (resume): record what upstream IDs were requested
             # via the recording content factory.
             seen_ids.clear()
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
                 _patch_upstream(submission_ids=all_ids, content_factory=recording_factory)
             ):
                 second = fetch_stage.main([])
@@ -404,13 +404,13 @@ class AuthorIngestionTests(unittest.TestCase):
     for the withdrawn corpus). Email is dropped at normalize time."""
 
     def test_accepted_run_writes_authors_to_data_primary_authors_json(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
         ), _StackedPatches(_patch_upstream(submission_ids=[1, 2])):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main([])
             self.assertEqual(exit_code, 0)
 
@@ -427,7 +427,7 @@ class AuthorIngestionTests(unittest.TestCase):
             self.assertNotIn("email", json.dumps(payload))
 
     def test_withdrawn_run_writes_authors_to_separate_file(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
@@ -435,7 +435,7 @@ class AuthorIngestionTests(unittest.TestCase):
             _patch_upstream(submission_ids=[1], withdrawn_submission_ids=[99])
         ):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main(["--corpus-kind", "withdrawn"])
             self.assertEqual(exit_code, 0)
 
@@ -449,13 +449,13 @@ class AuthorIngestionTests(unittest.TestCase):
             )
 
     def test_provenance_record_includes_authors_path_and_count(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
         ), _StackedPatches(_patch_upstream(submission_ids=[1])):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 fetch_stage.main([])
 
             provenance_path = list((tmp / "data" / "inputs").glob("abstracts_fetch_provenance__*.json"))[0]
@@ -478,7 +478,7 @@ class WithdrawnCorpusKindTests(unittest.TestCase):
     artifacts too."""
 
     def test_withdrawn_run_writes_separate_corpus_file(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
@@ -486,7 +486,7 @@ class WithdrawnCorpusKindTests(unittest.TestCase):
             _patch_upstream(submission_ids=[10, 20], withdrawn_submission_ids=[99, 88])
         ):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main(["--corpus-kind", "withdrawn"])
             self.assertEqual(exit_code, 0)
 
@@ -507,7 +507,7 @@ class WithdrawnCorpusKindTests(unittest.TestCase):
             self.assertEqual(ids, {99, 88}, "withdrawn corpus must contain the withdrawn IDs only")
 
     def test_accepted_and_withdrawn_have_different_state_keys(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         accepted_args = fetch_stage._build_parser().parse_args([])
         withdrawn_args = fetch_stage._build_parser().parse_args(["--corpus-kind", "withdrawn"])
@@ -528,9 +528,9 @@ class DiscoveryContractTests(unittest.TestCase):
     mismatched bound_schema_hash refuses to resume silently."""
 
     def test_introspection_call_happens_before_content_calls(self) -> None:
-        from ohbm2026 import assets as assets_module
-        from ohbm2026.fetch import stage as fetch_stage
-        from ohbm2026.fetch import graphql_api as graphql_api
+        from abstractatlas import assets as assets_module
+        from abstractatlas.fetch import stage as fetch_stage
+        from abstractatlas.fetch import graphql_api as graphql_api
 
         call_order: list[str] = []
 
@@ -558,7 +558,7 @@ class DiscoveryContractTests(unittest.TestCase):
              mock.patch.object(assets_module, "fetch_abstract_content", side_effect=content_recorder), \
              mock.patch.object(graphql_api, "fetch_author_details", side_effect=author_recorder):
             tmp = Path(tmp_name)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp):
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp):
                 exit_code = fetch_stage.main([])
         self.assertEqual(exit_code, 0)
         self.assertEqual(call_order[0], "introspection")
@@ -569,14 +569,14 @@ class DiscoveryContractTests(unittest.TestCase):
         self.assertLess(call_order.index("content"), call_order.index("authors"))
 
     def test_checkpoint_with_mismatched_schema_hash_refuses_to_resume_silently(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage
+        from abstractatlas.fetch import stage as fetch_stage
 
         with _run_in_tmp_repo() as tmp_name, mock.patch.dict(
             os.environ, {"OHBM2026_API": "fake"}, clear=False
         ):
             tmp = Path(tmp_name)
             # Land a fresh schema artifact + state-key.
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
                 _patch_upstream(submission_ids=[1])
             ):
                 first = fetch_stage.main([])
@@ -608,7 +608,7 @@ class DiscoveryContractTests(unittest.TestCase):
 
             # Resume attempt without explicit allow flag: MUST fail.
             (tmp / "data" / "primary" / "abstracts.json").unlink(missing_ok=True)
-            with mock.patch("ohbm2026.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
+            with mock.patch("abstractatlas.fetch.stage.Path.cwd", return_value=tmp), _StackedPatches(
                 _patch_upstream(submission_ids=[1])
             ):
                 second = fetch_stage.main([])

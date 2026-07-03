@@ -245,7 +245,7 @@ class DeriveCentroidsTests(unittest.TestCase):
 
     def test_load_centroid_table_round_trip(self) -> None:
         """Derived file + sidecar must be readable by load_centroid_table."""
-        from ohbm2026.analyze.centroids import load_centroid_table
+        from abstractatlas.analyze.centroids import load_centroid_table
 
         with _isolated_cwd() as tmp:
             input_root = tmp / "ns"

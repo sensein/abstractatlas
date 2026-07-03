@@ -1,7 +1,7 @@
 """Per-kind runner registrations.
 
 This module is imported for its side-effect of populating
-`KIND_RUNNERS` in `ohbm2026.analyze.stage`. Each runner:
+`KIND_RUNNERS` in `abstractatlas.analyze.stage`. Each runner:
   1. Reads the Stage 3 input vectors for `(model, input_source)` via
      `embed.compose.compose_recipe` (for the `abstract` recipe) or
      the per-component bundle.
@@ -23,12 +23,12 @@ from typing import Any
 
 import numpy as np
 
-from ohbm2026.analyze.centroids import (
+from abstractatlas.analyze.centroids import (
     assign_nearest_centroid,
     load_centroid_table,
     write_neuroscape_clusters_bundle,
 )
-from ohbm2026.analyze.communities import (
+from abstractatlas.analyze.communities import (
     DEFAULT_KNN_K,
     DEFAULT_RESOLUTION_MAX,
     DEFAULT_RESOLUTION_MIN,
@@ -36,24 +36,24 @@ from ohbm2026.analyze.communities import (
     detect_communities,
     write_communities_bundle,
 )
-from ohbm2026.analyze.topic_clusters import (
+from abstractatlas.analyze.topic_clusters import (
     run_topic_clustering,
     write_topic_clusters_bundle,
 )
-from ohbm2026.analyze.topics import (
+from abstractatlas.analyze.topics import (
     DEFAULT_LLM_MODEL_ID,
     DEFAULT_PROMPT_VERSION,
     build_topics_artifact,
 )
-from ohbm2026.analyze.provenance import write_bundle_provenance
-from ohbm2026.analyze.stage import (
+from abstractatlas.analyze.provenance import write_bundle_provenance
+from abstractatlas.analyze.stage import (
     AnalysisConfig,
     PlanEntry,
     _bundle_output_path,
     _kind_state_key,
     register_kind_runner,
 )
-from ohbm2026.analyze.umap import (
+from abstractatlas.analyze.umap import (
     DEFAULT_UMAP_METRIC,
     DEFAULT_UMAP_MIN_DIST,
     DEFAULT_UMAP_N_NEIGHBORS,
@@ -63,7 +63,7 @@ from ohbm2026.analyze.umap import (
     fit_umap_3d,
     write_projections_bundle,
 )
-from ohbm2026.exceptions import AnalysisError
+from abstractatlas.exceptions import AnalysisError
 
 
 __all__ = [
@@ -92,7 +92,7 @@ def _load_input_matrix(
     if entry.input_source == "abstract":
         from hashlib import sha256
 
-        from ohbm2026.embed.compose import compose_recipe
+        from abstractatlas.embed.compose import compose_recipe
 
         result = compose_recipe(
             ["title", "introduction", "methods", "results", "conclusion"],
@@ -334,7 +334,7 @@ def neuroscape_clusters_runner(
     centroid_sha = centroid_table.domain_model_checkpoint_sha256
     stage3_sha = _read_stage3_neuroscape_checkpoint_sha(config, entry)
     if centroid_sha and stage3_sha and centroid_sha != stage3_sha:
-        from ohbm2026.exceptions import CentroidTableVersionMismatch
+        from abstractatlas.exceptions import CentroidTableVersionMismatch
 
         raise CentroidTableVersionMismatch(
             f"NeuroScape Stage-2 checkpoint mismatch: centroid metadata "
@@ -476,7 +476,7 @@ def communities_runner(config: AnalysisConfig, entry: PlanEntry) -> dict[str, An
     # Build the per-cluster topics artifact (FR-009 hybrid pipeline).
     topics_payload: dict[int, dict[str, Any]] = {}
     if result.n_communities > 0:
-        from ohbm2026.analyze.llm_adapter import build_topics_llm_adapter
+        from abstractatlas.analyze.llm_adapter import build_topics_llm_adapter
 
         abstract_texts = load_abstract_texts(ids)
         llm_call = (
@@ -564,7 +564,7 @@ def load_abstract_texts(
     # Try enriched SQLite first
     if enriched_path.exists():
         try:
-            from ohbm2026.enrich.storage import iter_enriched
+            from abstractatlas.enrich.storage import iter_enriched
 
             for record in iter_enriched(enriched_path):
                 aid = record.get("id")
@@ -648,7 +648,7 @@ def topic_clusters_runner(
     # Build the per-cluster topics artifact (spaCy + c-TF-IDF + optional LLM).
     topics_payload: dict[int, dict[str, Any]] = {}
     if result.n_topics > 0:
-        from ohbm2026.analyze.llm_adapter import build_topics_llm_adapter
+        from abstractatlas.analyze.llm_adapter import build_topics_llm_adapter
 
         abstract_texts = load_abstract_texts(ids)
         # Exclude HDBSCAN noise (cluster_id == -1) from the topics map.

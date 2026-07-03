@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from typing import Callable
 
-from ohbm2026.exceptions import AnalysisError
+from abstractatlas.exceptions import AnalysisError
 
 LLMCaller = Callable[[str, str], str]
 
@@ -42,7 +42,7 @@ def build_topics_llm_adapter(
             "or rerun with `--skip-llm-topics`."
         ) from exc
 
-    from ohbm2026.enrich.flex_tier import call_with_flex_fallback
+    from abstractatlas.enrich.flex_tier import call_with_flex_fallback
 
     def adapter(prompt: str, model_id: str) -> str:
         if not os.environ.get("OPENAI_API_KEY"):

@@ -20,7 +20,7 @@ from typing import Any
 
 import numpy as np
 
-from ohbm2026.exceptions import AnalysisError
+from abstractatlas.exceptions import AnalysisError
 
 
 __all__ = [
@@ -190,7 +190,7 @@ def write_topic_clusters_bundle(
     metadata_extra: dict[str, Any] | None = None,
 ) -> Path:
     """Write a `topic_clusters` bundle per `contracts/bundle.md`."""
-    from ohbm2026.analyze.storage import write_analysis_bundle
+    from abstractatlas.analyze.storage import write_analysis_bundle
 
     if ids.shape[0] != result.topic_cluster_ids.shape[0]:
         raise ValueError(

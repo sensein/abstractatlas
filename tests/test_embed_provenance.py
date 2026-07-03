@@ -13,8 +13,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ohbm2026.embed import provenance as embed_provenance
-from ohbm2026.exceptions import ProvenanceError
+from abstractatlas.embed import provenance as embed_provenance
+from abstractatlas.exceptions import ProvenanceError
 
 
 def _good_payload(**overrides) -> dict:

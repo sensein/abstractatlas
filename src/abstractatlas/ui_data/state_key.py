@@ -15,8 +15,8 @@ class Stage6BuildError(RuntimeError):
     """Raised when the Stage 6 builder cannot resolve a required input.
 
     Defined as a bare ``RuntimeError`` subclass (rather than
-    :class:`ohbm2026.exceptions.Stage6Error`) so that importing this module
-    via ``python -m ohbm2026.ui_data.state_key`` doesn't trigger the
+    :class:`abstractatlas.exceptions.Stage6Error`) so that importing this module
+    via ``python -m abstractatlas.ui_data.state_key`` doesn't trigger the
     ``exceptions.py`` → ``fetch.graphql_api`` import chain (which has a
     circular-import hazard with ``fetch.stage``). ``Stage6Error`` is still
     available as a logical parent — callers can ``except Stage6Error`` and
@@ -129,9 +129,9 @@ def main() -> int:
     """CLI entry — print a discovered path on stdout for shell substitution.
 
     Usage:
-        python -m ohbm2026.ui_data.state_key rollup data/outputs/analysis
-        python -m ohbm2026.ui_data.state_key minilm data/outputs/embeddings/minilm introduction
-        python -m ohbm2026.ui_data.state_key corpus data/primary/abstracts.json
+        python -m abstractatlas.ui_data.state_key rollup data/outputs/analysis
+        python -m abstractatlas.ui_data.state_key minilm data/outputs/embeddings/minilm introduction
+        python -m abstractatlas.ui_data.state_key corpus data/primary/abstracts.json
     """
 
     import sys

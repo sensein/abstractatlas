@@ -33,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ohbm2026.exceptions import KnnCacheError
+from abstractatlas.exceptions import KnnCacheError
 
 __all__ = [
     "KnnResult",

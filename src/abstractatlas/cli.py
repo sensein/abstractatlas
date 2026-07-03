@@ -3,20 +3,20 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ohbm2026 import (
+from abstractatlas import (
     artifacts,
     assets,
     titles,
 )
-from ohbm2026.analyze import clusters as analyze_clusters
-from ohbm2026.analyze import projections as analyze_projections
-from ohbm2026.analyze import stage as analyze_stage
-from ohbm2026.embed import neuroscape as embed_neuroscape
-from ohbm2026.enrich import stage as enrich_stage
-from ohbm2026.fetch import stage as fetch_stage
-from ohbm2026.embed import stage as embed_stage
-from ohbm2026.atlas_package import cli as atlas_cli
-from ohbm2026.atlas_hosting import cli as atlas_hosting_cli
+from abstractatlas.analyze import clusters as analyze_clusters
+from abstractatlas.analyze import projections as analyze_projections
+from abstractatlas.analyze import stage as analyze_stage
+from abstractatlas.embed import neuroscape as embed_neuroscape
+from abstractatlas.enrich import stage as enrich_stage
+from abstractatlas.fetch import stage as fetch_stage
+from abstractatlas.embed import stage as embed_stage
+from abstractatlas.atlas_package import cli as atlas_cli
+from abstractatlas.atlas_hosting import cli as atlas_hosting_cli
 
 
 def _copy_actions(target: argparse.ArgumentParser, source: argparse.ArgumentParser) -> None:
@@ -175,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
         "book",
         help="Compose the Book of Abstracts (md + pdf + docx) from Stage-1 artefacts",
     )
-    from ohbm2026.book.cli import _build_parser as _book_build_parser
+    from abstractatlas.book.cli import _build_parser as _book_build_parser
 
     _copy_actions(book_parser, _book_build_parser())
 
@@ -189,8 +189,8 @@ def _run_analyze_umap_project(argv: list[str]) -> int:
 
     import numpy as _np
 
-    from ohbm2026.analyze.umap import project_into_umap
-    from ohbm2026.exceptions import (
+    from abstractatlas.analyze.umap import project_into_umap
+    from abstractatlas.exceptions import (
         AnalysisError,
         ProjectionDimensionMismatch,
         UnsupportedProjectionAlgorithm,
@@ -243,6 +243,20 @@ def _run_refresh_assets(argv: list[str]) -> int:
     if "--refresh-assets-from-existing-db" not in argv:
         argv = list(argv) + ["--refresh-assets-from-existing-db"]
     return assets.main(argv)
+
+
+def _ohbmcli_deprecated_main(argv: list[str] | None = None) -> int:
+    """Deprecated entry point: `ohbmcli` was renamed to `aacli` (spec 027).
+
+    Warns loudly on stderr, then delegates to :func:`main` so existing
+    scripts keep working for one transition cycle. Remove next release.
+    FOLLOW-UP: drop the `ohbmcli` entry in pyproject.toml [project.scripts].
+    """
+    print(
+        "ohbmcli is deprecated and will be removed; use 'aacli'. Delegating…",
+        file=sys.stderr,
+    )
+    return main(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -298,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     if command == "write-manifest":
         return embed_neuroscape.manifest_main(subcommand_argv)
     if command == "book":
-        from ohbm2026.book.cli import main as book_main
+        from abstractatlas.book.cli import main as book_main
 
         return book_main(subcommand_argv)
 

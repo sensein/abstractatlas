@@ -42,17 +42,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Optional
 
-from ohbm2026 import artifacts as artifacts_module
-from ohbm2026.enrich import storage as enrich_storage
-from ohbm2026.enrich.markdown_render import (
+from abstractatlas import artifacts as artifacts_module
+from abstractatlas.enrich import storage as enrich_storage
+from abstractatlas.enrich.markdown_render import (
     build_claim_manuscript_markdown,
     build_sections_markdown,
 )
-from ohbm2026.enrich import openalex as openalex_module
-from ohbm2026.enrich import figures as stage2_figures
-from ohbm2026.enrich import claims as stage2_claims
-from ohbm2026.enrich import references as stage2_references
-from ohbm2026.exceptions import (
+from abstractatlas.enrich import openalex as openalex_module
+from abstractatlas.enrich import figures as stage2_figures
+from abstractatlas.enrich import claims as stage2_claims
+from abstractatlas.enrich import references as stage2_references
+from abstractatlas.exceptions import (
     CacheVersionError,
     ComponentFailureThresholdError,
     EnrichmentError,

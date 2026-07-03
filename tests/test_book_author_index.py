@@ -5,7 +5,7 @@ from __future__ import annotations
 import pathlib
 import unittest
 
-from ohbm2026.book.corpus import load_book
+from abstractatlas.book.corpus import load_book
 
 _FIX = pathlib.Path(__file__).parent / "fixtures" / "book"
 
@@ -22,7 +22,7 @@ def _book():
 class TestAuthorIndex(unittest.TestCase):
     def setUp(self) -> None:
         try:
-            from ohbm2026.book.author_index import build_author_index
+            from abstractatlas.book.author_index import build_author_index
         except ImportError:
             self.skipTest("author_index not yet implemented")
         self.build = build_author_index

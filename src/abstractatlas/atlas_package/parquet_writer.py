@@ -34,7 +34,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from ohbm2026.exceptions import CrossParquetDriftError
+from abstractatlas.exceptions import CrossParquetDriftError
 
 from .neighbour_index import KnnResult
 from .neuroscape_loader import ArticleHeader, NeuroScapeCluster

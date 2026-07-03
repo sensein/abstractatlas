@@ -3,7 +3,7 @@
 The flat `analyze.py` module was split into per-concern submodules:
 
 - `analyze.errors` — typed `AnalysisError` hierarchy (re-exported from
-  `ohbm2026.exceptions`).
+  `abstractatlas.exceptions`).
 - `analyze.provenance` — Stage 4 path-safe provenance writers.
 - `analyze.storage` — I/O helpers, bundle readers/writers, text-shaping
   utilities, and `write_analysis_bundle` for Stage 4's per-kind output.
@@ -27,8 +27,8 @@ The flat `analyze.py` module was split into per-concern submodules:
 
 **No package-level re-exports.** Per spec clarification Session
 2026-05-15 Q2, every caller imports from the explicit submodule that
-owns the symbol — `from ohbm2026.analyze.storage import …`,
-`from ohbm2026.analyze.clusters import …`, etc. The `runners` import
+owns the symbol — `from abstractatlas.analyze.storage import …`,
+`from abstractatlas.analyze.clusters import …`, etc. The `runners` import
 below is a side-effect-only import that registers per-kind runners
 with `analyze.stage.KIND_RUNNERS`; nothing else lives at the package
 top level.
@@ -39,16 +39,16 @@ from __future__ import annotations
 # Warm-up imports to break a pre-existing
 # `exceptions ↔ fetch.graphql_api ↔ fetch.stage ↔ exceptions` cycle.
 # When the first entry into the `analyze` package comes from a
-# submodule that imports from `ohbm2026.exceptions` (e.g. test code
-# that does `from ohbm2026.analyze.centroids import ...`), exceptions
+# submodule that imports from `abstractatlas.exceptions` (e.g. test code
+# that does `from abstractatlas.analyze.centroids import ...`), exceptions
 # would otherwise be loaded partially. Loading fetch + exceptions
 # here first warms the chain so downstream submodule imports see a
 # fully-initialized exceptions module.
-from ohbm2026 import fetch as _fetch_warmup  # noqa: F401
-from ohbm2026 import exceptions as _exceptions_warmup  # noqa: F401
+from abstractatlas import fetch as _fetch_warmup  # noqa: F401
+from abstractatlas import exceptions as _exceptions_warmup  # noqa: F401
 
 # Side-effect import: registers projections / communities /
 # neuroscape_clusters / topic_clusters runners with
 # `analyze.stage.KIND_RUNNERS`. Without this, the orchestrator's
 # dispatch can't find any runners.
-from ohbm2026.analyze import runners  # noqa: F401
+from abstractatlas.analyze import runners  # noqa: F401

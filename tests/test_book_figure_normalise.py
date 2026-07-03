@@ -25,7 +25,7 @@ class TestFigureNormalisation(unittest.TestCase):
         except ImportError:
             raise unittest.SkipTest("Pillow not installed")
         try:
-            from ohbm2026.book.render_markdown import (
+            from abstractatlas.book.render_markdown import (
                 _copy_figure,
                 _figure_normalise_fallbacks,
                 get_normalise_fallbacks,

@@ -11,7 +11,7 @@ helpers to:
   regions / brain networks) to the full text blob to derive the
   domain-facet axes that the UI's facet panel exposes.
 
-These helpers used to live in the legacy ``ohbm2026.ui.payload`` module
+These helpers used to live in the legacy ``abstractatlas.ui.payload`` module
 that drove the static UI bundle written by ``ohbmcli export-ui``. Now
 that the Stage 6 SvelteKit site has replaced that path, the helpers were
 extracted here and the legacy module retired.
@@ -22,8 +22,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ohbm2026.analyze.storage import parse_string_list_value
-from ohbm2026.titles import cleaned_abstract_title
+from abstractatlas.analyze.storage import parse_string_list_value
+from abstractatlas.titles import cleaned_abstract_title
 
 QUESTION_MAP = {
     "methods": "Please indicate which methods were used in your research:",

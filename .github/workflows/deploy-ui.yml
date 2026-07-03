@@ -30,7 +30,7 @@ on:
       - 'site/**'
       - '.github/workflows/deploy-ui.yml'
       - 'specs/008-ui-rewrite/contracts/references.yaml'
-      - 'src/ohbm2026/ui_data/link_check.py'
+      - 'src/abstractatlas/ui_data/link_check.py'
   workflow_dispatch:
     inputs:
       target:
@@ -191,7 +191,7 @@ jobs:
         # the deploy when a citation 4xx's or times out (T086 / T088).
         # Runs on both targets — a broken reference shouldn't reach
         # sandbox either.
-        run: PYTHONPATH=src python -m ohbm2026.ui_data.link_check specs/008-ui-rewrite/contracts/references.yaml
+        run: PYTHONPATH=src python -m abstractatlas.ui_data.link_check specs/008-ui-rewrite/contracts/references.yaml
 
       # Resolve the parquet URLs from the keyed registry variable, using the
       # channel this ref declares in site/data-channel.json. The same

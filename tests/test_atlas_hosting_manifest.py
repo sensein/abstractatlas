@@ -12,13 +12,13 @@ from pathlib import Path
 
 import jsonschema
 
-from ohbm2026 import artifacts
-from ohbm2026.atlas_hosting.manifest import (
+from abstractatlas import artifacts
+from abstractatlas.atlas_hosting.manifest import (
     ContentAddressedObject,
     UploadManifest,
     build_channel_entry,
 )
-from ohbm2026.exceptions import AtlasProvenanceError
+from abstractatlas.exceptions import AtlasProvenanceError
 
 _SCHEMA_PATH = (
     Path(__file__).resolve().parent.parent

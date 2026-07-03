@@ -19,22 +19,22 @@ from typing import Any
 # CDN content hashes). Epoch 0 trips some tools; use 2026-01-01 instead.
 DETERMINISTIC_MTIME = 1767225600  # 2026-01-01T00:00:00Z
 
-from ohbm2026.ui_data.abstracts import build_abstract_to_poster_map, build_abstracts
-from ohbm2026.ui_data.authors import build_authors
-from ohbm2026.ui_data.cells import build_cells
-from ohbm2026.ui_data.dimensions import (
+from abstractatlas.ui_data.abstracts import build_abstract_to_poster_map, build_abstracts
+from abstractatlas.ui_data.authors import build_authors
+from abstractatlas.ui_data.cells import build_cells
+from abstractatlas.ui_data.dimensions import (
     compute_dimension_coverage,
     load_research_dimensions,
 )
-from ohbm2026.ui_data.enrichment import build_enrichment
-from ohbm2026.ui_data.manifest import build_manifest, make_build_info
-from ohbm2026.ui_data.neighbors import build_neighbors
-from ohbm2026.ui_data.state_key import (
+from abstractatlas.ui_data.enrichment import build_enrichment
+from abstractatlas.ui_data.manifest import build_manifest, make_build_info
+from abstractatlas.ui_data.neighbors import build_neighbors
+from abstractatlas.ui_data.state_key import (
     Stage6BuildError,
     discover_rollup_state_key,
 )
-from ohbm2026.ui_data.topics import build_topics
-from ohbm2026.ui_data.vectors import build_minilm_vectors
+from abstractatlas.ui_data.topics import build_topics
+from abstractatlas.ui_data.vectors import build_minilm_vectors
 
 
 __all__ = ["build_ui_data_package", "Stage6BuildError"]
@@ -96,12 +96,12 @@ def _get_writer(output_format: str):
     one branch here.
     """
     if output_format == "parquet-single":
-        from ohbm2026.ui_data.formats import parquet_single
+        from abstractatlas.ui_data.formats import parquet_single
         return parquet_single
     if output_format == "gzip-json-shards":
         # Stage-6 legacy emitter — kept reachable for one-off dev
         # comparisons; not the canonical export.
-        from ohbm2026.ui_data.formats import gzip_json_shards
+        from abstractatlas.ui_data.formats import gzip_json_shards
         return gzip_json_shards
     raise Stage6BuildError(f"Unknown --output-format: {output_format!r}")
 

@@ -31,7 +31,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from ohbm2026.ui_data.state_key import Stage6BuildError
+from abstractatlas.ui_data.state_key import Stage6BuildError
 
 SCHEMA_VERSION = "neighbors.v1"
 

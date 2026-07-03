@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from ohbm2026.enrich.text import html_to_markdown
+from abstractatlas.enrich.text import html_to_markdown
 
 __all__ = [
     "DEFAULT_COMPONENTS",

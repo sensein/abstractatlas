@@ -46,7 +46,7 @@ from typing import Iterable, Iterator
 import h5py
 import numpy as np
 
-from ohbm2026.exceptions import NeuroScapeInputError
+from abstractatlas.exceptions import NeuroScapeInputError
 
 __all__ = [
     "InputBundle",

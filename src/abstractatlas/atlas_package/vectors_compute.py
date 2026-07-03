@@ -37,7 +37,7 @@ from typing import Iterable, Mapping, Sequence
 
 import numpy as np
 
-from ohbm2026.exceptions import EmbeddingComputeError
+from abstractatlas.exceptions import EmbeddingComputeError
 
 __all__ = [
     "compute_state_key",
@@ -270,7 +270,7 @@ def compute_cluster_vectors(
     # cluster needs recompute and we don't have a stable scale.json yet).
     if encoder is None:
         try:
-            from ohbm2026.embed.hf import HFBatchClient
+            from abstractatlas.embed.hf import HFBatchClient
         except ImportError as exc:
             raise EmbeddingComputeError(
                 f"sentence-transformers / embed.hf not importable: {exc}",

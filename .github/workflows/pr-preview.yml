@@ -14,7 +14,7 @@ on:
       - 'site/**'
       - '.github/workflows/pr-preview.yml'
       - 'specs/008-ui-rewrite/contracts/references.yaml'
-      - 'src/ohbm2026/ui_data/link_check.py'
+      - 'src/abstractatlas/ui_data/link_check.py'
   workflow_dispatch:
 
 permissions:
@@ -71,7 +71,7 @@ jobs:
         # Same check that gates the production deploy in deploy-ui.yml —
         # mirrored here so PR previews surface a broken reference BEFORE
         # the merge instead of failing at deploy time.
-        run: PYTHONPATH=src python -m ohbm2026.ui_data.link_check specs/008-ui-rewrite/contracts/references.yaml
+        run: PYTHONPATH=src python -m abstractatlas.ui_data.link_check specs/008-ui-rewrite/contracts/references.yaml
 
       # Resolve the parquet URLs from the keyed registry variable, using the
       # channel this PR branch declares in site/data-channel.json. A PR can

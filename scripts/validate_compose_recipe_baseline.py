@@ -38,10 +38,10 @@ if _SRC_DIR.exists() and str(_SRC_DIR) not in sys.path:
 
 import numpy as np
 
-from ohbm2026.embed.compose import compose_recipe
-from ohbm2026.embed.components import assemble_component
-from ohbm2026.embed.hf import DEFAULT_MINILM_MODEL, DEFAULT_PUBMEDBERT_MODEL, HFBatchClient
-from ohbm2026.embed.voyage import DEFAULT_VOYAGE_MODEL, VoyageBatchClient
+from abstractatlas.embed.compose import compose_recipe
+from abstractatlas.embed.components import assemble_component
+from abstractatlas.embed.hf import DEFAULT_MINILM_MODEL, DEFAULT_PUBMEDBERT_MODEL, HFBatchClient
+from abstractatlas.embed.voyage import DEFAULT_VOYAGE_MODEL, VoyageBatchClient
 
 
 SAMPLE_SIZE = 50

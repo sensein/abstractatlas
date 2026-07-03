@@ -21,7 +21,7 @@
 #    the build-info-only placeholder.
 #
 # Per CA-007, no state-key is hardcoded; the rollup state-key is discovered
-# inside `build_ui_data.py` via `ohbm2026.ui_data.state_key`.
+# inside `build_ui_data.py` via `abstractatlas.ui_data.state_key`.
 
 set -euo pipefail
 

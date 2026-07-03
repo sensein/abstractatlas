@@ -26,10 +26,10 @@ class TestCacheKey(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.book.cache import compute_cache_key
+            from abstractatlas.book.cache import compute_cache_key
         except ImportError as exc:
             raise unittest.SkipTest(
-                f"ohbm2026.book.cache not yet implemented: {exc}"
+                f"abstractatlas.book.cache not yet implemented: {exc}"
             )
         cls.compute = staticmethod(compute_cache_key)
         cls.base = dict(
@@ -81,13 +81,13 @@ class TestCacheLoadStore(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.book.cache import (
+            from abstractatlas.book.cache import (
                 load_cached_pdf,
                 store_cached_pdf,
             )
         except ImportError as exc:
             raise unittest.SkipTest(
-                f"ohbm2026.book.cache not yet implemented: {exc}"
+                f"abstractatlas.book.cache not yet implemented: {exc}"
             )
         cls.load = staticmethod(load_cached_pdf)
         cls.store = staticmethod(store_cached_pdf)
@@ -161,7 +161,7 @@ class TestCacheLoadStore(unittest.TestCase):
         moves it into the cache). No read-bytes-then-write-temp
         round-trip; the source path no longer exists after the call.
         """
-        from ohbm2026.book.cache import store_cached_pdf_from_path
+        from abstractatlas.book.cache import store_cached_pdf_from_path
 
         key = "1111222233334444"
         # Write a temp PDF (same shape as pandoc's output would be).

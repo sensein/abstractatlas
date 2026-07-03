@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.semantic_index`` (spec 019, T009 + T018).
+"""Tests for ``abstractatlas.atlas_package.semantic_index`` (spec 019, T009 + T018).
 
 Covers:
 - INV-003 enforcement (pubmed_id set mismatch raises VectorsParquetWriteError)
@@ -20,8 +20,8 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import pyarrow.parquet as pq
 
-from ohbm2026 import exceptions
-from ohbm2026.atlas_package import semantic_index
+from abstractatlas import exceptions
+from abstractatlas.atlas_package import semantic_index
 
 
 def _sha256(path: Path) -> str:

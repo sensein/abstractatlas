@@ -33,7 +33,7 @@ from typing import Any, Iterable
 
 import numpy as np
 
-from ohbm2026.analyze.storage import iter_analysis_bundles
+from abstractatlas.analyze.storage import iter_analysis_bundles
 
 __all__ = [
     "RollupRow",

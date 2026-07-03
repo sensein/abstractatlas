@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ohbm2026.enrich.text import html_to_markdown
+from abstractatlas.enrich.text import html_to_markdown
 
 SECTION_ORDER: list[tuple[str, str]] = [
     ("introduction", "Introduction"),

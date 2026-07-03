@@ -49,7 +49,7 @@ FULL_PAYLOAD = {
 
 class TestDistiller(unittest.TestCase):
     def test_slim_has_wrapper_and_only_four_lists(self) -> None:
-        from ohbm2026.ui_data.dimensions import distill_dimensions
+        from abstractatlas.ui_data.dimensions import distill_dimensions
 
         with TemporaryDirectory() as tmp:
             full = Path(tmp) / "abstracts.detail.json"
@@ -74,7 +74,7 @@ class TestDistiller(unittest.TestCase):
             self.assertEqual(dims["1003"]["theory_scope"], [])
 
     def test_distiller_is_deterministic(self) -> None:
-        from ohbm2026.ui_data.dimensions import distill_dimensions
+        from abstractatlas.ui_data.dimensions import distill_dimensions
 
         with TemporaryDirectory() as tmp:
             full = Path(tmp) / "abstracts.detail.json"
@@ -86,7 +86,7 @@ class TestDistiller(unittest.TestCase):
             self.assertEqual(a.read_bytes(), b.read_bytes())
 
     def test_distiller_rejects_layout_mismatch(self) -> None:
-        from ohbm2026.ui_data.dimensions import DimensionInputError, distill_dimensions
+        from abstractatlas.ui_data.dimensions import DimensionInputError, distill_dimensions
 
         with TemporaryDirectory() as tmp:
             slim = Path(tmp) / "out.json"
@@ -103,7 +103,7 @@ class TestDistiller(unittest.TestCase):
                 distill_dimensions(bad2, slim)
 
     def test_distiller_raises_on_missing_file(self) -> None:
-        from ohbm2026.ui_data.dimensions import DimensionInputError, distill_dimensions
+        from abstractatlas.ui_data.dimensions import DimensionInputError, distill_dimensions
 
         with TemporaryDirectory() as tmp:
             with self.assertRaises(DimensionInputError):
@@ -112,7 +112,7 @@ class TestDistiller(unittest.TestCase):
 
 class TestLoadSlim(unittest.TestCase):
     def test_load_returns_int_keyed_map(self) -> None:
-        from ohbm2026.ui_data.dimensions import distill_dimensions, load_research_dimensions
+        from abstractatlas.ui_data.dimensions import distill_dimensions, load_research_dimensions
 
         with TemporaryDirectory() as tmp:
             full = Path(tmp) / "abstracts.detail.json"
@@ -127,7 +127,7 @@ class TestLoadSlim(unittest.TestCase):
             self.assertEqual(set(dims[1001]), set(("focus", "research_modality", "theory_scope", "epistemic_basis")))
 
     def test_load_rejects_wrong_shape(self) -> None:
-        from ohbm2026.ui_data.dimensions import DimensionInputError, load_research_dimensions
+        from abstractatlas.ui_data.dimensions import DimensionInputError, load_research_dimensions
 
         with TemporaryDirectory() as tmp:
             bad = Path(tmp) / "bad.json"
@@ -140,7 +140,7 @@ class TestCoverage(unittest.TestCase):
     """Stage 23 — compute_dimension_coverage (data-model §3 / D1 / D3)."""
 
     def test_matched_plus_no_value_equals_corpus_count(self) -> None:
-        from ohbm2026.ui_data.dimensions import compute_dimension_coverage
+        from abstractatlas.ui_data.dimensions import compute_dimension_coverage
 
         dims = {
             1001: {"focus": ["Clinical"], "research_modality": [], "theory_scope": ["X"], "epistemic_basis": ["Data-driven"]},
@@ -157,7 +157,7 @@ class TestCoverage(unittest.TestCase):
         self.assertEqual(cov["source_file"], "dimensions.slim.json")
 
     def test_non_list_value_rejected_on_load(self) -> None:
-        from ohbm2026.ui_data.dimensions import DimensionInputError, load_research_dimensions
+        from abstractatlas.ui_data.dimensions import DimensionInputError, load_research_dimensions
 
         with TemporaryDirectory() as tmp:
             bad = Path(tmp) / "bad.json"
@@ -183,7 +183,7 @@ class TestParquetFacetsRoundTrip(unittest.TestCase):
         return base
 
     def test_facets_to_arrow_includes_four_dimensions(self) -> None:
-        from ohbm2026.ui_data.formats.parquet_single import _facets_to_arrow
+        from abstractatlas.ui_data.formats.parquet_single import _facets_to_arrow
 
         out = _facets_to_arrow(self._facets(focus=["Clinical"], theory_scope=["Micro Theory"]))
         for key in ("focus", "research_modality", "theory_scope", "epistemic_basis"):
@@ -193,7 +193,7 @@ class TestParquetFacetsRoundTrip(unittest.TestCase):
         self.assertEqual(out["research_modality"], [])
 
     def test_abstracts_table_round_trips_dimensions(self) -> None:
-        from ohbm2026.ui_data.formats.parquet_single import _abstracts_to_table
+        from abstractatlas.ui_data.formats.parquet_single import _abstracts_to_table
 
         envelope = {
             "abstracts": [

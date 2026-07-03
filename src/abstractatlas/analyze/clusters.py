@@ -40,8 +40,8 @@ from typing import Any
 
 import numpy as np
 
-from ohbm2026 import artifacts
-from ohbm2026.analyze.storage import (
+from abstractatlas import artifacts
+from abstractatlas.analyze.storage import (
     ALLOWED_EMBEDDING_FIELDS,
     DEFAULT_EMBEDDING_FIELDS,
     NeuroScapeError,
@@ -65,7 +65,7 @@ from ohbm2026.analyze.storage import (
     write_embedding_bundle,
     write_json,
 )
-from ohbm2026.titles import cleaned_abstract_title
+from abstractatlas.titles import cleaned_abstract_title
 
 
 def _normalize_rows(matrix: Any) -> Any:

@@ -5,8 +5,8 @@ from __future__ import annotations
 import pathlib
 import unittest
 
-from ohbm2026.book.corpus import load_book
-from ohbm2026.book.sort import by_first_author, by_poster_id, by_title
+from abstractatlas.book.corpus import load_book
+from abstractatlas.book.sort import by_first_author, by_poster_id, by_title
 
 _FIX = pathlib.Path(__file__).parent / "fixtures" / "book"
 

@@ -40,9 +40,9 @@ from urllib.request import Request, urlopen
 
 import numpy as np
 
-from ohbm2026.fetch.graphql_api import chunked, load_dotenv
-from ohbm2026.titles import cleaned_abstract_title
-from ohbm2026.util.json_io import write_json
+from abstractatlas.fetch.graphql_api import chunked, load_dotenv
+from abstractatlas.titles import cleaned_abstract_title
+from abstractatlas.util.json_io import write_json
 
 DEFAULT_VOYAGE_MODEL = "voyage-large-2-instruct"
 DEFAULT_MINILM_MODEL = "sentence-transformers/all-MiniLM-L6-v2"

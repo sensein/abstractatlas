@@ -8,7 +8,7 @@ links each published content-addressed object to its source build and
 records the run's code revision / command line / timestamp. It carries
 NO secret (only bucket name, public base URL, content hashes, and
 public URLs) and NO absolute or user-home path — ``source_package_dir``
-is forced through :func:`ohbm2026.atlas_package.provenance.normalise_path`.
+is forced through :func:`abstractatlas.atlas_package.provenance.normalise_path`.
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from ohbm2026.artifacts import _stable_hash
-from ohbm2026.atlas_package.provenance import normalise_path
+from abstractatlas.artifacts import _stable_hash
+from abstractatlas.atlas_package.provenance import normalise_path
 
 SCHEMA_VERSION = "atlas_upload_manifest.v1"
 

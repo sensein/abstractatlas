@@ -1,5 +1,5 @@
 """Tests for the `analyze-matrix` + `analyze-umap-project` subcommand
-wiring in `ohbm2026.cli`."""
+wiring in `abstractatlas.cli`."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from unittest import mock
 
 import numpy as np
 
-from ohbm2026 import cli
+from abstractatlas import cli
 
 
 @contextmanager
@@ -32,7 +32,7 @@ def _isolated_cwd():
 
 class AnalyzeMatrixCLITests(unittest.TestCase):
     def test_analyze_matrix_delegates_to_stage_main(self) -> None:
-        from ohbm2026.analyze import stage as analyze_stage_mod
+        from abstractatlas.analyze import stage as analyze_stage_mod
 
         with mock.patch.object(analyze_stage_mod, "main", return_value=0) as analyze_main:
             result = cli.main(["analyze-matrix", "--dry-run"])
@@ -43,7 +43,7 @@ class AnalyzeMatrixCLITests(unittest.TestCase):
     def test_analyze_matrix_passes_every_flag(self) -> None:
         """contracts/cli.md enumerates every flag; the subparser must
         accept all of them."""
-        from ohbm2026.analyze import stage as analyze_stage_mod
+        from abstractatlas.analyze import stage as analyze_stage_mod
 
         argv = [
             "analyze-matrix",
@@ -86,7 +86,7 @@ class AnalyzeMatrixCLITests(unittest.TestCase):
 class AnalyzeUmapProjectCLITests(unittest.TestCase):
     def test_round_trip_knn_weighted(self) -> None:
         """End-to-end CLI run: build a bundle, then project new vectors."""
-        from ohbm2026.analyze.umap import (
+        from abstractatlas.analyze.umap import (
             fit_umap_2d,
             fit_umap_3d,
             write_projections_bundle,
@@ -127,7 +127,7 @@ class AnalyzeUmapProjectCLITests(unittest.TestCase):
             self.assertEqual(event["event"], "project_into_umap_complete")
 
     def test_dim_mismatch_returns_2(self) -> None:
-        from ohbm2026.analyze.umap import fit_umap_2d, fit_umap_3d, write_projections_bundle
+        from abstractatlas.analyze.umap import fit_umap_2d, fit_umap_3d, write_projections_bundle
 
         with _isolated_cwd():
             rng = np.random.default_rng(7)

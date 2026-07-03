@@ -8,7 +8,7 @@ tuple of poster_ids where the author appears.
 
 from __future__ import annotations
 
-from ohbm2026.book.model import AuthorIndexEntry, BookEntry
+from abstractatlas.book.model import AuthorIndexEntry, BookEntry
 
 
 def build_author_index(

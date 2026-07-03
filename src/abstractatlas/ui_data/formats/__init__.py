@@ -19,7 +19,7 @@ Each candidate emitter exposes a single entry point:
     def emit(*, output_dir: Path, row_streams: RowStreams, manifest: ManifestRow) -> None
 
 where ``RowStreams`` bundles every per-entity iterator from the
-``ohbm2026.ui_data`` modules above. The candidate writes whatever
+``abstractatlas.ui_data`` modules above. The candidate writes whatever
 files / tables / blobs its container demands under ``output_dir``.
 """
 

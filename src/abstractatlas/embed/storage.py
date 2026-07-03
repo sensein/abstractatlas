@@ -29,7 +29,7 @@ from typing import Any, Iterable
 
 import numpy as np
 
-from ohbm2026.exceptions import EmbeddingContractError
+from abstractatlas.exceptions import EmbeddingContractError
 
 __all__ = [
     "CACHE_VERSION",

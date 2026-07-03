@@ -13,12 +13,12 @@ import pathlib
 import sys
 from dataclasses import replace
 
-from ohbm2026.book.author_index import build_author_index
-from ohbm2026.book.corpus import load_book
-from ohbm2026.book.provenance import write_provenance
-from ohbm2026.book.render_markdown import emit_book_md
-from ohbm2026.book.sort import STRATEGIES
-from ohbm2026.exceptions import BookBuildError, ProvenanceError
+from abstractatlas.book.author_index import build_author_index
+from abstractatlas.book.corpus import load_book
+from abstractatlas.book.provenance import write_provenance
+from abstractatlas.book.render_markdown import emit_book_md
+from abstractatlas.book.sort import STRATEGIES
+from abstractatlas.exceptions import BookBuildError, ProvenanceError
 
 _VALID_FORMATS = ("md", "pdf", "all")
 _RETIRED_FORMATS = ("docx",)
@@ -223,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     pandoc_version = None
     xelatex_version = None
     if need_pdf:
-        from ohbm2026.book.render_via_pandoc import preflight
+        from abstractatlas.book.render_via_pandoc import preflight
 
         try:
             versions = preflight(need_xelatex=need_pdf)
@@ -293,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
     # PDF (US1 + Stage 11.1).
     assembled = None
     if need_pdf:
-        from ohbm2026.book.render_via_pandoc import to_pdf
+        from abstractatlas.book.render_via_pandoc import to_pdf
 
         try:
             assembled = to_pdf(

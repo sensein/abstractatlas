@@ -1,9 +1,9 @@
 """T013 — SC-006: no AI-generated content reaches the book.
 
 Two-pronged check:
-1. *By construction* — walk the import graph of every `ohbm2026.book.*`
-   module and assert nothing under `ohbm2026.stage2_*` /
-   `ohbm2026.enrich*` is reachable.
+1. *By construction* — walk the import graph of every `abstractatlas.book.*`
+   module and assert nothing under `abstractatlas.stage2_*` /
+   `abstractatlas.enrich*` is reachable.
 2. *In the output* — after a `book.md` is rendered, grep the bytes
    for every ECO code in `src/ohbm2026/data/eco_top_codes.json` and
    the Stage-2 agent-tool names; assert zero matches.
@@ -21,16 +21,16 @@ import pathlib
 import unittest
 
 _FIX = pathlib.Path(__file__).parent / "fixtures" / "book"
-_BOOK_PKG_ROOT = pathlib.Path(__file__).parent.parent / "src" / "ohbm2026" / "book"
+_BOOK_PKG_ROOT = pathlib.Path(__file__).parent.parent / "src" / "abstractatlas" / "book"
 
 
 def _collect_book_imports() -> set[str]:
     """Walk every .py file in `src/ohbm2026/book/` and return the set
-    of `from ohbm2026.X[.Y]` and `import ohbm2026.X[.Y]` module
+    of `from abstractatlas.X[.Y]` and `import abstractatlas.X[.Y]` module
     references — i.e. the SOURCE-level dependency surface.
 
     Static scan is sufficient: if no book source mentions an
-    `ohbm2026.stage2_*` or `ohbm2026.enrich*` import, then the
+    `abstractatlas.stage2_*` or `abstractatlas.enrich*` import, then the
     transitive runtime graph can't include them. Stays independent
     of test ordering and global `sys.modules` pollution.
     """
@@ -50,7 +50,7 @@ def _collect_book_imports() -> set[str]:
 class TestImportGraph(unittest.TestCase):
     def test_no_stage2_or_enrich_in_source(self) -> None:
         imports = _collect_book_imports()
-        forbidden_prefixes = ("ohbm2026.stage2_", "ohbm2026.enrich")
+        forbidden_prefixes = ("abstractatlas.stage2_", "abstractatlas.enrich")
         leaked = sorted(
             m
             for m in imports
@@ -75,8 +75,8 @@ class TestNoStringLeakage(unittest.TestCase):
 
     def test_book_md_has_no_stage2_strings(self) -> None:
         try:
-            from ohbm2026.book.corpus import load_book
-            from ohbm2026.book.render_markdown import emit_book_md
+            from abstractatlas.book.corpus import load_book
+            from abstractatlas.book.render_markdown import emit_book_md
         except ImportError:
             self.skipTest("render_markdown not yet implemented")
 
@@ -96,7 +96,7 @@ class TestNoStringLeakage(unittest.TestCase):
         eco_path = (
             pathlib.Path(__file__).parent.parent
             / "src"
-            / "ohbm2026"
+            / "abstractatlas"
             / "data"
             / "eco_top_codes.json"
         )

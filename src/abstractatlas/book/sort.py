@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Callable, Protocol
 
-from ohbm2026.book.model import BookEntry
+from abstractatlas.book.model import BookEntry
 
 
 class SortStrategy(Protocol):

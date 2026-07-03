@@ -17,8 +17,8 @@ import json
 import sys
 from pathlib import Path
 
-from ohbm2026.artifacts import utc_now_isoformat
-from ohbm2026.exceptions import (
+from abstractatlas.artifacts import utc_now_isoformat
+from abstractatlas.exceptions import (
     ArtifactDiscoveryError,
     ContentHashMismatchError,
     DataHostingCacheError,

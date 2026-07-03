@@ -50,7 +50,7 @@ Oxford Abstracts source corpus into local, reproducible artifacts:
 - `data/outputs/exported-sites/ui-site__<state-key>/`
 - `export/ui-site/`
 
-The canonical operational interface for this track is `ohbmcli`.
+The canonical operational interface for this track is `aacli`.
 
 ### Track B: Exploratory layout and experiment workflows
 
@@ -60,7 +60,7 @@ tooling.
 
 **As of Stage 5 (specs/007-package-reorg/) this track is parked.** The
 poster-layout / sequencing / NOCD source code moved to the parked
-`src/ohbm2026/layout/` package; the 15 companion scripts moved to
+`src/abstractatlas/layout/` package; the 15 companion scripts moved to
 `scripts/layout/`. Code is preserved verbatim for future revival —
 expect to revive when a new organizer cycle needs poster work.
 
@@ -90,7 +90,7 @@ practical commitments future operators should internalize are:
   `data/outputs/experiments/title_audit/title_modifications.json`
 - long-running API and LLM jobs should checkpoint incrementally and remain
   resumable
-- `ohbmcli` is the canonical interface for the main pipeline
+- `aacli` is the canonical interface for the main pipeline
 - organizer-facing review outputs must preserve machine-readable provenance
   alongside summaries and HTML views
 - behavior-changing work should update the nearest plan or spec and define
@@ -167,7 +167,7 @@ The defaults that future users should treat as current project reality are:
     siblings by stable id (NOT duplicating bodies). Manifest
     embeds the sibling state-keys for runtime drift detection.
   
-  The new `ohbmcli build-atlas-package` orchestrator emits
+  The new `aacli build-atlas-package` orchestrator emits
   `neuroscape.parquet` + `atlas.parquet` from the NeuroScape
   v1.0.1 release inputs + the existing voyage_stage2_published
   recipe. UMAP is fit deterministically (seed=0, n_neighbors=30,
@@ -220,8 +220,8 @@ enrichment, references, embeddings, clusters, or the UI.
 
 The usual order is:
 
-1. `ohbmcli refresh-assets`
-2. `ohbmcli enrich-abstracts` — single Stage 2 entry (replaces the
+1. `aacli refresh-assets`
+2. `aacli enrich-abstracts` — single Stage 2 entry (replaces the
    former `analyze-figures` / `extract-claims` / `enrich` /
    `reference-metadata` quartet). Writes the SQLite + zlib enriched
    corpus at `data/primary/abstracts_enriched.sqlite` plus
@@ -231,10 +231,10 @@ The usual order is:
    Use `--invalidate <component>` to force a single component to
    re-run; pass `--export-parquet PATH` (with the `parquet` optional
    extra installed) to emit a Parquet copy.
-3. `ohbmcli title-audit`
+3. `aacli title-audit`
 4. embedding commands such as `embed-minilm`, `embed-voyage`, or
    `apply-published-stage2`
-5. `ohbmcli cluster-benchmark` and related semantic-analysis steps
+5. `aacli cluster-benchmark` and related semantic-analysis steps
 6. **Stage 11 Book of Abstracts** (optional, reader-facing
    deliverable). The book composes every accepted abstract into a
    publication-quality PDF + markdown bundle + DOCX, sourced
@@ -244,7 +244,7 @@ The usual order is:
    Markdown is the canonical intermediate; PDF/DOCX derive from it
    via pandoc. Invocation:
    ```
-   PYTHONPATH=src .venv/bin/python -m ohbm2026.cli book \
+   PYTHONPATH=src .venv/bin/python -m abstractatlas.cli book \
        --format pdf --sort poster_id
    ```
    Output at `data/outputs/book/book__<state-key>/`. Full spec +
@@ -269,7 +269,7 @@ The usual order is:
    ```
    Then HEAD-check the references registry (FR-017):
    ```
-   PYTHONPATH=src .venv/bin/python -m ohbm2026.ui_data.link_check \
+   PYTHONPATH=src .venv/bin/python -m abstractatlas.ui_data.link_check \
      specs/008-ui-rewrite/contracts/references.yaml
    ```
    Re-tar onto the Dropbox shared link (in-place to preserve the inode +
@@ -283,15 +283,15 @@ Useful when a new operator needs to replay the pipeline from the Oxford
 Abstracts API.
 
 1. configure `.env`
-2. run `ohbmcli fetch-abstracts` (accepted corpus; replaces the
-   former `ohbmcli ingest`) — writes `data/primary/abstracts.json`
+2. run `aacli fetch-abstracts` (accepted corpus; replaces the
+   former `aacli ingest`) — writes `data/primary/abstracts.json`
    plus the persisted GraphQL schema introspection at
    `data/inputs/abstracts_graphql_schema__<state-key>.json` and a
    machine-readable provenance record at
    `data/provenance/abstracts_fetch_provenance__<state-key>.json`. The
    stage is resumable from per-record checkpoint and detects
    upstream schema drift (HARD / SOFT / INFORMATIONAL tiers).
-3. optionally run `ohbmcli fetch-withdrawn` to fetch the SEPARATE
+3. optionally run `aacli fetch-withdrawn` to fetch the SEPARATE
    withdrawn-decision corpus into
    `data/primary/abstracts_withdrawn.json` (never co-mingled with
    the accepted corpus).
@@ -320,7 +320,7 @@ record silently. This is the right choice for traceability and future audit.
 
 The move from monolithic enrichment toward task commands was a foundational
 decision. It made the project easier to resume, test, and explain, and it
-turned `ohbmcli` into the shared operating surface.
+turned `aacli` into the shared operating surface.
 
 ### 3. Prefer OpenAI figure analysis for the canonical enriched corpus
 
@@ -419,7 +419,7 @@ If your change affects canonical outputs, also ask:
 
 ## Practical Guidance For Future Operators
 
-- prefer `ohbmcli` when working on the canonical pipeline
+- prefer `aacli` when working on the canonical pipeline
 - use `.venv/bin/python` or `uv` targeting `.venv` for every Python command
 - treat `scripts/` as focused workflow entrypoints, especially for experiments
   and organizer tooling

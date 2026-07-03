@@ -16,9 +16,9 @@ import re
 import sys
 from typing import Iterable, Mapping, Sequence
 
-from ohbm2026.book.figure_check import probe_figure
-from ohbm2026.book.html_to_md import html_to_pandoc_md
-from ohbm2026.book.model import (
+from abstractatlas.book.figure_check import probe_figure
+from abstractatlas.book.html_to_md import html_to_pandoc_md
+from abstractatlas.book.model import (
     Author,
     AuthorAffiliation,
     BodySection,
@@ -29,9 +29,9 @@ from ohbm2026.book.model import (
     StandbySlot,
     StandbyTimes,
 )
-from ohbm2026.book.sections import BODY_SECTION_NAMES
-from ohbm2026.exceptions import BookBuildError
-from ohbm2026 import standby as _standby
+from abstractatlas.book.sections import BODY_SECTION_NAMES
+from abstractatlas.exceptions import BookBuildError
+from abstractatlas import standby as _standby
 
 _ACCEPTED_FOR = {"Poster", "Oral"}
 

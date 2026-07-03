@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.decimation``.
+"""Tests for ``abstractatlas.atlas_package.decimation``.
 
 Spec: ``specs/015-neuroscape-context/`` — research R-011 (decimation
 + mobile fallback strategy).
@@ -20,7 +20,7 @@ from collections import Counter
 
 import numpy as np
 
-from ohbm2026.atlas_package import decimation
+from abstractatlas.atlas_package import decimation
 
 
 class StratifiedSampleShapeTests(unittest.TestCase):

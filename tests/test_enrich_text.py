@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.enrich.text` (Stage 5 / US1).
+"""Tests for `abstractatlas.enrich.text` (Stage 5 / US1).
 
 Covers `html_to_markdown` + `HTMLToMarkdownParser` — the HTML→Markdown
 conversion helpers moved out of the legacy `enrichment.py`.
@@ -10,9 +10,9 @@ import unittest
 
 # Warmup import to break the exceptions ↔ fetch circular cycle
 # (same pattern as tests/test_analyze_stage.py).
-from ohbm2026.analyze import stage as _stage_warmup  # noqa: F401
+from abstractatlas.analyze import stage as _stage_warmup  # noqa: F401
 
-from ohbm2026.enrich.text import HTMLToMarkdownParser, html_to_markdown
+from abstractatlas.enrich.text import HTMLToMarkdownParser, html_to_markdown
 
 
 class HtmlToMarkdownTests(unittest.TestCase):

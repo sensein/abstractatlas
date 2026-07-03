@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.provenance`.
+"""Tests for `abstractatlas.analyze.provenance`.
 
 Per CA-008 + Principle VIII, provenance MUST reject absolute / `~` /
 parent-escape paths so bundle records stay portable.
@@ -11,13 +11,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ohbm2026.analyze.provenance import (
+from abstractatlas.analyze.provenance import (
     assert_path_safe,
     assert_paths_safe,
     write_bundle_provenance,
     write_run_provenance,
 )
-from ohbm2026.exceptions import ProvenanceError
+from abstractatlas.exceptions import ProvenanceError
 
 
 class AssertPathSafeTests(unittest.TestCase):

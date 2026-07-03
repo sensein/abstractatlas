@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.rollup.write_rollup`.
+"""Tests for `abstractatlas.analyze.rollup.write_rollup`.
 
 Per contracts/rollup.md, the parquet + sqlite forms are
 content-equivalent: same column count, same row count, same
@@ -15,12 +15,12 @@ from pathlib import Path
 
 import numpy as np
 
-from ohbm2026.analyze.rollup import (
+from abstractatlas.analyze.rollup import (
     build_rollup_tables,
     load_neuroscape_cluster_table,
     write_rollup,
 )
-from ohbm2026.analyze.storage import write_analysis_bundle
+from abstractatlas.analyze.storage import write_analysis_bundle
 
 
 def _prov(kind: str, input_key: str, bundle_dir_rel: str) -> dict:

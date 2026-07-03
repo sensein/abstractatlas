@@ -21,8 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Protocol, Tuple
 
-from ohbm2026.artifacts import utc_now_isoformat
-from ohbm2026.exceptions import ArtifactDiscoveryError, ContentHashMismatchError
+from abstractatlas.artifacts import utc_now_isoformat
+from abstractatlas.exceptions import ArtifactDiscoveryError, ContentHashMismatchError
 
 from .content_hash import derive_object_key, public_url, sha256_file
 from .manifest import (

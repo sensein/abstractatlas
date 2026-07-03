@@ -5,13 +5,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ohbm2026 import artifacts
-from ohbm2026.analyze.clusters import (
+from abstractatlas import artifacts
+from abstractatlas.analyze.clusters import (
     align_semantic_records,
     load_enriched_lookup,
     summarize_membership_groups,
 )
-from ohbm2026.analyze.storage import (
+from abstractatlas.analyze.storage import (
     load_annotation_lookup,
     load_embedding_bundle,
     load_title_lookup,

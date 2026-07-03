@@ -13,8 +13,8 @@ import unittest
 
 import openai
 
-from ohbm2026.enrich import flex_tier as flex_tier
-from ohbm2026.exceptions import EnrichmentError
+from abstractatlas.enrich import flex_tier as flex_tier
+from abstractatlas.exceptions import EnrichmentError
 
 
 class _FakeResponse:
@@ -110,7 +110,7 @@ class CallWithFlexFallbackTests(unittest.TestCase):
         # tier will fail identically. The wrapper must surface it as
         # a typed EnrichmentError on the FIRST occurrence so the
         # orchestrator's per-abstract failure-threshold handles it.
-        from ohbm2026.exceptions import EnrichmentError
+        from abstractatlas.exceptions import EnrichmentError
 
         calls = []
 

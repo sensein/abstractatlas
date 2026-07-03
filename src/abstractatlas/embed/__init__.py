@@ -1,15 +1,15 @@
 """Stage 3 — multi-model per-component embeddings matrix.
 
-Public surface re-exported here so callers can `from ohbm2026.embed
+Public surface re-exported here so callers can `from abstractatlas.embed
 import compose_recipe, run_single_bundle, …` without dipping into
 submodules.
 """
 
-from ohbm2026.embed.compose import (
+from abstractatlas.embed.compose import (
     apply_published_stage2_to_matrix,
     compose_recipe,
 )
-from ohbm2026.embed.components import (
+from abstractatlas.embed.components import (
     ALL_COMPONENTS,
     DEFAULT_COMPONENTS,
     PARTIAL_COMPONENTS,
@@ -17,7 +17,7 @@ from ohbm2026.embed.components import (
     assemble_all_components,
     assemble_component,
 )
-from ohbm2026.embed.stage import (
+from abstractatlas.embed.stage import (
     DEFAULT_MODELS,
     BundleResult,
     build_clients,
@@ -27,7 +27,7 @@ from ohbm2026.embed.stage import (
     run_matrix,
     run_single_bundle,
 )
-from ohbm2026.embed.storage import (
+from abstractatlas.embed.storage import (
     BUNDLE_SCHEMA_VERSION,
     CACHE_VERSION,
     atomic_write_bytes,

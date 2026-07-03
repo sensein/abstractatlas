@@ -7,8 +7,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ohbm2026.layout.poster_layout import analyze_layout_proposal, load_layout_inputs, write_json, write_layout_csv, write_listing_csv
-from ohbm2026.layout.poster_sequencing import (
+from abstractatlas.layout.poster_layout import analyze_layout_proposal, load_layout_inputs, write_json, write_layout_csv, write_listing_csv
+from abstractatlas.layout.poster_sequencing import (
     build_global_path_split_proposal,
     derive_contiguous_layout_clusters,
     graph_reordering_metrics,

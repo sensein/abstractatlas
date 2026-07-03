@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ohbm2026.enrich.text import html_to_markdown
-from ohbm2026.enrich.openalex import (
+from abstractatlas.enrich.text import html_to_markdown
+from abstractatlas.enrich.openalex import (
     extract_reference_entries_heuristic,
     llm_reference_split_request,
     normalize_reference_match_text,

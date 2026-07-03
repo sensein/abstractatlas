@@ -37,10 +37,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ohbm2026 import artifacts, assets
-from ohbm2026.fetch import graphql_api as _gql
-from ohbm2026.fetch import schema_diff as _schema_diff
-from ohbm2026.exceptions import (
+from abstractatlas import artifacts, assets
+from abstractatlas.fetch import graphql_api as _gql
+from abstractatlas.fetch import schema_diff as _schema_diff
+from abstractatlas.exceptions import (
     CheckpointError,
     FigureFailureError,
     GraphQLAPIError,
@@ -472,15 +472,15 @@ def _classify_schema_drift(
 
 
 def _iter_consumer_modules() -> list[object]:
-    """Return modules under ``ohbm2026.*`` that declare
+    """Return modules under ``abstractatlas.*`` that declare
     ``CONSUMED_ABSTRACT_FIELDS``. Stage 1 v1 has none populated; the
     list is collected at runtime so later stages can opt in just by
     adding the attribute to their module."""
     import importlib
     out: list[object] = []
     for mod_name in (
-        "ohbm2026.assets",
-        "ohbm2026.fetch.stage",
+        "abstractatlas.assets",
+        "abstractatlas.fetch.stage",
     ):
         try:
             mod = importlib.import_module(mod_name)

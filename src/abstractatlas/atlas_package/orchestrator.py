@@ -40,7 +40,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ohbm2026.exceptions import NeuroScapeInputError
+from abstractatlas.exceptions import NeuroScapeInputError
 
 from . import (
     cluster_palette as palette_mod,

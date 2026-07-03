@@ -25,7 +25,7 @@ _FIX = pathlib.Path(__file__).parent / "fixtures" / "book"
 class TestDocxRejection(unittest.TestCase):
     def setUp(self) -> None:
         try:
-            from ohbm2026.book.cli import main  # noqa: F401
+            from abstractatlas.book.cli import main  # noqa: F401
         except ImportError as exc:
             self.skipTest(f"book CLI not importable: {exc}")
         self.tmp = tempfile.TemporaryDirectory()
@@ -42,7 +42,7 @@ class TestDocxRejection(unittest.TestCase):
 
     def _run(self, argv: list[str]) -> tuple[int, str, str]:
         """Invoke `book.cli.main` and capture (exit_code, stdout, stderr)."""
-        from ohbm2026.book import cli as book_cli
+        from abstractatlas.book import cli as book_cli
 
         out_buf = io.StringIO()
         err_buf = io.StringIO()

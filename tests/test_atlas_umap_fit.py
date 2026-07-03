@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.umap_fit``.
+"""Tests for ``abstractatlas.atlas_package.umap_fit``.
 
 Spec: ``specs/015-neuroscape-context/`` — research R-001 (UMAP fit
 parameters and seed) + R-009 (``UmapFitError``).
@@ -23,8 +23,8 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 
-from ohbm2026 import exceptions
-from ohbm2026.atlas_package import umap_fit
+from abstractatlas import exceptions
+from abstractatlas.atlas_package import umap_fit
 
 
 def _synthetic_vectors(n: int = 50, dim: int = 64, seed: int = 0) -> np.ndarray:

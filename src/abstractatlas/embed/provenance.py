@@ -13,8 +13,8 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
-from ohbm2026.embed import storage as embed_storage
-from ohbm2026.exceptions import ProvenanceError
+from abstractatlas.embed import storage as embed_storage
+from abstractatlas.exceptions import ProvenanceError
 
 __all__ = [
     "PROVENANCE_SCHEMA_VERSION",

@@ -8,7 +8,7 @@ intermediate; PDF and DOCX are derived via pandoc.
 Spec: `specs/011-abstracts-book/`.
 """
 
-from ohbm2026.book.model import (
+from abstractatlas.book.model import (
     Author,
     AuthorAffiliation,
     AuthorIndexEntry,

@@ -36,7 +36,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from ohbm2026.exceptions import AnalysisError, TopicGroupingHallucination
+from abstractatlas.exceptions import AnalysisError, TopicGroupingHallucination
 
 
 __all__ = [

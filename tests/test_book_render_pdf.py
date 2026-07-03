@@ -26,11 +26,11 @@ def _pandoc_ok() -> bool:
 class TestBookRenderPdf(unittest.TestCase):
     def setUp(self) -> None:
         try:
-            from ohbm2026.book.author_index import build_author_index
-            from ohbm2026.book.corpus import load_book
-            from ohbm2026.book.render_markdown import emit_book_md
-            from ohbm2026.book.render_via_pandoc import to_pdf
-            from ohbm2026.book.sort import by_poster_id
+            from abstractatlas.book.author_index import build_author_index
+            from abstractatlas.book.corpus import load_book
+            from abstractatlas.book.render_markdown import emit_book_md
+            from abstractatlas.book.render_via_pandoc import to_pdf
+            from abstractatlas.book.sort import by_poster_id
         except ImportError:
             self.skipTest("renderers not yet implemented")
         from dataclasses import replace
@@ -100,8 +100,8 @@ class TestBookRenderPdf(unittest.TestCase):
         )
 
     def test_pdftotext_byte_identical_on_rerun(self) -> None:
-        from ohbm2026.book.render_via_pandoc import to_pdf
-        from ohbm2026.book.render_markdown import emit_book_md
+        from abstractatlas.book.render_via_pandoc import to_pdf
+        from abstractatlas.book.render_markdown import emit_book_md
 
         with tempfile.TemporaryDirectory() as tmp2:
             other_dir = pathlib.Path(tmp2)

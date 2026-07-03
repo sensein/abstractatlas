@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-"""Thin shim for ad-hoc dev runs of `ohbmcli book`.
+"""Thin shim for ad-hoc dev runs of `aacli book`.
 
-Re-exports `ohbm2026.book.cli:main` so contributors can iterate
-without the `ohbmcli` dispatch indirection. Matches the pattern of
+Re-exports `abstractatlas.book.cli:main` so contributors can iterate
+without the `aacli` dispatch indirection. Matches the pattern of
 `scripts/run_enrich_abstracts.py`.
 
 Usage (from repo root):
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import sys
 
-from ohbm2026.book.cli import main
+from abstractatlas.book.cli import main
 
 
 if __name__ == "__main__":  # pragma: no cover
