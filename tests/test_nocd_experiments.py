@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ohbm2026.layout import nocd_experiments
+from abstractatlas.layout import nocd_experiments
 
 
 def _load_script_module(name: str):

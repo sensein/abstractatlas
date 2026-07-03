@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.enrich.markdown_render` (Stage 5 / US1).
+"""Tests for `abstractatlas.enrich.markdown_render` (Stage 5 / US1).
 
 Covers the manuscript/section markdown builders moved out of the legacy
 `enrichment.py`. These helpers are consumed by Stage 2.1's claim-extraction
@@ -10,9 +10,9 @@ from __future__ import annotations
 import unittest
 
 # Warmup import to break the exceptions ↔ fetch circular cycle.
-from ohbm2026.analyze import stage as _stage_warmup  # noqa: F401
+from abstractatlas.analyze import stage as _stage_warmup  # noqa: F401
 
-from ohbm2026.enrich.markdown_render import (
+from abstractatlas.enrich.markdown_render import (
     SECTION_ORDER,
     build_claim_manuscript_markdown,
     build_sections_markdown,

@@ -18,7 +18,7 @@ We can think of this explicitly as a weighted graph reordering problem:
 
 ## Why This Phase Now
 
-The current semantic-path ordering logic is still based on greedy nearest-neighbor walks in [src/ohbm2026/poster_layout.py](/Users/satra/software/temp/ohbm2026/src/ohbm2026/poster_layout.py).
+The current semantic-path ordering logic is still based on greedy nearest-neighbor walks in [src/abstractatlas/poster_layout.py](/Users/satra/software/temp/ohbm2026/src/abstractatlas/poster_layout.py).
 
 Relevant functions:
 

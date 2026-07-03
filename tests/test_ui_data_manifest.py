@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ohbm2026.ui_data import manifest as manifest_module
-from ohbm2026.ui_data.manifest import build_manifest, discover_cells, discover_topic_kinds
+from abstractatlas.ui_data import manifest as manifest_module
+from abstractatlas.ui_data.manifest import build_manifest, discover_cells, discover_topic_kinds
 
 from tests._ui_data_fixtures import BUILD_INFO, CORPUS_PAYLOAD, write_fixtures
 

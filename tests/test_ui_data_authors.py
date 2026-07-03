@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ohbm2026.ui_data.abstracts import build_abstracts_records
-from ohbm2026.ui_data.authors import build_authors, build_authors_records
+from abstractatlas.ui_data.abstracts import build_abstracts_records
+from abstractatlas.ui_data.authors import build_authors, build_authors_records
 
 from tests._ui_data_fixtures import BUILD_INFO, write_fixtures
 

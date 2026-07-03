@@ -15,10 +15,10 @@ from unittest import mock
 
 import numpy as np
 
-from ohbm2026 import exceptions
-from ohbm2026.embed import compose as embed_compose
-from ohbm2026.embed import stage as embed_stage
-from ohbm2026.embed import storage as embed_storage
+from abstractatlas import exceptions
+from abstractatlas.embed import compose as embed_compose
+from abstractatlas.embed import stage as embed_stage
+from abstractatlas.embed import storage as embed_storage
 
 
 class _Tmp:

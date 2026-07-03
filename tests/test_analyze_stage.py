@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.stage`.
+"""Tests for `abstractatlas.analyze.stage`.
 
 Per spec FR-001 / FR-002 / FR-003 / FR-013, the Stage 4 orchestrator
 must:
@@ -40,8 +40,8 @@ def _isolated_cwd():
         os.chdir(original)
         shutil.rmtree(tmp, ignore_errors=True)
 
-from ohbm2026.analyze import stage as stage_mod
-from ohbm2026.analyze.stage import (
+from abstractatlas.analyze import stage as stage_mod
+from abstractatlas.analyze.stage import (
     AnalysisConfig,
     DEFAULT_KINDS,
     DEFAULT_MODELS,
@@ -51,7 +51,7 @@ from ohbm2026.analyze.stage import (
     register_kind_runner,
     run_matrix,
 )
-from ohbm2026.exceptions import (
+from abstractatlas.exceptions import (
     AnalysisError,
     InputBundleMissing,
 )
@@ -200,7 +200,7 @@ class StateKeyCollisionTests(unittest.TestCase):
 
             # Pre-write a bundle dir with a stale corpus_state_key recorded in its provenance.
             from dataclasses import replace
-            from ohbm2026.analyze.stage import _bundle_output_path, _kind_state_key
+            from abstractatlas.analyze.stage import _bundle_output_path, _kind_state_key
 
             entry = stage_mod.PlanEntry(
                 model_key="voyage",

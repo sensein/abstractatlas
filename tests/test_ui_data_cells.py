@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ohbm2026.ui_data.cells import build_cells, build_cells_shards
+from abstractatlas.ui_data.cells import build_cells, build_cells_shards
 
 from tests._ui_data_fixtures import BUILD_INFO, write_fixtures
 

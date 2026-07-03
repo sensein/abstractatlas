@@ -1,4 +1,4 @@
-"""End-to-end test for :func:`ohbm2026.atlas_package.orchestrator.build_atlas_package`.
+"""End-to-end test for :func:`abstractatlas.atlas_package.orchestrator.build_atlas_package`.
 
 Spec: ``specs/015-neuroscape-context/`` — T020 + R-005 + SC-004.
 
@@ -26,7 +26,7 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 
-from ohbm2026.atlas_package import orchestrator, umap_fit
+from abstractatlas.atlas_package import orchestrator, umap_fit
 
 from tests._atlas_fixtures import write_v101_fixture
 
@@ -252,7 +252,7 @@ class OrchestratorWithSemanticIndexTests(unittest.TestCase):
         # Monkeypatch the vectors_compute encoder to avoid downloading
         # the real MiniLM model in this test (the synthetic encoder
         # matches the production shape).
-        from ohbm2026.atlas_package import vectors_compute
+        from abstractatlas.atlas_package import vectors_compute
 
         real_compute = vectors_compute.compute_cluster_vectors
         encoder = self._synthetic_encoder()

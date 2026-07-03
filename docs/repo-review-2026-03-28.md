@@ -23,7 +23,7 @@ to navigate confidently.
 
 ## Strengths To Preserve
 
-- the canonical pipeline is resumable and centered on `ohbmcli`
+- the canonical pipeline is resumable and centered on `aacli`
 - experiment immutability is explicit and documented
 - test coverage is broad across pipeline, UI export, poster layout, and
   experiment tooling
@@ -37,15 +37,15 @@ to navigate confidently.
 
 Current hotspots:
 
-- `src/ohbm2026/neuroscape.py`
+- `src/abstractatlas/neuroscape.py`
   - about `2951` lines, `106` functions
-- `src/ohbm2026/poster_sequencing.py`
+- `src/abstractatlas/poster_sequencing.py`
   - about `2371` lines, `59` functions
-- `src/ohbm2026/openalex.py`
+- `src/abstractatlas/openalex.py`
   - about `2279` lines, `76` functions
-- `src/ohbm2026/poster_layout.py`
+- `src/abstractatlas/poster_layout.py`
   - about `2191` lines, `60` functions
-- `src/ohbm2026/enrichment.py`
+- `src/abstractatlas/enrichment.py`
   - about `1437` lines, `59` functions
 
 Why this matters:
@@ -95,7 +95,7 @@ Mitigation landed in this pass:
 Recommended next step:
 
 - introduce a `scripts/README.md` or eventually promote the most stable
-  organizer flows into explicit `ohbmcli` or package-level namespaces
+  organizer flows into explicit `aacli` or package-level namespaces
 
 ### P2: Canonical versus exploratory outputs still need stronger machine-readable boundaries
 

@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.link_check``.
+"""Tests for ``abstractatlas.atlas_package.link_check``.
 
 Spec: ``specs/015-neuroscape-context/`` — FR-024 + research R-013
 (narrowed scope: only the small fixed set of non-PubMed-record URLs
@@ -18,8 +18,8 @@ import unittest
 from dataclasses import dataclass
 from typing import Mapping
 
-from ohbm2026 import exceptions
-from ohbm2026.atlas_package import link_check as lc
+from abstractatlas import exceptions
+from abstractatlas.atlas_package import link_check as lc
 
 
 # ---------------------------------------------------------------------------

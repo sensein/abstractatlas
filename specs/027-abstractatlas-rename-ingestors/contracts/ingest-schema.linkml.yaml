@@ -1,0 +1,84 @@
+id: https://abstractatlas.brainkb.org/schemas/ingest
+name: abstractatlas-ingest
+title: Abstract Atlas standardized ingest schema
+description: >-
+  The normalized record contract every ingestor emits and every downstream
+  stage consumes. A common core (IngestedDocument) plus source-type
+  extensions (ConferenceDocument, LiteratureDocument). Designed to CAPTURE
+  the existing OHBM normalized shape so the ported output validates
+  unchanged (spec 027, FR-007/FR-008) — it documents/validates, it does not
+  reshape already-published data.
+default_range: string
+prefixes:
+  linkml: https://w3id.org/linkml/
+  aa: https://abstractatlas.brainkb.org/schemas/ingest/
+default_prefix: aa
+imports:
+  - linkml:types
+
+enums:
+  SourceType:
+    permissible_values:
+      conference: {description: "A conference/meeting abstract source (e.g. OHBM via Oxford Abstracts)."}
+      literature_index: {description: "A literature index/corpus source (e.g. PubMed/NeuroScape; future arXiv/bioRxiv/medRxiv)."}
+
+classes:
+  SourceProvenance:
+    description: Which ingestor/source produced a record.
+    attributes:
+      ingestor: {required: true, description: "Registered ingestor name, e.g. ohbm-2026."}
+      source_type: {required: true, range: SourceType}
+      origin: {required: true, description: "Origin identifier, e.g. oxford-abstracts, pubmed. No absolute/user-home paths."}
+      retrieved_at: {range: date}
+
+  Author:
+    attributes:
+      name: {required: true}
+      affiliation: {}
+      order: {range: integer}
+
+  ProgramSession:
+    description: Flattened conference program/session membership (preserves the OHBM program_sessions shape).
+    attributes:
+      session_id: {}
+      session_title: {}
+      role: {}
+
+  IngestedDocument:
+    description: Common core emitted by every ingestor.
+    slots: [doc_id, source, title, authors, abstract_text, year]
+    slot_usage:
+      doc_id: {required: true}
+      source: {required: true}
+      title: {required: true}
+      authors: {required: true, multivalued: true, inlined_as_list: true}
+      abstract_text: {required: true}
+
+  ConferenceDocument:
+    is_a: IngestedDocument
+    description: A conference abstract. source.source_type MUST be `conference`.
+    attributes:
+      poster_id: {description: "Preserved OHBM program_code mapping."}
+      program_sessions: {multivalued: true, inlined_as_list: true, range: ProgramSession}
+
+  LiteratureDocument:
+    is_a: IngestedDocument
+    description: A literature-index record. source.source_type MUST be `literature_index`.
+    attributes:
+      doi: {}
+      venue: {description: "Journal or preprint server."}
+      index_id: {description: "Source index id, e.g. PubMed id, arXiv id (future)."}
+
+slots:
+  doc_id: {description: "Stable within-source identity."}
+  source: {range: SourceProvenance}
+  title: {}
+  authors: {range: Author}
+  abstract_text: {description: "Abstract/summary body."}
+  year: {range: integer}
+
+# Validation intent (enforced by ingest/schema.py + linkml validator, FR-008):
+#  - core required slots present;
+#  - a ConferenceDocument's source.source_type == conference (and vice versa
+#    for LiteratureDocument) — prevents source masquerade (spec edge case);
+#  - malformed → precise, source-attributed error; not passed downstream.

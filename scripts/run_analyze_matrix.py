@@ -3,7 +3,7 @@
 
 Mirror of `scripts/run_embed_matrix.py`. Operators run this directly
 when they want the canonical Stage 4 matrix without going through
-`ohbmcli`; downstream code paths are identical.
+`aacli`; downstream code paths are identical.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ SRC = REPO_ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ohbm2026.analyze.stage import main  # noqa: E402
+from abstractatlas.analyze.stage import main  # noqa: E402
 
 
 if __name__ == "__main__":

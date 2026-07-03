@@ -12,7 +12,7 @@ the per-abstract pipeline introduced in Stage 11.1 — each abstract
 pandoc-renders in parallel with content+toolchain caching, then a
 two-pass assembly attaches a page-numbered author index.
 
-DOCX export was **retired in Stage 11.1 US3** (`ohbmcli book --format docx`
+DOCX export was **retired in Stage 11.1 US3** (`aacli book --format docx`
 exits 2 with a pointer at `--format md` and `--format pdf`). The
 real-corpus DOCX hit 2.8 GB even after figure resizing — too large
 for Word to open — and the markdown bundle + PDF cover every use
@@ -39,7 +39,7 @@ live under `specs/011-abstracts-book/`:
   optional Tufte styling).
 - `data-model.md` — three layers (Stage-1 inputs → markdown-bearing
   in-memory model → outputs with figure-filename contract).
-- `contracts/cli.md` — `ohbmcli book` flags, error path table,
+- `contracts/cli.md` — `aacli book` flags, error path table,
   known limitations.
 - `quickstart.md` — operator runbook for install + first run.
 
@@ -53,13 +53,13 @@ uv pip install --python .venv/bin/python ".[abstracts_book]"
 brew install pandoc tectonic
 
 # Markdown-only first run (no system deps needed):
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli book --format md
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli book --format md
 
 # Full PDF run:
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli book --format pdf --sort poster_id
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli book --format pdf --sort poster_id
 
 # All three formats + Tufte typography for the PDF:
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli book --format all --sort poster_id --style tufte
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli book --format all --sort poster_id --style tufte
 ```
 
 Outputs land at `data/outputs/book/book__<state-key>/`. Figure
@@ -108,7 +108,7 @@ Operator flags:
 Single-abstract debug (re-render one chunk in isolation, populating
 the cache):
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.book.render_per_abstract \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.book.render_per_abstract \
     --poster-id 0042 --style plain
 ```
 

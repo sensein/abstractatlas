@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.parquet_writer``.
+"""Tests for ``abstractatlas.atlas_package.parquet_writer``.
 
 Spec: ``specs/015-neuroscape-context/`` — research R-008 + R-011 +
 data-model.md + ``contracts/parquet-schemas.md`` + R-009
@@ -31,15 +31,15 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import pyarrow.parquet as pq
 
-from ohbm2026 import exceptions
-from ohbm2026.atlas_package import (
+from abstractatlas import exceptions
+from abstractatlas.atlas_package import (
     cluster_palette as palette_mod,
     lod,
     neighbour_index,
     parquet_writer,
 )
-from ohbm2026.atlas_package.neuroscape_loader import ArticleHeader, NeuroScapeCluster
-from ohbm2026.atlas_package.ohbm_projector import ProjectionResult
+from abstractatlas.atlas_package.neuroscape_loader import ArticleHeader, NeuroScapeCluster
+from abstractatlas.atlas_package.ohbm_projector import ProjectionResult
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ def _build_info(state_key: str = "abcd12345678") -> dict:
     return {
         "state_key": state_key,
         "code_revision": "deadbeef",
-        "command_line": "ohbmcli build-atlas-package",
+        "command_line": "aacli build-atlas-package",
         "seed": 0,
         "umap_state_key": "111111111111",
         "centroid_table_version": "ec7a69d7cccd",

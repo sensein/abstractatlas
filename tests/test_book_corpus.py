@@ -5,14 +5,14 @@ from __future__ import annotations
 import pathlib
 import unittest
 
-from ohbm2026.book.corpus import load_book
-from ohbm2026.exceptions import BookBuildError
+from abstractatlas.book.corpus import load_book
+from abstractatlas.exceptions import BookBuildError
 
 _FIX = pathlib.Path(__file__).parent / "fixtures" / "book"
 
 
 def _load() -> "Book":
-    from ohbm2026.book.model import Book
+    from abstractatlas.book.model import Book
 
     return load_book(
         corpus_path=_FIX / "abstracts.json",

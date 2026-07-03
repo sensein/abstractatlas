@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.topic_clusters` (US5).
+"""Tests for `abstractatlas.analyze.topic_clusters` (US5).
 
 Coverage per FR-009 + CA-002:
 - Synthetic 3-cluster corpus → `run_topic_clustering` recovers
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ohbm2026.analyze.topic_clusters import (
+from abstractatlas.analyze.topic_clusters import (
     run_topic_clustering,
     write_topic_clusters_bundle,
 )

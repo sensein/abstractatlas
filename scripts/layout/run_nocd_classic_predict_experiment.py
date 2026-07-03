@@ -4,8 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from ohbm2026 import artifacts
-from ohbm2026.layout.nocd_experiments import (
+from abstractatlas import artifacts
+from abstractatlas.layout.nocd_experiments import (
     annotate_community_structure_scores,
     classic_summary_markdown,
     discover_checkpoint_configs,

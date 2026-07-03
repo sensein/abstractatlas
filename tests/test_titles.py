@@ -1,7 +1,7 @@
 import unittest
 
-from ohbm2026 import artifacts
-from ohbm2026.titles import build_title_modification_report, normalize_abstract_title
+from abstractatlas import artifacts
+from abstractatlas.titles import build_title_modification_report, normalize_abstract_title
 
 
 class TitleHelpersTest(unittest.TestCase):

@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ohbm2026.atlas_hosting import content_hash
+from abstractatlas.atlas_hosting import content_hash
 
 
 class Sha256FileTests(unittest.TestCase):

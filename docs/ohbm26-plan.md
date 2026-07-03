@@ -37,36 +37,36 @@ This is the operational planning document for the repository.
 
 ## Architecture
 
-- `src/ohbm2026/graphql_api.py`
+- `src/abstractatlas/graphql_api.py`
   - GraphQL requests, batching, retries, env loading, author/submission fetches
-- `src/ohbm2026/assets.py`
+- `src/abstractatlas/assets.py`
   - local asset indexing, figure URL extraction, reuse-aware downloads, JSON-only asset refresh, and ingest CLI
-- `src/ohbm2026/enrichment.py`
+- `src/abstractatlas/enrichment.py`
   - author export, HTML-to-markdown conversion, section mapping, local Qwen figure analysis, enriched abstract assembly, and phase-2 CLI
-- `src/ohbm2026/neuroscape.py`
+- `src/abstractatlas/neuroscape.py`
   - stage-one embeddings, semantic graph generation, clustering, and NeuroScape handoff manifest
-- `src/ohbm2026/cli.py`
-  - unified `ohbmcli` command
+- `src/abstractatlas/cli.py`
+  - unified `aacli` command
 
 ## Unified CLI
 
-- `ohbmcli ingest`
+- `aacli ingest`
   - fetch abstracts and figure assets from the API
-- `ohbmcli refresh-assets`
+- `aacli refresh-assets`
   - rebuild `local_assets` from the local JSON database without rerunning abstract extraction
-- `ohbmcli authors`
+- `aacli authors`
   - export author metadata
-- `ohbmcli enrich`
+- `aacli enrich`
   - build enriched abstracts from local databases
-- `ohbmcli analyze-figures`
+- `aacli analyze-figures`
   - analyze local figures with Ollama
-- `ohbmcli embed-minilm`
+- `aacli embed-minilm`
   - generate local MiniLM embeddings
-- `ohbmcli embed-voyage`
+- `aacli embed-voyage`
   - generate Voyage embeddings
-- `ohbmcli semantic-analysis`
+- `aacli semantic-analysis`
   - build the semantic graph and semantic cluster summaries from any local embedding bundle
-- `ohbmcli write-manifest`
+- `aacli write-manifest`
   - write the NeuroScape handoff manifest
 
 ## Execution Order
@@ -226,7 +226,7 @@ Checks:
 - [x] Create a local MiniLM embedding pipeline and neighbor database.
 - [x] Create a purely semantic graph-and-cluster pipeline for the single-year corpus.
 - [x] Split the codebase into API, asset, enrichment, and embedding modules.
-- [x] Add a unified `ohbmcli` entrypoint.
+- [x] Add a unified `aacli` entrypoint.
 - [ ] Complete a full cached figure-analysis sweep with local `qwen3.5:35b`.
 - [ ] Validate the NeuroScape retraining path against the PR-based workflow and artifact requirements.
 

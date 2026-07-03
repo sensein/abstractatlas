@@ -18,9 +18,9 @@ from pathlib import Path
 
 import numpy as np
 
-from ohbm2026.embed import stage as embed_stage
-from ohbm2026.embed import storage as embed_storage
-from ohbm2026.exceptions import (
+from abstractatlas.embed import stage as embed_stage
+from abstractatlas.embed import storage as embed_storage
+from abstractatlas.exceptions import (
     EmbeddingBudgetError,
     EmbeddingContractError,
     EmbeddingError,

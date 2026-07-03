@@ -7,9 +7,9 @@ Canonical invocation:
 
     PYTHONPATH=src .venv/bin/python scripts/run_fetch_withdrawn.py [options]
 
-Equivalent through ``ohbmcli``:
+Equivalent through ``aacli``:
 
-    PYTHONPATH=src .venv/bin/python -m ohbm2026.cli fetch-withdrawn [options]
+    PYTHONPATH=src .venv/bin/python -m abstractatlas.cli fetch-withdrawn [options]
 
 This wrapper forces ``--corpus-kind=withdrawn`` so accepted and
 withdrawn artifacts never share a state-key namespace.
@@ -25,7 +25,7 @@ _SRC_DIR = _REPO_ROOT / "src"
 if _SRC_DIR.exists() and str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-from ohbm2026.fetch.stage import main  # noqa: E402  (post sys.path setup)
+from abstractatlas.fetch.stage import main  # noqa: E402  (post sys.path setup)
 
 
 if __name__ == "__main__":

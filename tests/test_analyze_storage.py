@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.storage.write_analysis_bundle`.
+"""Tests for `abstractatlas.analyze.storage.write_analysis_bundle`.
 
 Per spec FR-010 + contracts/bundle.md, every Stage 4 bundle ships an
 atomic-rename write of `ids.npy` + payload `*.npy` + `metadata.json` +
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ohbm2026.analyze.storage import write_analysis_bundle, iter_analysis_bundles
+from abstractatlas.analyze.storage import write_analysis_bundle, iter_analysis_bundles
 
 
 class WriteAnalysisBundleTests(unittest.TestCase):
@@ -42,7 +42,7 @@ class WriteAnalysisBundleTests(unittest.TestCase):
             "algorithm_config_canonical_json": "{}",
             "cache_key": "sha256:deadbeef",
             "code_revision": "0" * 40,
-            "command": "ohbmcli analyze-matrix",
+            "command": "aacli analyze-matrix",
             "seed": 42,
             "started_at": "2026-05-14T00:00:00Z",
             "completed_at": "2026-05-14T00:00:01Z",

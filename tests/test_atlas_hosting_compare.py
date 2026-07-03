@@ -14,8 +14,8 @@ from pathlib import Path
 
 import jsonschema
 
-from ohbm2026.atlas_hosting import compare
-from ohbm2026.exceptions import HostingComparisonError
+from abstractatlas.atlas_hosting import compare
+from abstractatlas.exceptions import HostingComparisonError
 
 ORIGIN = "https://abstractatlas.brainkb.org"
 _SCHEMA_PATH = (

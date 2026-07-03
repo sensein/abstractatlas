@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.vectors_compute`` (spec 019, T010 + T011).
+"""Tests for ``abstractatlas.atlas_package.vectors_compute`` (spec 019, T010 + T011).
 
 Covers:
 - Per-cluster cache hit/miss (R-009): first run populates cache; second
@@ -23,8 +23,8 @@ from typing import Callable
 
 import numpy as np
 
-from ohbm2026 import exceptions
-from ohbm2026.atlas_package import vectors_compute
+from abstractatlas import exceptions
+from abstractatlas.atlas_package import vectors_compute
 
 
 def _make_encoder(seed: int = 7) -> Callable[[list[str]], np.ndarray]:

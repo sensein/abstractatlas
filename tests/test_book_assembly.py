@@ -33,8 +33,8 @@ class TestTwoPassAssembly(unittest.TestCase):
         except ImportError as exc:
             raise unittest.SkipTest(f"pikepdf not installed: {exc}")
         try:
-            from ohbm2026.book.assemble_pdf import assemble  # noqa: F401
-            from ohbm2026.book.model import AbstractPdfChunk  # noqa: F401
+            from abstractatlas.book.assemble_pdf import assemble  # noqa: F401
+            from abstractatlas.book.model import AbstractPdfChunk  # noqa: F401
         except ImportError as exc:
             raise unittest.SkipTest(
                 f"assemble_pdf / AbstractPdfChunk not yet implemented: {exc}"
@@ -68,7 +68,7 @@ class TestTwoPassAssembly(unittest.TestCase):
         self.tmp.cleanup()
 
     def _build_chunks(self):
-        from ohbm2026.book.model import AbstractPdfChunk
+        from abstractatlas.book.model import AbstractPdfChunk
 
         chunks = []
         for i, name in enumerate(("chunk_a", "chunk_b", "chunk_c")):
@@ -93,7 +93,7 @@ class TestTwoPassAssembly(unittest.TestCase):
         return front, chunks
 
     def test_chunk_offsets_measured_in_pass_one(self) -> None:
-        from ohbm2026.book.assemble_pdf import assemble
+        from abstractatlas.book.assemble_pdf import assemble
 
         front, chunks = self._build_chunks()
         out = self.dir / "book.pdf"
@@ -103,7 +103,7 @@ class TestTwoPassAssembly(unittest.TestCase):
 
         header = pathlib.Path(
             str(
-                resources.files("ohbm2026.book.templates").joinpath(
+                resources.files("abstractatlas.book.templates").joinpath(
                     "header-includes.tex"
                 )
             )
@@ -138,7 +138,7 @@ class TestTwoPassAssembly(unittest.TestCase):
     def test_final_pdf_contains_index_appendix(self) -> None:
         if not _pandoc_engine_ok():
             self.skipTest("pandoc + engine required for pass-2 index appendix")
-        from ohbm2026.book.assemble_pdf import assemble
+        from abstractatlas.book.assemble_pdf import assemble
         import pikepdf
         from importlib import resources
 
@@ -146,7 +146,7 @@ class TestTwoPassAssembly(unittest.TestCase):
         out = self.dir / "book.pdf"
         header = pathlib.Path(
             str(
-                resources.files("ohbm2026.book.templates").joinpath(
+                resources.files("abstractatlas.book.templates").joinpath(
                     "header-includes.tex"
                 )
             )

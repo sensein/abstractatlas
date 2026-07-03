@@ -12,7 +12,7 @@ from pathlib import Path
 import requests.exceptions
 import responses
 
-from ohbm2026.ui_data.link_check import link_check, head_url
+from abstractatlas.ui_data.link_check import link_check, head_url
 
 
 GOOD_YAML = """

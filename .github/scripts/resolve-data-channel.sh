@@ -45,7 +45,7 @@
 # Dropbox shared links OR Cloudflare R2 (e.g. https://aadata.cirrusscience.org/
 # <sha256>/<file>.parquet). This script and the site loader are unchanged — the
 # URL is opaque to both; loader.ts only rewrites Dropbox hosts, so R2 URLs pass
-# through verbatim. `ohbmcli upload-atlas-package` emits a ready-to-paste
+# through verbatim. `aacli upload-atlas-package` emits a ready-to-paste
 # channel entry in exactly the shape above.
 
 set -euo pipefail

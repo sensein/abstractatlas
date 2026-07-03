@@ -10,8 +10,8 @@ from typing import Any
 import plotly.graph_objects as go
 from plotly.offline.offline import get_plotlyjs
 
-from ohbm2026.analyze.storage import build_distinct_color_map
-from ohbm2026.layout.poster_layout import layout_slot_for_block_position, load_layout_geometry
+from abstractatlas.analyze.storage import build_distinct_color_map
+from abstractatlas.layout.poster_layout import layout_slot_for_block_position, load_layout_geometry
 
 DEFAULT_UI_UMAP = "export/ui-site/data/projection.umap.json"
 VOYAGE25_ASSIGNMENTS = Path("data/embeddings/voyage_stage2_published/clustering_benchmark/cluster_assignments.json")

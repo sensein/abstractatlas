@@ -12,13 +12,13 @@ from pathlib import Path
 
 import jsonschema
 
-from ohbm2026 import artifacts
-from ohbm2026.atlas_hosting.manifest import (
+from abstractatlas import artifacts
+from abstractatlas.atlas_hosting.manifest import (
     ContentAddressedObject,
     UploadManifest,
     build_channel_entry,
 )
-from ohbm2026.exceptions import AtlasProvenanceError
+from abstractatlas.exceptions import AtlasProvenanceError
 
 _SCHEMA_PATH = (
     Path(__file__).resolve().parent.parent
@@ -52,7 +52,7 @@ def _manifest() -> UploadManifest:
         public_base_url="https://aadata.cirrusscience.org",
         key_prefix="",
         code_revision="deadbeef",
-        command_line="ohbmcli upload-atlas-package --package-dir data/outputs/atlas-package__x",
+        command_line="aacli upload-atlas-package --package-dir data/outputs/atlas-package__x",
         uploaded_utc="2026-05-31T12:00:00+00:00",
         source_package_dir="data/outputs/atlas-package__x",
         artifacts=objs,

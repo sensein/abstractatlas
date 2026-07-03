@@ -14,8 +14,8 @@ from unittest import mock
 
 from botocore.stub import Stubber
 
-from ohbm2026.atlas_hosting import r2_client
-from ohbm2026.exceptions import R2CredentialsError, R2UploadError
+from abstractatlas.atlas_hosting import r2_client
+from abstractatlas.exceptions import R2CredentialsError, R2UploadError
 
 
 def _settings() -> r2_client.R2Settings:

@@ -3,8 +3,8 @@
 Every pipeline stage in this repo (Stage 1 fetch, Stage 2 enrich,
 Stage 3+ analyses, …) satisfies the same six contracts. This doc
 defines them and points at two canonical reference implementations
-— **Stage 1 (`src/ohbm2026/fetch_stage.py`)** for a single-fetch
-stage, and **Stage 2 (`src/ohbm2026/enrich_stage.py`)** for a
+— **Stage 1 (`src/abstractatlas/fetch_stage.py`)** for a single-fetch
+stage, and **Stage 2 (`src/abstractatlas/enrich_stage.py`)** for a
 multi-component stage — for each.
 
 A new stage author should be able to read this page plus
@@ -111,7 +111,7 @@ Stage 2 reference:
 What failures the stage surfaces loudly, with what typed cause,
 and at what exit code.
 
-- Typed exception hierarchy in `ohbm2026.exceptions` rooted at a
+- Typed exception hierarchy in `abstractatlas.exceptions` rooted at a
   cross-stage `OhbmStageError(RuntimeError)`. Stage 1 subclass tree:
   `Stage1Error` → `SchemaContractError`, `CheckpointError`,
   `FigureFailureError`. Stage 2 subclass tree: `Stage2Error` →
@@ -219,17 +219,17 @@ Stage 2 shipped the per-stage pattern scaffolding with
 (`specs/004-enrich-production-wiring/`) wires production runners
 through those seams and keeps the orchestrator surface unchanged:
 
-- **Figures**: `src/ohbm2026/stage2_figures.py` —
+- **Figures**: `src/abstractatlas/stage2_figures.py` —
   `run_figure_component(abstract, model_id, flex_enabled, client, cwd)`
   groups all figures of one abstract into a single OpenAI Responses
   API call with manuscript text as context. In-memory JPEG-q85
   compression at 1024 px (`compress_image`) + a four-field local
-  quality probe (`src/ohbm2026/image_quality.py`:
+  quality probe (`src/abstractatlas/image_quality.py`:
   `laplacian_variance`, `mean_brightness`, `native_max_dim`,
   `compression_ratio`) populate `local_quality_estimate` on every
   record. Pydantic `FigureInterpretationResponse` + a fixed
   `model_quality_estimate` enum validate the response server-side.
-- **Claims**: `src/ohbm2026/stage2_claims.py` —
+- **Claims**: `src/abstractatlas/stage2_claims.py` —
   `run_claims_component(abstract, ..., figure_interpretations)`
   issues a single agentic Responses API call with three function
   tools registered (`verify_source_quote`, `lookup_eco_code`,
@@ -237,10 +237,10 @@ through those seams and keeps the orchestrator surface unchanged:
   annotate → dedupe internally. Post-response validation drops
   claims whose source quote isn't a substring of the manuscript
   OR whose `evidence_eco_codes` include off-vocabulary ECO IDs.
-- **References**: `src/ohbm2026/stage2_references.py` is a thin
+- **References**: `src/abstractatlas/stage2_references.py` is a thin
   adapter to the existing `openalex.collect_reference_metadata`
   async pipeline.
-- **Flex tier**: `src/ohbm2026/flex_tier.py` —
+- **Flex tier**: `src/abstractatlas/flex_tier.py` —
   `call_with_flex_fallback(...)` wraps each LLM call with a 1-flex +
   1-standard retry budget; defaults to flex ON; per-component
   disable flags `--no-flex-figures` / `--no-flex-claims`.
@@ -248,7 +248,7 @@ through those seams and keeps the orchestrator surface unchanged:
   fans out per-abstract work across a `ThreadPoolExecutor`
   (default 30 in flight). Per-component caps via
   `--concurrency-figures` / `--concurrency-claims`.
-- **ECO v1 vocabulary** lives at `src/ohbm2026/data/eco_top_codes.json`
+- **ECO v1 vocabulary** lives at `src/abstractatlas/data/eco_top_codes.json`
   (committed source). The claims component's `lookup_eco_code`
   tool draws from it without network access.
 - **Provenance extensions**: per-component `flex_tier_enabled`,
@@ -269,7 +269,7 @@ When you write Stage N:
 2. **Author the test file first** (Principle IV). One test per
    contract element, organized into a class per contract.
 3. **Implement the orchestrator** in
-   `src/ohbm2026/<stage_name>.py`. Use Stage 1's `fetch_stage.py`
+   `src/abstractatlas/<stage_name>.py`. Use Stage 1's `fetch_stage.py`
    as the layout reference. Share helpers via `artifacts.py`,
    `exceptions.py`, and `schema_diff.py` where possible.
 4. **Add a CLI subcommand** in `cli.py` that delegates to your
@@ -280,12 +280,12 @@ When you write Stage N:
 
 ## Common Helpers
 
-- `ohbm2026.artifacts.build_*_path(state_key)` — path derivation
+- `abstractatlas.artifacts.build_*_path(state_key)` — path derivation
   under gitignored roots.
-- `ohbm2026.artifacts.build_dependency_basis` + `build_state_key` —
+- `abstractatlas.artifacts.build_dependency_basis` + `build_state_key` —
   deterministic state key from input fingerprint.
-- `ohbm2026.exceptions.*` — typed exception hierarchy.
-- `ohbm2026.schema_diff.*` — schema-diff / discovery primitives
+- `abstractatlas.exceptions.*` — typed exception hierarchy.
+- `abstractatlas.schema_diff.*` — schema-diff / discovery primitives
   (reusable across stages that talk to GraphQL).
 - The constitution lint at
   `.specify/scripts/bash/constitution-check.sh` catches the

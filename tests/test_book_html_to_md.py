@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from ohbm2026.book.html_to_md import html_to_pandoc_md
+from abstractatlas.book.html_to_md import html_to_pandoc_md
 
 
 class TestHtmlToMd(unittest.TestCase):
@@ -109,14 +109,14 @@ class TestCaretSuperscriptToLatex(unittest.TestCase):
     """
 
     def test_simple_caret_to_textsuperscript(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         self.assertIn("\\textsuperscript{3}", normalise_for_latex("4 mm^3^"))
         self.assertIn("\\textsuperscript{1,2}", normalise_for_latex("Doe^1,2^"))
 
     def test_caret_survives_math_span_adjacency(self) -> None:
         # The exact pattern that broke Stage 11.1: `$\times$3 mm^3^`.
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         out = normalise_for_latex("3$\\times$3$\\times$4 mm^3^;")
         # No bare `^3^` remains — pandoc's math-mode parser can't
@@ -128,13 +128,13 @@ class TestCaretSuperscriptToLatex(unittest.TestCase):
         # Already-escaped `\^X^` (rare; usually authors who want a
         # literal caret) should NOT be re-converted. The regex uses
         # a negative lookbehind on `\\`.
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         out = normalise_for_latex("a \\^x^ b")
         self.assertNotIn("\\textsuperscript{x}", out)
 
     def test_idempotent(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         once = normalise_for_latex("k^c^")
         twice = normalise_for_latex(once)
@@ -150,25 +150,25 @@ class TestStripControlChars(unittest.TestCase):
     """
 
     def test_c0_stripped(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         out = normalise_for_latex("Nat\x02ural Science Foundation")
         self.assertEqual(out, "Natural Science Foundation")
 
     def test_vertical_tab_stripped(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         out = normalise_for_latex("Brain Korea 21 Project,\x0bYonsei")
         self.assertEqual(out, "Brain Korea 21 Project,Yonsei")
 
     def test_newline_tab_preserved(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         out = normalise_for_latex("line1\nline2\tcol2")
         self.assertEqual(out, "line1\nline2\tcol2")
 
     def test_zero_width_stripped(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         # ZWSP (U+200B), BOM (U+FEFF), soft hyphen (U+00AD)
         out = normalise_for_latex("foo​bar﻿baz­qux")
@@ -184,7 +184,7 @@ class TestEscapeBareAmpersand(unittest.TestCase):
     """
 
     def test_bare_amp_escaped(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         self.assertEqual(normalise_for_latex("H&Y staging"), "H\\&Y staging")
         self.assertEqual(
@@ -192,13 +192,13 @@ class TestEscapeBareAmpersand(unittest.TestCase):
         )
 
     def test_already_escaped_not_doubled(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         # `\&` already an escape sequence → leave it alone.
         self.assertEqual(normalise_for_latex("R\\&D dept"), "R\\&D dept")
 
     def test_html_entities_not_escaped(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         # `&amp;` `&lt;` etc. — pandoc decodes these; don't pre-escape.
         self.assertEqual(normalise_for_latex("a &amp; b"), "a &amp; b")
@@ -208,7 +208,7 @@ class TestEscapeBareAmpersand(unittest.TestCase):
         )
 
     def test_idempotent(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         once = normalise_for_latex("H&Y and R\\&D")
         twice = normalise_for_latex(once)
@@ -225,7 +225,7 @@ class TestDefangUnknownCommands(unittest.TestCase):
     """
 
     def test_unknown_capitalised_defanged(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         out = normalise_for_latex(
             "\\textsuperscript{3} \\State Key Laboratory of Brain Cognition"
@@ -236,7 +236,7 @@ class TestDefangUnknownCommands(unittest.TestCase):
         self.assertIn("\\textsuperscript{3}", out)
 
     def test_unknown_single_letter_defanged(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         out = normalise_for_latex("Grant DHF\\R1\\textbackslash241022")
         self.assertNotIn("\\R1", out)
@@ -245,7 +245,7 @@ class TestDefangUnknownCommands(unittest.TestCase):
         self.assertIn("\\textbackslash", out)
 
     def test_known_command_preserved(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         # Greek letters, math operators — all whitelisted.
         out = normalise_for_latex("\\alpha + \\pm = \\Delta")
@@ -254,7 +254,7 @@ class TestDefangUnknownCommands(unittest.TestCase):
         self.assertIn("\\Delta", out)
 
     def test_command_with_braces_left_alone(self) -> None:
-        from ohbm2026.book.html_to_md import normalise_for_latex
+        from abstractatlas.book.html_to_md import normalise_for_latex
 
         # `\command{...}` looks like a real call — let LaTeX decide
         # rather than mangling the call.

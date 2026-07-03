@@ -1,7 +1,7 @@
 [project]
-name = "ohbm2026"
+name = "abstractatlas"
 version = "0.2.0"
-description = "Local ingestion pipeline for OHBM 2026 Oxford Abstracts data"
+description = "Abstract Atlas: pluggable ingestion + atlas pipeline (OHBM 2026 abstracts, NeuroScape/PubMed, and future sources)"
 readme = "README.md"
 requires-python = ">=3.11"
 
@@ -39,21 +39,13 @@ abstracts_book = [
 ]
 
 [project.scripts]
-ohbm-ingest = "ohbm2026.assets:main"
-ohbm-authors = "ohbm2026.enrichment:authors_main"
-ohbm-enrich = "ohbm2026.enrichment:enrich_main"
-ohbm-analyze-figures = "ohbm2026.enrichment:analyze_figures_main"
-ohbm-embed-stage2 = "ohbm2026.embed.neuroscape:stage2_main"
-ohbm-apply-published-stage2 = "ohbm2026.embed.neuroscape:apply_pretrained_stage2_main"
-ohbm-cluster-benchmark = "ohbm2026.embed.neuroscape:cluster_benchmark_main"
-ohbm-semantic-analysis = "ohbm2026.embed.neuroscape:semantic_analysis_main"
-ohbm-umap-plot = "ohbm2026.embed.neuroscape:umap_main"
-ohbm-compare-projections = "ohbm2026.embed.neuroscape:projection_compare_main"
-ohbm-optimize-projections = "ohbm2026.embed.neuroscape:projection_optimize_main"
-ohbm-analyze-stage2 = "ohbm2026.embed.neuroscape:stage2_analysis_main"
-ohbm-reference-metadata = "ohbm2026.openalex:main"
-ohbm-write-manifest = "ohbm2026.embed.neuroscape:manifest_main"
-ohbmcli = "ohbm2026.cli:main"
+# Canonical CLI (spec 027: ohbmcli → aacli). Hard cutover — no `ohbmcli`
+# alias and no `ohbm2026` import shim: the old names are removed and fail
+# loudly (command-not-found / ModuleNotFoundError). The legacy per-stage
+# `ohbm-*` console scripts were also dropped (most pointed at modules moved
+# in the Stage-5 reorg); their functions remain importable via
+# `abstractatlas.*` and runnable as `aacli` subcommands.
+aacli = "abstractatlas.cli:main"
 
 [build-system]
 requires = ["setuptools>=69"]

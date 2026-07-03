@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.neighbour_index``.
+"""Tests for ``abstractatlas.atlas_package.neighbour_index``.
 
 Spec: ``specs/015-neuroscape-context/`` — research R-008 (k-NN over
 NeuroScape Stage-2 vectors, k=20, cosine).
@@ -19,8 +19,8 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 
-from ohbm2026 import exceptions
-from ohbm2026.atlas_package import neighbour_index
+from abstractatlas import exceptions
+from abstractatlas.atlas_package import neighbour_index
 
 
 def _synthetic_vectors(n: int, dim: int = 64, seed: int = 0) -> np.ndarray:

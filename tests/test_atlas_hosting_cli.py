@@ -12,9 +12,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from ohbm2026 import cli as top_cli
-from ohbm2026.atlas_hosting import cli as hosting_cli
-from ohbm2026.atlas_hosting.compare import (
+from abstractatlas import cli as top_cli
+from abstractatlas.atlas_hosting import cli as hosting_cli
+from abstractatlas.atlas_hosting.compare import (
     ArtifactComparison,
     CacheProbe,
     ComparisonReport,

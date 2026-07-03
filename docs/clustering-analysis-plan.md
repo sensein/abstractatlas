@@ -102,7 +102,7 @@ Runtime checks on real data:
 
 ## Status
 
-- [x] Added `ohbmcli cluster-benchmark`
+- [x] Added `aacli cluster-benchmark`
 - [x] Implemented method sweep across `kmeans`, `agglomerative-ward`, `agglomerative-average`, `gaussian-mixture`, and `birch`
 - [x] Added label-independent ranking using silhouette, Davies-Bouldin, Calinski-Harabasz, inter/intracluster distance ratio, and cluster-balance terms
 - [x] Added test coverage for method execution, metric computation, ranking, CLI wiring, and output writing

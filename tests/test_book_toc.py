@@ -17,7 +17,7 @@ class TestLatexEscape(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.book.assemble_pdf import _latex_escape
+            from abstractatlas.book.assemble_pdf import _latex_escape
         except ImportError as exc:
             raise unittest.SkipTest(f"_latex_escape not yet implemented: {exc}")
         cls._escape = staticmethod(_latex_escape)
@@ -56,8 +56,8 @@ class TestBuildTocMarkdown(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.book.assemble_pdf import _build_toc_markdown
-            from ohbm2026.book.model import (
+            from abstractatlas.book.assemble_pdf import _build_toc_markdown
+            from abstractatlas.book.model import (
                 Author,
                 BookEntry,
             )

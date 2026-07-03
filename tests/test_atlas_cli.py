@@ -1,4 +1,4 @@
-"""Tests for ``ohbm2026.atlas_package.cli``.
+"""Tests for ``abstractatlas.atlas_package.cli``.
 
 Spec: ``specs/015-neuroscape-context/`` —
 ``contracts/cli-build-atlas-package.md``.
@@ -17,8 +17,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from ohbm2026 import exceptions
-from ohbm2026.atlas_package import cli as atlas_cli
+from abstractatlas import exceptions
+from abstractatlas.atlas_package import cli as atlas_cli
 
 
 class BuildParserTests(unittest.TestCase):

@@ -24,7 +24,7 @@ class TestReadFetchStateKey(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            from ohbm2026.artifacts import read_fetch_state_key
+            from abstractatlas.artifacts import read_fetch_state_key
         except ImportError as exc:
             raise unittest.SkipTest(
                 f"read_fetch_state_key not yet implemented: {exc}"
@@ -59,7 +59,7 @@ class TestFetchStageEmitsNewFieldName(unittest.TestCase):
         import pathlib
 
         src = pathlib.Path(__file__).resolve().parents[1]
-        stage_py = (src / "src" / "ohbm2026" / "fetch" / "stage.py").read_text()
+        stage_py = (src / "src" / "abstractatlas" / "fetch" / "stage.py").read_text()
         # The new field name must appear in the provenance + checkpoint
         # emission paths. Legacy `"state_key": state_key` MUST be gone
         # from the EMISSION sites; the local Python variable still uses

@@ -1,4 +1,4 @@
-"""Tests for `ohbm2026.analyze.provenance`.
+"""Tests for `abstractatlas.analyze.provenance`.
 
 Per CA-008 + Principle VIII, provenance MUST reject absolute / `~` /
 parent-escape paths so bundle records stay portable.
@@ -11,13 +11,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ohbm2026.analyze.provenance import (
+from abstractatlas.analyze.provenance import (
     assert_path_safe,
     assert_paths_safe,
     write_bundle_provenance,
     write_run_provenance,
 )
-from ohbm2026.exceptions import ProvenanceError
+from abstractatlas.exceptions import ProvenanceError
 
 
 class AssertPathSafeTests(unittest.TestCase):
@@ -62,7 +62,7 @@ class WriteBundleProvenanceTests(unittest.TestCase):
             "algorithm_config_canonical_json": "{}",
             "cache_key": "sha256:deadbeef",
             "code_revision": "0" * 40,
-            "command": "ohbmcli analyze-matrix",
+            "command": "aacli analyze-matrix",
             "seed": 42,
             "started_at": "2026-05-14T00:00:00Z",
             "completed_at": "2026-05-14T00:00:01Z",
@@ -107,7 +107,7 @@ class WriteRunProvenanceTests(unittest.TestCase):
             "seed": 42,
             "skip_llm_topics": False,
             "strict_matrix": False,
-            "command_line": "ohbmcli analyze-matrix --models voyage --inputs abstract --kinds projections",
+            "command_line": "aacli analyze-matrix --models voyage --inputs abstract --kinds projections",
             "code_revision": "0" * 40,
             "started_at": "2026-05-14T00:00:00Z",
             "completed_at": "2026-05-14T00:30:00Z",

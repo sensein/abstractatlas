@@ -39,7 +39,7 @@ class TestFailureIsolation(unittest.TestCase):
     def setUp(self) -> None:
         # Build a temp corpus = fixture corpus + ONE broken abstract.
         try:
-            from ohbm2026.book.cli import main  # noqa: F401
+            from abstractatlas.book.cli import main  # noqa: F401
         except ImportError as exc:
             self.skipTest(f"book CLI not importable: {exc}")
 
@@ -126,7 +126,7 @@ class TestFailureIsolation(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_broken_abstract_drops_out_others_render(self) -> None:
-        from ohbm2026.book.cli import main
+        from abstractatlas.book.cli import main
 
         # cwd is self.workdir per setUp; use workdir-relative paths so
         # the provenance writer's project-relative-path guard passes.

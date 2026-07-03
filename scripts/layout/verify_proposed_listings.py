@@ -7,8 +7,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from ohbm2026.layout.poster_layout import LISTING_TEMPLATE_COLUMNS
-from ohbm2026.titles import cleaned_abstract_title
+from abstractatlas.layout.poster_layout import LISTING_TEMPLATE_COLUMNS
+from abstractatlas.titles import cleaned_abstract_title
 
 
 def load_json(path: Path) -> dict[str, Any]:

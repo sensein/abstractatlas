@@ -1,7 +1,7 @@
 import unittest
 from unittest import mock
 
-from ohbm2026 import cli
+from abstractatlas import cli
 
 
 class CLITest(unittest.TestCase):
@@ -17,8 +17,8 @@ class CLITest(unittest.TestCase):
     def test_enrich_abstracts_subcommand_delegates_to_enrich_stage_main(self) -> None:
         # Import the module so we can patch its `.main` attribute. This
         # also serves as a red-phase guard: the test fails on
-        # ImportError if `ohbm2026.enrich.stage` does not yet exist.
-        from ohbm2026.enrich import stage as enrich_stage_module
+        # ImportError if `abstractatlas.enrich.stage` does not yet exist.
+        from abstractatlas.enrich import stage as enrich_stage_module
 
         with mock.patch.object(enrich_stage_module, "main", return_value=11) as es_main:
             result = cli.main(["enrich-abstracts", "--enriched-output", "out.sqlite"])
@@ -30,7 +30,7 @@ class CLITest(unittest.TestCase):
         """contracts/cli.md enumerates every flag; the subparser must
         accept all of them. We assert by passing each one through and
         checking the delegated argv."""
-        from ohbm2026.enrich import stage as enrich_stage_module
+        from abstractatlas.enrich import stage as enrich_stage_module
 
         argv = [
             "enrich-abstracts",
@@ -129,7 +129,7 @@ class CLITest(unittest.TestCase):
 
 
 class TestAuthorsSubcommandRemoved(unittest.TestCase):
-    """FR-024 — `ohbmcli authors` is REMOVED (no backward-compat alias).
+    """FR-024 — `aacli authors` is REMOVED (no backward-compat alias).
     Authors are now fetched inline by Stage 1 (FR-023)."""
 
     def test_authors_subcommand_is_not_a_known_choice(self) -> None:
@@ -138,7 +138,7 @@ class TestAuthorsSubcommandRemoved(unittest.TestCase):
 
 
 class TestIngestSubcommandRemoved(unittest.TestCase):
-    """T011 — `ohbmcli ingest` is REMOVED (no backward-compat alias).
+    """T011 — `aacli ingest` is REMOVED (no backward-compat alias).
     Per spec FR-014 + Clarifications session 2026-05-12.
 
     Hermetic safety net: we mock `cli.assets.main` so that, in red
@@ -154,15 +154,15 @@ class TestIngestSubcommandRemoved(unittest.TestCase):
 
 
 class TestFetchAbstractsSubcommand(unittest.TestCase):
-    """T011 — `ohbmcli fetch-abstracts` wires to fetch_stage.main.
+    """T011 — `aacli fetch-abstracts` wires to fetch_stage.main.
 
-    Hermetic safety net: if `ohbm2026.fetch.stage` does not exist
+    Hermetic safety net: if `abstractatlas.fetch.stage` does not exist
     yet (red phase), the test fails on ImportError before any other
     code runs — no live API call possible.
     """
 
     def test_fetch_abstracts_delegates_to_fetch_stage_main(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage_module
+        from abstractatlas.fetch import stage as fetch_stage_module
 
         with mock.patch.object(fetch_stage_module, "main", return_value=0) as fs_main:
             result = cli.main(["fetch-abstracts", "--allow-empty"])
@@ -174,7 +174,7 @@ class TestFetchAbstractsSubcommand(unittest.TestCase):
 class TestLegacyEnrichmentSubcommandsRemoved(unittest.TestCase):
     """FR-014 — `enrich`, `analyze-figures`, `extract-claims`, and
     `reference-metadata` are REMOVED. Operators use
-    `ohbmcli enrich-abstracts` and `--invalidate <component>` for
+    `aacli enrich-abstracts` and `--invalidate <component>` for
     targeted refresh instead. No backward-compat alias.
 
     Hermetic safety net: we mock every legacy main so that in red
@@ -184,7 +184,7 @@ class TestLegacyEnrichmentSubcommandsRemoved(unittest.TestCase):
     """
 
     def test_enrich_subcommand_is_not_a_known_choice(self) -> None:
-        # After Stage 5 / US1, `ohbm2026.enrichment` is gone — argparse
+        # After Stage 5 / US1, `abstractatlas.enrichment` is gone — argparse
         # rejects the legacy subcommand name before any dispatch fires.
         with self.assertRaises(SystemExit):
             cli.main(["enrich"])
@@ -198,19 +198,19 @@ class TestLegacyEnrichmentSubcommandsRemoved(unittest.TestCase):
             cli.main(["extract-claims"])
 
     def test_reference_metadata_subcommand_is_not_a_known_choice(self) -> None:
-        from ohbm2026.enrich import openalex as openalex_mod
+        from abstractatlas.enrich import openalex as openalex_mod
         with mock.patch.object(openalex_mod, "main", return_value=0):
             with self.assertRaises(SystemExit):
                 cli.main(["reference-metadata"])
 
 
 class TestFetchWithdrawnSubcommand(unittest.TestCase):
-    """FR-022 — `ohbmcli fetch-withdrawn` is a distinct subcommand
+    """FR-022 — `aacli fetch-withdrawn` is a distinct subcommand
     that delegates to fetch_stage.main with --corpus-kind=withdrawn
     automatically appended."""
 
     def test_fetch_withdrawn_appends_corpus_kind_withdrawn(self) -> None:
-        from ohbm2026.fetch import stage as fetch_stage_module
+        from abstractatlas.fetch import stage as fetch_stage_module
 
         with mock.patch.object(fetch_stage_module, "main", return_value=0) as fs_main:
             result = cli.main(["fetch-withdrawn", "--allow-empty"])
@@ -221,7 +221,7 @@ class TestFetchWithdrawnSubcommand(unittest.TestCase):
     def test_fetch_withdrawn_respects_explicit_corpus_kind(self) -> None:
         # If the operator explicitly passes --corpus-kind, we do NOT
         # override it (defensive — supports future read-only modes).
-        from ohbm2026.fetch import stage as fetch_stage_module
+        from abstractatlas.fetch import stage as fetch_stage_module
 
         with mock.patch.object(fetch_stage_module, "main", return_value=0) as fs_main:
             result = cli.main(["fetch-withdrawn", "--corpus-kind", "accepted"])

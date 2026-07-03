@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Stage 6 — build the UI data package (T019).
 
-Thin CLI wrapper around :func:`ohbm2026.ui_data.builder.build_ui_data_package`.
+Thin CLI wrapper around :func:`abstractatlas.ui_data.builder.build_ui_data_package`.
 See specs/008-ui-rewrite/quickstart.md for the canonical invocations.
 """
 
@@ -118,7 +118,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    from ohbm2026.ui_data.builder import Stage6BuildError, build_ui_data_package
+    from abstractatlas.ui_data.builder import Stage6BuildError, build_ui_data_package
 
     try:
         return build_ui_data_package(

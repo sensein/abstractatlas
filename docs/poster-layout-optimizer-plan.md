@@ -34,7 +34,7 @@ Confirmed decisions for the first pass:
 
 ## Proposed Deliverables
 
-- `src/ohbm2026/poster_layout.py`
+- `src/abstractatlas/poster_layout.py`
   - reusable loading, feature extraction, optimization, numbering, and scoring helpers
 - `scripts/optimize_poster_layout.py`
   - CLI entrypoint to assign posters to sessions and output a proposed numbering/layout
@@ -199,7 +199,7 @@ PYTHONPATH=src .venv/bin/python scripts/analyze_poster_layout.py \
   --output data/poster_layout/analysis.json
 ```
 
-If this matures well, we can later fold the same functionality into `ohbmcli`.
+If this matures well, we can later fold the same functionality into `aacli`.
 
 ## Test Plan
 
@@ -227,7 +227,7 @@ If this matures well, we can later fold the same functionality into `ohbmcli`.
 ## Implementation Phases
 
 - [x] Confirm session-assignment model and physical numbering assumptions
-- [x] Add a poster-layout design module in `src/ohbm2026/poster_layout.py`
+- [x] Add a poster-layout design module in `src/abstractatlas/poster_layout.py`
 - [x] Add synthetic tests for constraints and scoring before implementing search
 - [x] Implement poster feature loading and validation
 - [x] Implement conflict and locality scoring

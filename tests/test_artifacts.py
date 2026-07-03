@@ -2,7 +2,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from ohbm2026 import artifacts
+from abstractatlas import artifacts
 
 
 class ArtifactHelpersTest(unittest.TestCase):

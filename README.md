@@ -9,7 +9,7 @@ original abstract download to the current latest step.
 
 Repository home:
 
-- Git remote `origin`: `git@github.com:sensein/ohbm2026.git`
+- Git remote `origin`: `git@github.com:sensein/abstractatlas.git`
 - GitHub URL: [github.com/sensein/ohbm2026](https://github.com/sensein/ohbm2026)
 
 Project conventions that should not be violated live in
@@ -111,11 +111,11 @@ The latest end state of the project is:
     - **`/ohbm2026/`** — unchanged from prior stages (FR-022 / SC-008 functional intact). Data-loader path renamed `data.parquet → ohbm2026.parquet`.
     - **`/neuroscape/`** — new PubMed subsite. Browse home with title-only search across 461k articles + cluster + year facets; detail page at `/neuroscape/abstract/<pubmed_id>/` paints local fields (title, year, cluster, k-NN neighbours) immediately and fetches authors / journal / abstract body / DOI at view time from NCBI E-utilities EFetch (in-memory Promise cache + token-bucket rate limiter + retry-with-backoff + body-offline state with Retry button).
 
-    Three parquets back the three sites: `ohbm2026.parquet` (renamed from `data.parquet`, content-identical), `neuroscape.parquet` (full NeuroScape 1999–2023 corpus + cluster table + k=20 neighbours), `atlas.parquet` (scatter rows pointing into the two siblings by stable id; embeds sibling state-keys for cross-parquet drift detection). The new `ohbmcli build-atlas-package` orchestrator fits a deterministic UMAP on the NeuroScape Stage-2 vectors (seed=0, n_neighbors=30, min_dist=0.10, metric=cosine) and projects OHBM 2026 via `umap.transform`. Multi-mode build matrix lives in `.github/workflows/deploy-ui.yml` (one `pnpm build` per `SITE_MODE`). Root `/404.html` is a smart shim that bounces every deep-linked path to the right SPA shell via `?spa=<original>`; loop-safety prevents infinite redirects if a sibling subsite isn't deployed yet.
+    Three parquets back the three sites: `ohbm2026.parquet` (renamed from `data.parquet`, content-identical), `neuroscape.parquet` (full NeuroScape 1999–2023 corpus + cluster table + k=20 neighbours), `atlas.parquet` (scatter rows pointing into the two siblings by stable id; embeds sibling state-keys for cross-parquet drift detection). The new `aacli build-atlas-package` orchestrator fits a deterministic UMAP on the NeuroScape Stage-2 vectors (seed=0, n_neighbors=30, min_dist=0.10, metric=cosine) and projects OHBM 2026 via `umap.transform`. Multi-mode build matrix lives in `.github/workflows/deploy-ui.yml` (one `pnpm build` per `SITE_MODE`). Root `/404.html` is a smart shim that bounces every deep-linked path to the right SPA shell via `?spa=<original>`; loop-safety prevents infinite redirects if a sibling subsite isn't deployed yet.
 
 ## Atlas UI
 
-The site lives under `site/` (a self-contained SvelteKit project; SvelteKit 2 + Vite 6 + Svelte 5). The data-package builder lives under `src/ohbm2026/ui_data/`. Capabilities: typo-tolerant lexical search, transformers.js-backed semantic search (MiniLM-L6 ONNX in a Web Worker against an int8-quantised corpus matrix), 2D + 3D UMAP with lasso + cluster colour-coding, interactive facets, cart + email-my-list, a guided tour (shepherd.js), and an About page whose external citations are HEAD-checked at build time (`link_check.py`). Every OHBM 2026 surface (home, About, abstract permalink) lives under the `/ohbm2026/` URL subpath so the same domain can later host other conferences without URL-space collision.
+The site lives under `site/` (a self-contained SvelteKit project; SvelteKit 2 + Vite 6 + Svelte 5). The data-package builder lives under `src/abstractatlas/ui_data/`. Capabilities: typo-tolerant lexical search, transformers.js-backed semantic search (MiniLM-L6 ONNX in a Web Worker against an int8-quantised corpus matrix), 2D + 3D UMAP with lasso + cluster colour-coding, interactive facets, cart + email-my-list, a guided tour (shepherd.js), and an About page whose external citations are HEAD-checked at build time (`link_check.py`). Every OHBM 2026 surface (home, About, abstract permalink) lives under the `/ohbm2026/` URL subpath so the same domain can later host other conferences without URL-space collision.
 
 **Browser support & mobile rendering (Stage 24, `specs/024-fix-ios-safari-load`).** Supported: current + previous major release of every evergreen browser, including **iPhone Safari** (WebKit). The atlas detects device capability **at runtime** (`site/src/lib/device/capability.ts` — viewport, `navigator.deviceMemory`, WebGL probe, reduced-motion; never a UA/iOS allow-list): on phones / low-budget devices it mounts the 2D map only (the 3D scatter is deferred behind an explicit "Show 3D map" toggle), disables auto-rotation, and skips the eager semantic-worker warm (search still initialises lazily on first query) — this keeps the page inside iOS WebKit's tight WebGL-context and per-tab memory limits. Any unrecoverable load failure now shows a visible message via `+error.svelte` / an in-page error state, never a blank screen or endless spinner. Verified by `vitest run` (capability gate + load-state machine) and a WebKit/iPhone Playwright project (`pnpm exec playwright test --project=iphone-webkit`; needs `playwright install webkit`).
 
@@ -201,7 +201,7 @@ The `--proposal-listing` flag is optional — without it the `poster_standby` fi
 
 Per-PR previews surface in the **PR's Deployments box** (top-of-PR, via the `environment:` declaration in `.github/workflows/pr-preview.yml`) — NOT as a bot comment. The short committish (first 7 chars of git SHA) bakes into the page `<title>` + the persistent footer affordance via the `VITE_BUILD_SHA` env var injected by the deploy workflows, so reviewers can verify each PR-preview reflects the latest pushed commit at-a-glance (FR-022 + SC-011).
 
-### Publishing the data bundle to Cloudflare R2 (`ohbmcli upload-atlas-package`)
+### Publishing the data bundle to Cloudflare R2 (`aacli upload-atlas-package`)
 
 Stage 20 (`specs/020-cloudflare-r2-migration/`) adds an alternative host for the data bundle: **Cloudflare R2**, an S3-compatible object store. Unlike the Dropbox in-place overwrite above, R2 uploads are **content-addressed and immutable** — every artifact is stored at `<sha256>/<filename>`, so a new build adds new keys and never clobbers a published URL. This makes future atlas updates a safe re-run rather than an overwrite.
 
@@ -222,13 +222,13 @@ Install the client (`uv pip install --python .venv/bin/python ".[r2]"`), then:
 
 ```bash
 # Dry-run first (hashes + existence checks; no PUT, no manifest):
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli upload-atlas-package \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli upload-atlas-package \
   --package-dir data/outputs/atlas-package__<state-key> \
   --ohbm2026-parquet data/outputs/parquets/<corpus-key>/ohbm2026.parquet \
   --dry-run
 
 # Upload (idempotent: a re-run on an unchanged build uploads zero bytes):
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli upload-atlas-package \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli upload-atlas-package \
   --package-dir data/outputs/atlas-package__<state-key> \
   --ohbm2026-parquet data/outputs/parquets/<corpus-key>/ohbm2026.parquet
 ```
@@ -239,7 +239,7 @@ Before trusting a cutover, generate the Dropbox-vs-R2 evidence (byte-parity / CO
 
 ```bash
 gh variable get OHBM2026_UI_DATA_PACKAGE_URLS > /tmp/registry.json   # local only; never commit
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli compare-data-hosting \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli compare-data-hosting \
   --registry /tmp/registry.json \
   --dropbox-channel <current-prod-key> --r2-channel <new-r2-key> \
   --origin https://abstractatlas.brainkb.org
@@ -263,11 +263,11 @@ Optional, depending on which branch of the pipeline you run:
 - Voyage API access for Voyage embeddings
 - OpenAlex API key for authenticated reference matching
 
-### Stage 15 prerequisites (`ohbmcli build-atlas-package`)
+### Stage 15 prerequisites (`aacli build-atlas-package`)
 
 Stage 15 (spec `015-neuroscape-context`) builds the cross-conference
 atlas landing page and the new `/neuroscape/` subsite. Operators
-running `ohbmcli build-atlas-package` need the NeuroScape v1.0.1
+running `aacli build-atlas-package` need the NeuroScape v1.0.1
 release on disk under `data/inputs/neuroscape-source/v101/` with this
 layout (gitignored):
 
@@ -316,7 +316,7 @@ Common keys:
 - `HF_TOKEN`
   - optional for Hugging Face model downloads
 - `NCBI_API_KEY`
-  - optional. Used by `ohbmcli build-atlas-package`'s link-check pass (validates a small set of PubMed + DOI URLs that the atlas-root page exposes). Provider rate limit only — NOT a write-access token.
+  - optional. Used by `aacli build-atlas-package`'s link-check pass (validates a small set of PubMed + DOI URLs that the atlas-root page exposes). Provider rate limit only — NOT a write-access token.
 - `VITE_NCBI_API_KEY`
   - optional. Baked into the `/neuroscape/` SvelteKit bundle at build time. Raises the runtime PubMed body-fetch rate limit on `/neuroscape/abstract/<pubmed_id>/` from 3 req/s (anon) to 10 req/s.
 - `VITE_DATA_PACKAGE_URL_OHBM2026` / `VITE_DATA_PACKAGE_URL_NEUROSCAPE` / `VITE_DATA_PACKAGE_URL_ATLAS`
@@ -334,16 +334,16 @@ Use this as the quick answer to "what do I need before I run this step?"
 
 | Workflow | Required secret(s) | Extra local tool(s) | Notes |
 | --- | --- | --- | --- |
-| `ohbmcli fetch-abstracts` / `fetch-withdrawn` | `OHBM2026_API` | none | Stage 1 — accepted + withdrawn corpora; authors fetched inline |
-| `ohbmcli refresh-assets` | none | none | Uses the existing local normalized corpus |
-| `ohbmcli enrich-abstracts` | `OPENAI_API_KEY`; optional `OPENALEX_API` (recommended) | `.[enrich]` optional extra (openai>=2.0 + Pillow>=10 + pydantic>=2) | Stage 2.1 — figures + agentic claims + references with per-component caches. Default model `gpt-5.4-mini`, flex tier ON by default. Flags: `--invalidate <component>`, `--no-flex-figures` / `--no-flex-claims`, `--concurrency-figures N` / `--concurrency-claims N` (default 30 each), `--figure-model-id` / `--claims-model-id` / `--reference-strategy-id`, `--export-parquet PATH` (needs the `parquet` extra). |
-| `ohbmcli title-audit` | none | none | Reads local normalized corpus only |
-| `ohbmcli embed-minilm` / `embed-hf` | optional `HF_TOKEN` | `sentence-transformers` | `HF_TOKEN` is only needed for gated/private Hub access |
-| `ohbmcli embed-openai` | `OPENAI_API_KEY` | none | Hosted embedding route |
-| `ohbmcli embed-voyage` | `VOYAGE_API` | none | Voyage embedding route |
-| `ohbmcli apply-published-stage2` / `embed-stage2` | none | local model dependencies already in `.venv` | Uses local artifacts |
-| `ohbmcli semantic-analysis` / `cluster-benchmark` / `umap-plot` / `compare-projections` / `optimize-projections` | none | optional `plotly`, `umap-learn` | Purely local once embeddings exist |
-| `ohbmcli book` | none | `.[abstracts_book]` (markdownify, beautifulsoup4, pikepdf, Pillow, joblib) + system `pandoc` + LaTeX engine (Tectonic recommended) | Stage 11 + Stage 11.1 — composes Book of Abstracts; markdown bundle always; `--format pdf` runs the per-abstract pipeline with content-hash caching; outputs to `data/outputs/book/`. (DOCX retired in Stage 11.1 US3.) |
+| `aacli fetch-abstracts` / `fetch-withdrawn` | `OHBM2026_API` | none | Stage 1 — accepted + withdrawn corpora; authors fetched inline |
+| `aacli refresh-assets` | none | none | Uses the existing local normalized corpus |
+| `aacli enrich-abstracts` | `OPENAI_API_KEY`; optional `OPENALEX_API` (recommended) | `.[enrich]` optional extra (openai>=2.0 + Pillow>=10 + pydantic>=2) | Stage 2.1 — figures + agentic claims + references with per-component caches. Default model `gpt-5.4-mini`, flex tier ON by default. Flags: `--invalidate <component>`, `--no-flex-figures` / `--no-flex-claims`, `--concurrency-figures N` / `--concurrency-claims N` (default 30 each), `--figure-model-id` / `--claims-model-id` / `--reference-strategy-id`, `--export-parquet PATH` (needs the `parquet` extra). |
+| `aacli title-audit` | none | none | Reads local normalized corpus only |
+| `aacli embed-minilm` / `embed-hf` | optional `HF_TOKEN` | `sentence-transformers` | `HF_TOKEN` is only needed for gated/private Hub access |
+| `aacli embed-openai` | `OPENAI_API_KEY` | none | Hosted embedding route |
+| `aacli embed-voyage` | `VOYAGE_API` | none | Voyage embedding route |
+| `aacli apply-published-stage2` / `embed-stage2` | none | local model dependencies already in `.venv` | Uses local artifacts |
+| `aacli semantic-analysis` / `cluster-benchmark` / `umap-plot` / `compare-projections` / `optimize-projections` | none | optional `plotly`, `umap-learn` | Purely local once embeddings exist |
+| `aacli book` | none | `.[abstracts_book]` (markdownify, beautifulsoup4, pikepdf, Pillow, joblib) + system `pandoc` + LaTeX engine (Tectonic recommended) | Stage 11 + Stage 11.1 — composes Book of Abstracts; markdown bundle always; `--format pdf` runs the per-abstract pipeline with content-hash caching; outputs to `data/outputs/book/`. (DOCX retired in Stage 11.1 US3.) |
 | `scripts/optimize_poster_layout.py` / `scripts/analyze_poster_layout.py` | none | none | Uses local proposal inputs, authors, and layout assets |
 | poster sequencing scripts under `scripts/` | none | none | Use local proposals and embeddings |
 | `scripts/build_ui_data.py` | none | none | Stage 6: builds the static-JSON data package consumed by the SvelteKit site under `site/` |
@@ -406,13 +406,13 @@ Pick the sequence that matches what you are trying to regenerate.
 
 Run these in order when rebuilding the main deliverable from upstream data:
 
-1. `ohbmcli fetch-abstracts` (authors are fetched inline; replaces the former `ingest` + `authors` pair)
-2. `ohbmcli enrich-abstracts` (replaces the former `analyze-figures` + `extract-claims` + `enrich` + `reference-metadata` quartet; one entry, per-component caches under `data/cache/{figure_analysis,claim_analysis,reference_metadata}`)
-3. `ohbmcli title-audit`
+1. `aacli fetch-abstracts` (authors are fetched inline; replaces the former `ingest` + `authors` pair)
+2. `aacli enrich-abstracts` (replaces the former `analyze-figures` + `extract-claims` + `enrich` + `reference-metadata` quartet; one entry, per-component caches under `data/cache/{figure_analysis,claim_analysis,reference_metadata}`)
+3. `aacli title-audit`
 4. one or more embedding commands such as `embed-minilm`, `embed-voyage`, or `embed-openai`
-5. `ohbmcli apply-published-stage2` if you want the published Voyage stage-2 space
-6. `ohbmcli semantic-analysis`, `cluster-benchmark`, `umap-plot`, or `compare-projections` for the cluster and projection products you want the UI to consume
-7. `ohbmcli analyze-matrix` (Stage 4 — produces the canonical `data/outputs/analysis/annotations__<state-key>.{parquet,sqlite}` rollup the Stage 6 site consumes)
+5. `aacli apply-published-stage2` if you want the published Voyage stage-2 space
+6. `aacli semantic-analysis`, `cluster-benchmark`, `umap-plot`, or `compare-projections` for the cluster and projection products you want the UI to consume
+7. `aacli analyze-matrix` (Stage 4 — produces the canonical `data/outputs/analysis/annotations__<state-key>.{parquet,sqlite}` rollup the Stage 6 site consumes)
 8. `scripts/build_ui_data.py` (Stage 6 — see the "Stage 6: UI" section above)
 
 ### Add Or Refresh A Cluster Family
@@ -420,14 +420,14 @@ Run these in order when rebuilding the main deliverable from upstream data:
 Use this when you already have the corpora and want a new cluster output:
 
 1. confirm the required embedding bundle exists under `data/outputs/experiments/embeddings/`
-2. run `ohbmcli semantic-analysis` for community-detection style outputs
-3. run `ohbmcli cluster-benchmark` for k-sweep style outputs
+2. run `aacli semantic-analysis` for community-detection style outputs
+3. run `aacli cluster-benchmark` for k-sweep style outputs
 4. optionally run `scripts/evaluate_label_systems.py` to compare a new cluster family against the submitter taxonomy
-5. point Stage 4 (`ohbmcli analyze-matrix`) or layout scripts at the new cluster directory
+5. point Stage 4 (`aacli analyze-matrix`) or layout scripts at the new cluster directory
 
 ### Generate Or Refresh A Layout Proposal
 
-> **The `layout/` package is parked as of Stage 5** (specs/007-package-reorg/) — poster-layout / sequencing / NOCD code is preserved verbatim under `src/ohbm2026/layout/` and `scripts/layout/`, but is not actively maintained. The instructions below remain accurate; only the script paths have moved (`scripts/optimize_poster_layout.py` → `scripts/layout/optimize_poster_layout.py`, etc.). Revive when a new organizer cycle needs poster work.
+> **The `layout/` package is parked as of Stage 5** (specs/007-package-reorg/) — poster-layout / sequencing / NOCD code is preserved verbatim under `src/abstractatlas/layout/` and `scripts/layout/`, but is not actively maintained. The instructions below remain accurate; only the script paths have moved (`scripts/optimize_poster_layout.py` → `scripts/layout/optimize_poster_layout.py`, etc.). Revive when a new organizer cycle needs poster work.
 
 Use this when you want a new organizer-facing proposal:
 
@@ -455,7 +455,7 @@ Use this when the data products already exist locally:
 
 ## End-To-End Workflow
 
-Use `ohbmcli` for the corpus, enrichment, embedding, clustering, and UI
+Use `aacli` for the corpus, enrichment, embedding, clustering, and UI
 pipeline. Use the script wrappers under `scripts/` for proposal generation,
 layout analysis, and sequencing experiments.
 
@@ -471,10 +471,10 @@ namespace.
 PYTHONPATH=src .venv/bin/python scripts/run_fetch_abstracts.py
 ```
 
-Equivalent through `ohbmcli`:
+Equivalent through `aacli`:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli fetch-abstracts
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli fetch-abstracts
 ```
 
 What it does:
@@ -511,7 +511,7 @@ Important behavior:
 PYTHONPATH=src .venv/bin/python scripts/run_fetch_withdrawn.py
 ```
 
-Or `ohbmcli fetch-withdrawn`. Output:
+Or `aacli fetch-withdrawn`. Output:
 `data/primary/abstracts_withdrawn.json`. Filter:
 `decision_status="Withdrawn" AND complete=true AND archived=false`.
 Same per-record shape as the accepted corpus. State-key namespace
@@ -527,7 +527,7 @@ Use this if the raw JSON already exists and you only need to rebuild or prune
 local figure links.
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli refresh-assets --reuse-existing-assets-only
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli refresh-assets --reuse-existing-assets-only
 ```
 
 ### 3. Enrich The Corpus
@@ -543,10 +543,10 @@ are REPLACED by this single entry (FR-014).
 PYTHONPATH=src .venv/bin/python scripts/run_enrich_abstracts.py
 ```
 
-Equivalent through `ohbmcli`:
+Equivalent through `aacli`:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli enrich-abstracts
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli enrich-abstracts
 ```
 
 What it does:
@@ -606,7 +606,7 @@ normalize obvious title issues such as leading bullets, wrapping quotes, and
 stray outer whitespace.
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli title-audit \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli title-audit \
   --input data/primary/abstracts.json \
   --output data/outputs/experiments/title_audit/title_modifications.json
 ```
@@ -669,7 +669,7 @@ Single-model subcommands (`embed-voyage`, `embed-minilm`, `embed-openai`,
 Composing multi-component recipes downstream:
 
 ```python
-from ohbm2026.neuroscape import compose_recipe
+from abstractatlas.neuroscape import compose_recipe
 manuscript = compose_recipe(
     ["title", "introduction", "methods", "results", "conclusion"],
     model_key="voyage",
@@ -689,13 +689,13 @@ Cost ballpark for the full 30-bundle matrix at fresh-cache: ~$1 USD
 Use this when you have a compatible Voyage stage-1 bundle.
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli apply-published-stage2
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli apply-published-stage2
 ```
 
 #### Train a local stage-2 model
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-stage2
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli embed-stage2
 ```
 
 ### 7. Build Semantic Analysis And Cluster Outputs
@@ -703,14 +703,14 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli embed-stage2
 Community detection over an embedding bundle:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli semantic-analysis \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli semantic-analysis \
   --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published
 ```
 
 Clustering benchmark over an embedding bundle:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli cluster-benchmark \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli cluster-benchmark \
   --embeddings-dir data/outputs/experiments/embeddings/voyage_stage2_published \
   --output-dir data/outputs/experiments/clustering_benchmark__<state-key>
 ```
@@ -718,7 +718,7 @@ PYTHONPATH=src .venv/bin/python -m ohbm2026.cli cluster-benchmark \
 To benchmark a claims-only bundle around `25-30` clusters:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli cluster-benchmark \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli cluster-benchmark \
   --embeddings-dir data/outputs/experiments/embeddings/minilm_claims \
   --output-dir data/outputs/experiments/clustering_benchmark_claims_25_30__<state-key> \
   --k-min 25 \
@@ -742,9 +742,9 @@ PYTHONPATH=src .venv/bin/python scripts/evaluate_label_systems.py \
 Projection outputs:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli umap-plot
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli compare-projections
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli optimize-projections
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli umap-plot
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli compare-projections
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli optimize-projections
 ```
 
 ### 7.5 Stage 4 Analysis Matrix (`analyze-matrix`)
@@ -776,7 +776,7 @@ domain embedding, so voyage/minilm/openai/pubmedbert are auto-skipped
 for the `neuroscape_clusters` kind):
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-matrix
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli analyze-matrix
 ```
 
 Run without an OpenAI key (topic keywords come from a local
@@ -784,7 +784,7 @@ spaCy + c-TF-IDF pipeline; `Title`/`Description`/`Focus` are left
 empty):
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-matrix \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli analyze-matrix \
   --skip-llm-topics
 ```
 
@@ -792,14 +792,14 @@ Restrict to one model (faster iteration; produces 6 bundles + 1
 auto-skip event):
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-matrix \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli analyze-matrix \
   --models voyage
 ```
 
 Project a new abstract into an existing fitted UMAP bundle (US2):
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli analyze-umap-project \
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli analyze-umap-project \
   --fitted-bundle data/outputs/analysis/voyage_abstract/projections__<state-key>/ \
   --input-vectors path/to/new_vectors.npy \
   --algorithm native \
@@ -817,7 +817,7 @@ exact schemas.
 ### 8. Generate And Analyze Layout Proposals
 
 The stable route for proposal generation currently lives in the script wrappers
-under `scripts/`, not in `ohbmcli`.
+under `scripts/`, not in `aacli`.
 
 Generate a fresh proposal bundle:
 
@@ -894,7 +894,7 @@ relying on older baked-in defaults.
 
 ### 10. Build The Static UI
 
-The current latest delivery step is the **Atlas UI — SvelteKit site under `site/`**, fed by the Python data-package builder under `src/ohbm2026/ui_data/`. See the "Atlas UI" section near the top of this README for the canonical build recipe (`scripts/build_ui_data.py` then `pnpm dev` / `pnpm build`). The legacy `ohbmcli export-ui` / `build-ui` commands that wrote a hand-rolled HTML+JSON bundle into `data/outputs/exported-sites/ui-site__<state-key>/` have been removed.
+The current latest delivery step is the **Atlas UI — SvelteKit site under `site/`**, fed by the Python data-package builder under `src/abstractatlas/ui_data/`. See the "Atlas UI" section near the top of this README for the canonical build recipe (`scripts/build_ui_data.py` then `pnpm dev` / `pnpm build`). The legacy `aacli export-ui` / `build-ui` commands that wrote a hand-rolled HTML+JSON bundle into `data/outputs/exported-sites/ui-site__<state-key>/` have been removed.
 
 ### 11. Book Of Abstracts (Stage 11 + Stage 11.1)
 
@@ -935,7 +935,7 @@ uv pip install --python .venv/bin/python ".[abstracts_book]"
 Then invoke:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m ohbm2026.cli book --format pdf --sort poster_id
+PYTHONPATH=src .venv/bin/python -m abstractatlas.cli book --format pdf --sort poster_id
 ```
 
 Useful Stage 11.1 flags:
@@ -960,7 +960,7 @@ The deployed site lives at `abstractatlas.brainkb.org/ohbm2026/` (per spec 009-c
 
 If you already have raw abstracts:
 
-- rerun `ohbmcli enrich-abstracts` (per-component caches make it cheap; pass `--invalidate <component>` if a single model identifier changed)
+- rerun `aacli enrich-abstracts` (per-component caches make it cheap; pass `--invalidate <component>` if a single model identifier changed)
 - rerun `scripts/build_ui_data.py` to refresh the Stage 6 data package
 
 If you already have an enriched corpus and only changed UI code:
@@ -969,20 +969,20 @@ If you already have an enriched corpus and only changed UI code:
 
 If only one component model changed (e.g., new figure model):
 
-- rerun `ohbmcli enrich-abstracts --invalidate figures --figure-model-id <new>`
+- rerun `aacli enrich-abstracts --invalidate figures --figure-model-id <new>`
 - rerun `scripts/build_ui_data.py`
 
 If you already have embeddings but want new cluster evaluations:
 
 - rerun `cluster-benchmark`
 - optionally rerun `scripts/evaluate_label_systems.py`
-- optionally rerun `ohbmcli analyze-matrix` + `scripts/build_ui_data.py`
+- optionally rerun `aacli analyze-matrix` + `scripts/build_ui_data.py`
 
 If you specifically want to refresh the claims-based semantic lens:
 
 - rerun `embed-minilm --fields claims --output-name minilm_claims`
 - rerun `cluster-benchmark --embeddings-dir data/outputs/experiments/embeddings/minilm_claims --output-dir data/outputs/experiments/embeddings/minilm_claims/clustering_benchmark_25_30 --k-min 25 --k-max 30`
-- rerun `ohbmcli analyze-matrix` + `scripts/build_ui_data.py`
+- rerun `aacli analyze-matrix` + `scripts/build_ui_data.py`
 
 If you want to regenerate a proposal without touching the corpora:
 
@@ -996,63 +996,63 @@ If you want to rerun sequencing experiments on an existing proposal:
 
 ## Module Layout
 
-- `src/ohbm2026/graphql_api.py`
+- `src/abstractatlas/graphql_api.py`
   - GraphQL access, env loading, batching, retries; canonical
     `INTROSPECTION_QUERY`; `fetch_abstract_ids`,
     `fetch_withdrawn_ids`, `fetch_schema_introspection`
-- `src/ohbm2026/assets.py`
+- `src/abstractatlas/assets.py`
   - figure asset download/refresh (reuse-aware), normalization
     (`normalize_abstract` maps `program_code` → `poster_id` and
     flattens `program_sessions_submissions[]` →
     `program_sessions[]`), `fetch_content_batches` generator with
     per-batch + per-record callback hooks, `advance_record_state`
     state-machine validator
-- `src/ohbm2026/fetch_stage.py`
+- `src/abstractatlas/fetch_stage.py`
   - **Stage 1 orchestrator**. Entry point for
-    `ohbmcli fetch-abstracts` and `ohbmcli fetch-withdrawn`.
+    `aacli fetch-abstracts` and `aacli fetch-withdrawn`.
     Drives: introspection → schema diff (HARD / SOFT /
     INFORMATIONAL) → checkpoint lifecycle → batched fetch →
     atomic-write corpus + schema + provenance → delete checkpoint
     on success. The canonical reference for the per-stage
     contract (see [docs/per-stage-pattern.md](docs/per-stage-pattern.md))
-- `src/ohbm2026/schema_diff.py`
+- `src/abstractatlas/schema_diff.py`
   - tiered field-level schema-drift classifier
     (HARD / SOFT / INFORMATIONAL); pure functions, no I/O
-- `src/ohbm2026/exceptions.py`
+- `src/abstractatlas/exceptions.py`
   - typed cross-stage exception hierarchy rooted at
     `OhbmStageError(RuntimeError)`. Stage 1: `Stage1Error` →
     `SchemaContractError`, `CheckpointError`, `FigureFailureError`.
     Stage 2: `Stage2Error` → `EnrichmentError`, `CacheVersionError`,
     `ComponentFailureThresholdError`. `ProvenanceError` shared.
     Re-exports `GraphQLAPIError`.
-- `src/ohbm2026/artifacts.py`
+- `src/abstractatlas/artifacts.py`
   - shared path helpers (`build_schema_artifact_path`,
     `build_provenance_path`, `build_fetch_checkpoint_path`,
     `build_enrich_provenance_path`, `build_enrich_cache_path`,
     `PRIMARY_ABSTRACTS_PATH`, `PRIMARY_WITHDRAWN_ABSTRACTS_PATH`,
     `PRIMARY_ENRICHED_CORPUS_PATH`), state-key derivation
-- `src/ohbm2026/enrich_stage.py`
+- `src/abstractatlas/enrich_stage.py`
   - **Stage 2 orchestrator**. Entry point for
-    `ohbmcli enrich-abstracts`. Drives: backend discovery →
+    `aacli enrich-abstracts`. Drives: backend discovery →
     per-abstract figures + claims + references with per-component
     caching → atomic SQLite + zlib write → provenance write → optional
     Parquet export. The multi-component reference for the per-stage
     contract (see [docs/per-stage-pattern.md](docs/per-stage-pattern.md)).
-- `src/ohbm2026/enrich_storage.py`
+- `src/abstractatlas/enrich_storage.py`
   - SQLite + zlib I/O helper for Stage 2: `EnrichedCorpusWriter`
     (atomic temp→rename), `read_one_by_id`, `iter_enriched`,
     `corpus_metadata`. Stdlib only.
-- `src/ohbm2026/enrichment.py`
+- `src/abstractatlas/enrichment.py`
   - markdown conversion, figure analysis, claim extraction building
     blocks (wrapped by `enrich_stage.py`)
-- `src/ohbm2026/openalex.py`
+- `src/abstractatlas/openalex.py`
   - reference parsing and OpenAlex matching (wrapped by
     `enrich_stage.py`'s references component)
-- `src/ohbm2026/neuroscape.py`
+- `src/abstractatlas/neuroscape.py`
   - embeddings, stage-2 paths, semantic analysis, clustering, projections
-- `src/ohbm2026/ui_data/`
+- `src/abstractatlas/ui_data/`
   - Stage 6 static-JSON data-package builders (per-shard envelopes + cross-shard invariants + state-key discovery + reference link-check); CLI entry at `scripts/build_ui_data.py`. Consumed by the SvelteKit site under `site/`.
-- `src/ohbm2026/cli.py`
+- `src/abstractatlas/cli.py`
   - unified CLI entrypoint
 
 ## Main Outputs By Stage

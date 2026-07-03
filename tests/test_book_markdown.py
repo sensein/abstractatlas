@@ -12,7 +12,7 @@ _FIX = pathlib.Path(__file__).parent / "fixtures" / "book"
 
 
 def _load_book():
-    from ohbm2026.book.corpus import load_book
+    from abstractatlas.book.corpus import load_book
 
     return load_book(
         corpus_path=_FIX / "abstracts.json",
@@ -24,9 +24,9 @@ def _load_book():
 
 def _emit(outdir: pathlib.Path):
     try:
-        from ohbm2026.book.author_index import build_author_index
-        from ohbm2026.book.render_markdown import emit_book_md
-        from ohbm2026.book.sort import by_poster_id
+        from abstractatlas.book.author_index import build_author_index
+        from abstractatlas.book.render_markdown import emit_book_md
+        from abstractatlas.book.sort import by_poster_id
     except ImportError:
         return None
     book = _load_book()
@@ -128,10 +128,10 @@ class TestFigureResize(unittest.TestCase):
     def setUp(self) -> None:
         try:
             from dataclasses import replace
-            from ohbm2026.book.author_index import build_author_index
-            from ohbm2026.book.corpus import load_book
-            from ohbm2026.book.render_markdown import emit_book_md
-            from ohbm2026.book.sort import by_poster_id
+            from abstractatlas.book.author_index import build_author_index
+            from abstractatlas.book.corpus import load_book
+            from abstractatlas.book.render_markdown import emit_book_md
+            from abstractatlas.book.sort import by_poster_id
         except ImportError:
             self.skipTest("renderers not yet implemented")
         self.replace = replace
@@ -159,7 +159,7 @@ class TestFigureResize(unittest.TestCase):
         # confirms the operator is OK with up to 1000 px; the
         # effective cap is min(975, 1000) = 975.
         from PIL import Image as _Image
-        from ohbm2026.book.render_markdown import FIGURE_WIDTH_CAP
+        from abstractatlas.book.render_markdown import FIGURE_WIDTH_CAP
 
         with tempfile.TemporaryDirectory() as tmp:
             out = pathlib.Path(tmp)
@@ -173,7 +173,7 @@ class TestFigureResize(unittest.TestCase):
     def test_max_width_none_uses_default_cap(self) -> None:
         # Stage 12: max_image_width=None → use the default 975 px cap.
         from PIL import Image as _Image
-        from ohbm2026.book.render_markdown import FIGURE_WIDTH_CAP
+        from abstractatlas.book.render_markdown import FIGURE_WIDTH_CAP
 
         with tempfile.TemporaryDirectory() as tmp:
             out = pathlib.Path(tmp)
@@ -186,7 +186,7 @@ class TestFigureResize(unittest.TestCase):
         # Stage 12: max_image_width=5000 still caps at 975 px (the
         # operator-supplied value can only tighten the cap, never loosen).
         from PIL import Image as _Image
-        from ohbm2026.book.render_markdown import FIGURE_WIDTH_CAP
+        from abstractatlas.book.render_markdown import FIGURE_WIDTH_CAP
 
         with tempfile.TemporaryDirectory() as tmp:
             out = pathlib.Path(tmp)

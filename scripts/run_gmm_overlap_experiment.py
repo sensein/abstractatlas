@@ -9,8 +9,8 @@ from typing import Any
 import numpy as np
 from sklearn.mixture import GaussianMixture
 
-from ohbm2026.analyze.clusters import prepare_clustering_matrix
-from ohbm2026.analyze.storage import load_embedding_bundle
+from abstractatlas.analyze.clusters import prepare_clustering_matrix
+from abstractatlas.analyze.storage import load_embedding_bundle
 
 
 def build_parser() -> argparse.ArgumentParser:

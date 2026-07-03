@@ -23,10 +23,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Optional, Tuple
 
-from ohbm2026.atlas_hosting import uploader
-from ohbm2026.atlas_hosting.content_hash import derive_object_key, sha256_file
-from ohbm2026.atlas_hosting.r2_client import R2Settings
-from ohbm2026.exceptions import ArtifactDiscoveryError, ContentHashMismatchError
+from abstractatlas.atlas_hosting import uploader
+from abstractatlas.atlas_hosting.content_hash import derive_object_key, sha256_file
+from abstractatlas.atlas_hosting.r2_client import R2Settings
+from abstractatlas.exceptions import ArtifactDiscoveryError, ContentHashMismatchError
 
 # What build-atlas-package writes into --package-dir (all required).
 PACKAGE_FILES = ("neuroscape.parquet", "atlas.parquet", "neuroscape_vectors.parquet")
@@ -102,7 +102,7 @@ class _TempCwd(unittest.TestCase):
 class HappyPathTests(_TempCwd):
     def test_uploads_all_four_writes_manifest_and_channel_entry(self) -> None:
         client = FakeR2Client(exists={})
-        result = self._upload(client, command_line="ohbmcli upload-atlas-package")
+        result = self._upload(client, command_line="aacli upload-atlas-package")
         self.assertEqual(result.summary, {"uploaded": 4, "skipped": 0})
         self.assertEqual(len(client.uploaded), 4)
         self.assertEqual(set(result.channel_entry), ALL_LOGICAL)

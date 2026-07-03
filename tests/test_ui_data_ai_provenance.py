@@ -25,7 +25,7 @@ from tempfile import TemporaryDirectory
 
 import pyarrow.parquet as pq
 
-from ohbm2026.ui_data.formats import parquet_single
+from abstractatlas.ui_data.formats import parquet_single
 
 
 def _empty_envelope() -> dict:
