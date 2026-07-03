@@ -92,7 +92,7 @@ def _build_info(state_key: str = "abcd12345678") -> dict:
     return {
         "state_key": state_key,
         "code_revision": "deadbeef",
-        "command_line": "ohbmcli build-atlas-package",
+        "command_line": "aacli build-atlas-package",
         "seed": 0,
         "umap_state_key": "111111111111",
         "centroid_table_version": "ec7a69d7cccd",

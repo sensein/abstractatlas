@@ -102,7 +102,7 @@ class _TempCwd(unittest.TestCase):
 class HappyPathTests(_TempCwd):
     def test_uploads_all_four_writes_manifest_and_channel_entry(self) -> None:
         client = FakeR2Client(exists={})
-        result = self._upload(client, command_line="ohbmcli upload-atlas-package")
+        result = self._upload(client, command_line="aacli upload-atlas-package")
         self.assertEqual(result.summary, {"uploaded": 4, "skipped": 0})
         self.assertEqual(len(client.uploaded), 4)
         self.assertEqual(set(result.channel_entry), ALL_LOGICAL)

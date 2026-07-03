@@ -39,15 +39,13 @@ abstracts_book = [
 ]
 
 [project.scripts]
-# Canonical CLI (spec 027: ohbmcli → aacli).
+# Canonical CLI (spec 027: ohbmcli → aacli). Hard cutover — no `ohbmcli`
+# alias and no `ohbm2026` import shim: the old names are removed and fail
+# loudly (command-not-found / ModuleNotFoundError). The legacy per-stage
+# `ohbm-*` console scripts were also dropped (most pointed at modules moved
+# in the Stage-5 reorg); their functions remain importable via
+# `abstractatlas.*` and runnable as `aacli` subcommands.
 aacli = "abstractatlas.cli:main"
-# Deprecated alias — warns then delegates to aacli. Kept one transition
-# cycle; remove next release. (Spec 027 FR-003 / research R3.)
-ohbmcli = "abstractatlas.cli:_ohbmcli_deprecated_main"
-# The legacy per-stage `ohbm-*` console scripts were dropped in spec 027:
-# most already pointed at modules moved in the Stage-5 reorg
-# (ohbm2026.enrichment, ohbm2026.openalex). Their functions remain
-# importable via `abstractatlas.*` and runnable as `aacli` subcommands.
 
 [build-system]
 requires = ["setuptools>=69"]

@@ -17,15 +17,17 @@ green) + SC-003 (byte-identical published data).
 | Docs | README, CLAUDE.md, constitution naming refs | updated to `abstractatlas`/`aacli` (FR-012) |
 | Site test strings | `ohbm2026` refs in `site/src/**` tests | updated where they name the package (NOT the `ohbm2026` data/site-mode/route which is the source identity) |
 
-## Deprecated shims (one transition period)
+## Hard cutover — no shims (per requester)
 
-| Legacy | Behavior |
-|--------|----------|
-| `ohbmcli` entry point | prints "renamed to `aacli`" deprecation notice, then delegates to `aacli` |
-| `import ohbm2026` | thin shim re-exporting `abstractatlas` with a `DeprecationWarning`; labeled + follow-up to remove |
+| Legacy | Behavior after cutover |
+|--------|------------------------|
+| `ohbmcli` | removed from `[project.scripts]` → `command not found: ohbmcli` |
+| `import ohbm2026` | package dir gone + venv reinstalled → `ModuleNotFoundError: No module named 'ohbm2026'` |
 
-Shims MUST be labeled in code with root cause + removal follow-up
-(Constitution VI). Neither may partially work in a confusing way (FR-003).
+No deprecation shim is provided. Both fail loudly and immediately (FR-003 /
+SC-007) — never a silent or partial success. The venv is reinstalled
+(`uv pip uninstall ohbm2026 && uv pip install -e .`) so a previously
+pip-installed `ohbm2026` dist can't mask the cutover.
 
 ## NOT renamed (data identity — FR-004)
 

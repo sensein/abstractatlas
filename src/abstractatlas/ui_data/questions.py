@@ -12,7 +12,7 @@ helpers to:
   domain-facet axes that the UI's facet panel exposes.
 
 These helpers used to live in the legacy ``abstractatlas.ui.payload`` module
-that drove the static UI bundle written by ``ohbmcli export-ui``. Now
+that drove the static UI bundle written by ``aacli export-ui``. Now
 that the Stage 6 SvelteKit site has replaced that path, the helpers were
 extracted here and the legacy module retired.
 """

@@ -44,7 +44,7 @@ def _manifest() -> dict:
         "corpus": "neuroscape",
         "state_key": "abc123def456",
         "code_revision": "test",
-        "command_line": "ohbmcli build-atlas-package --semantic-index",
+        "command_line": "aacli build-atlas-package --semantic-index",
         "seed": 0,
         "model_id": "Xenova/all-MiniLM-L6-v2",
         "model_sha256": "deadbeef" * 8,

@@ -6,7 +6,7 @@ Spec: ``specs/015-neuroscape-context/`` —
 Exposed entry points:
 
 - :func:`build_parser` — returns the argparse parser the
-  top-level ``ohbmcli`` dispatches into. Subcommand name in the
+  top-level ``aacli`` dispatches into. Subcommand name in the
   parent CLI is ``build-atlas-package``.
 - :func:`main` — argv-driven dispatch. Returns the documented
   exit code (0 success, 2..7 per typed exception).
@@ -483,7 +483,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 7
 
-    command_line = " ".join(["ohbmcli", "build-atlas-package", *(argv or sys.argv[1:])])
+    command_line = " ".join(["aacli", "build-atlas-package", *(argv or sys.argv[1:])])
 
     try:
         ohbm_records, ohbm2026_state_key = load_ohbm_corpus(

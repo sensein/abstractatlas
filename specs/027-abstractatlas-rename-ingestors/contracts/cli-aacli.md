@@ -30,11 +30,11 @@ subcommand (SC-001).
 > surface that makes future sources first-class without new bespoke
 > subcommands.
 
-## Deprecation
+## Hard cutover (no deprecation)
 
-- `ohbmcli <args>` → stderr: `ohbmcli is deprecated; use 'aacli'. Delegating…`
-  then runs `aacli <args>`. Removed next cycle.
-- `python -m ohbm2026.cli` → shim module warns + delegates.
+- `ohbmcli` → removed; `command not found`.
+- `import ohbm2026` / `python -m ohbm2026.cli` → `ModuleNotFoundError: No module named 'ohbm2026'`.
+- The sole interface is `aacli` / `python -m abstractatlas.cli`.
 
 ## Verification
 

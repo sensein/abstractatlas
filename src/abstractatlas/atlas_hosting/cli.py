@@ -4,7 +4,7 @@ Spec: ``specs/020-cloudflare-r2-migration/`` —
 ``contracts/cli-upload-atlas-package.md`` +
 ``contracts/cli-compare-data-hosting.md``.
 
-Each subcommand exposes a ``build_*_parser`` (the top-level ``ohbmcli``
+Each subcommand exposes a ``build_*_parser`` (the top-level ``aacli``
 copies its actions in) and a ``*_main`` argv entry point returning the
 documented exit code. Typed Stage-20 failures map to distinct non-zero
 codes; secrets are never echoed.
@@ -40,7 +40,7 @@ _UPLOAD_EXIT_CODES: dict[type[BaseException], int] = {
 
 def build_upload_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ohbmcli upload-atlas-package",
+        prog="aacli upload-atlas-package",
         description=(
             "Upload a built atlas-package's parquets to Cloudflare R2 under "
             "content-addressed, immutable keys; emit a registry channel entry "
@@ -89,7 +89,7 @@ def upload_main(argv: list[str] | None = None) -> int:
     parser = build_upload_parser()
     args = parser.parse_args(argv)
 
-    command_line = " ".join(["ohbmcli", "upload-atlas-package", *(argv or sys.argv[1:])])
+    command_line = " ".join(["aacli", "upload-atlas-package", *(argv or sys.argv[1:])])
 
     try:
         settings = r2_client.load_settings(args.env_file)
@@ -117,7 +117,7 @@ def upload_main(argv: list[str] | None = None) -> int:
 
 def build_compare_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ohbmcli compare-data-hosting",
+        prog="aacli compare-data-hosting",
         description=(
             "Probe the Dropbox- and R2-served copies of each artifact for "
             "byte-parity, HTTP Range support, and CORS; write a pass/fail report."

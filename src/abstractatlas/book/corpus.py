@@ -40,7 +40,7 @@ def _load_json(path: pathlib.Path) -> dict | list:
     if not path.exists():
         raise BookBuildError(
             f"required input not found at {path}; "
-            "run `ohbmcli fetch-abstracts` first"
+            "run `aacli fetch-abstracts` first"
         )
     return json.loads(path.read_text(encoding="utf-8"))
 

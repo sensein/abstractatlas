@@ -3,7 +3,7 @@
 Spec: ``specs/015-neuroscape-context/`` — CA-008 + research R-009.
 
 The provenance file is the single audit record for an
-``ohbmcli build-atlas-package`` run; it MUST contain only repo-
+``aacli build-atlas-package`` run; it MUST contain only repo-
 relative paths so the bundle is portable to other machines (Principle
 VIII — no absolute or user-home paths anywhere in the record).
 

@@ -767,7 +767,7 @@ class ErrorContractTests(_RepoFixture):
             mock.patch.object(
                 enrich_stage,
                 "_load_cache_entry",
-                side_effect=__import__("ohbm2026").exceptions.CacheVersionError("stale cache"),
+                side_effect=__import__("abstractatlas").exceptions.CacheVersionError("stale cache"),
             )
         )
         with _StackedPatches(patches):

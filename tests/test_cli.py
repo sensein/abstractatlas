@@ -129,7 +129,7 @@ class CLITest(unittest.TestCase):
 
 
 class TestAuthorsSubcommandRemoved(unittest.TestCase):
-    """FR-024 — `ohbmcli authors` is REMOVED (no backward-compat alias).
+    """FR-024 — `aacli authors` is REMOVED (no backward-compat alias).
     Authors are now fetched inline by Stage 1 (FR-023)."""
 
     def test_authors_subcommand_is_not_a_known_choice(self) -> None:
@@ -138,7 +138,7 @@ class TestAuthorsSubcommandRemoved(unittest.TestCase):
 
 
 class TestIngestSubcommandRemoved(unittest.TestCase):
-    """T011 — `ohbmcli ingest` is REMOVED (no backward-compat alias).
+    """T011 — `aacli ingest` is REMOVED (no backward-compat alias).
     Per spec FR-014 + Clarifications session 2026-05-12.
 
     Hermetic safety net: we mock `cli.assets.main` so that, in red
@@ -154,7 +154,7 @@ class TestIngestSubcommandRemoved(unittest.TestCase):
 
 
 class TestFetchAbstractsSubcommand(unittest.TestCase):
-    """T011 — `ohbmcli fetch-abstracts` wires to fetch_stage.main.
+    """T011 — `aacli fetch-abstracts` wires to fetch_stage.main.
 
     Hermetic safety net: if `abstractatlas.fetch.stage` does not exist
     yet (red phase), the test fails on ImportError before any other
@@ -174,7 +174,7 @@ class TestFetchAbstractsSubcommand(unittest.TestCase):
 class TestLegacyEnrichmentSubcommandsRemoved(unittest.TestCase):
     """FR-014 — `enrich`, `analyze-figures`, `extract-claims`, and
     `reference-metadata` are REMOVED. Operators use
-    `ohbmcli enrich-abstracts` and `--invalidate <component>` for
+    `aacli enrich-abstracts` and `--invalidate <component>` for
     targeted refresh instead. No backward-compat alias.
 
     Hermetic safety net: we mock every legacy main so that in red
@@ -205,7 +205,7 @@ class TestLegacyEnrichmentSubcommandsRemoved(unittest.TestCase):
 
 
 class TestFetchWithdrawnSubcommand(unittest.TestCase):
-    """FR-022 — `ohbmcli fetch-withdrawn` is a distinct subcommand
+    """FR-022 — `aacli fetch-withdrawn` is a distinct subcommand
     that delegates to fetch_stage.main with --corpus-kind=withdrawn
     automatically appended."""
 

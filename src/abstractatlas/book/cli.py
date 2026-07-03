@@ -1,4 +1,4 @@
-"""CLI entry point for `ohbmcli book`.
+"""CLI entry point for `aacli book`.
 
 Orchestrates: corpus load → sort → author index → emit markdown
 bundle → (optional) pandoc PDF → write provenance. Runs the system-
@@ -32,7 +32,7 @@ _VALID_STYLES = ("plain", "tufte")
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="ohbmcli book",
+        prog="aacli book",
         description="Compose a publication-quality book of all accepted abstracts.",
     )
     p.add_argument(
@@ -324,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     # Provenance.
-    command_line = " ".join(["ohbmcli", "book", *(argv if argv is not None else sys.argv[1:])])
+    command_line = " ".join(["aacli", "book", *(argv if argv is not None else sys.argv[1:])])
     try:
         write_provenance(
             book,

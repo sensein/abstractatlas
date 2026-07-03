@@ -175,8 +175,10 @@ things: (1) **renames** the component `ohbm2026`→`abstractatlas` (package
 `src/ohbm2026/`→`src/abstractatlas/` via `git mv` + import rewrite across
 ~86 files) and the CLI `ohbmcli`→**`aacli`** (module form
 `python -m abstractatlas.cli`; legacy `ohbm-*` scripts→`aa-*` or dropped),
-with `ohbmcli`/`import ohbm2026` kept as **labeled deprecation shims** for
-one cycle; and (2) **generalizes ingestion** into a pluggable architecture —
+with `ohbmcli`/`import ohbm2026` **removed outright (hard cutover, no
+shims)** — they fail loudly (`command not found` / `ModuleNotFoundError`);
+the venv is reinstalled so a prior pip-installed `ohbm2026` dist doesn't
+mask it; and (2) **generalizes ingestion** into a pluggable architecture —
 a NEW `src/abstractatlas/ingest/` subpackage with an `Ingestor` ABC
 (`pull`→`normalize`→`validate`), a runtime-discoverable `registry`
 (never a hardcoded source list — CA-007), and a standardized **LinkML
@@ -199,7 +201,7 @@ fidelity. Companions: `research.md`, `data-model.md`,
 `contracts/{rename-map,ingestor-interface,ingest-schema.linkml.yaml,cli-aacli}.md`,
 `quickstart.md`. NOTE for future sessions: after this ships, the package is
 `abstractatlas` and the CLI is `aacli` — update muscle memory (`ohbmcli`
-still works via a deprecation shim slated for removal).
+and `import ohbm2026` are GONE; they error, no shim).
 
 The immediately-prior Stage 26 plan is at
 `specs/026-neuroscape-year-density/plan.md`. Stage 26 (Track A,

@@ -102,7 +102,7 @@ error rather than silently passed downstream.
 ### Edge Cases
 
 - **Naming divergence for preserved data**: the package is `abstractatlas` but the published parquet keeps the name `ohbm2026.parquet` (that source's data name). The system must tolerate — and clearly document — this intentional divergence rather than "fix" the data name (which would force a re-publish).
-- **Legacy imports / command**: existing scripts, cron jobs, or muscle-memory using `ohbmcli` / `import ohbm2026` must fail with a clear pointer to the new name (or work via a clearly-labeled deprecated alias for one transition period), never a confusing partial success.
+- **Legacy imports / command**: existing scripts, cron jobs, or muscle-memory using `ohbmcli` / `import ohbm2026` fail loudly with the standard not-found error (hard cutover — the old names are removed), never a confusing partial success.
 - **State-keyed caches/checkpoints**: caches and checkpoints keyed by names that embed `ohbm2026` must remain readable so the rename does not silently invalidate expensive prior work.
 - **Source-type asymmetry**: a conference record has no DOI/journal; a literature record has no poster/session. The schema must make each set optional-by-source without letting a conference record masquerade as literature or vice versa.
 - **Two sources, one atlas**: an ingestor's records carry which source they came from, so downstream can attribute, filter, and de-duplicate across sources.
@@ -114,7 +114,7 @@ error rather than silently passed downstream.
 
 - **FR-001**: The Python package MUST be renamed `ohbm2026` → `abstractatlas`, and all internal imports, references, and docs updated to the new name.
 - **FR-002**: The canonical CLI MUST be renamed `ohbmcli` → `aacli`; every existing subcommand MUST remain available with identical behavior and options.
-- **FR-003**: Legacy entry points (`ohbmcli`, `import ohbm2026`) MUST either be removed with a precise "renamed to …" error or provided as an explicitly-deprecated alias for one transition period; they MUST NOT partially work in a confusing way.
+- **FR-003**: Legacy entry points (`ohbmcli`, `import ohbm2026`) MUST be removed outright (hard cutover — no deprecation shims); using them MUST fail loudly with the standard not-found error (`command not found` / `ModuleNotFoundError: No module named 'ohbm2026'`), never partially work in a confusing way.
 - **FR-004**: Existing on-disk data artifact paths, artifact/state-key naming, cache/checkpoint keys, and published data-package names (including `ohbm2026.parquet`) MUST be preserved so no data is regenerated and the live site requires no re-publish (byte-identical data).
 - **FR-005**: Ingestion MUST be organized as a pluggable architecture: a common **ingestor contract** (pull records from a source → normalize) with a runtime-discoverable registry of named ingestors.
 - **FR-006**: The two existing sources — the OHBM conference (Oxford Abstracts) and the PubMed/NeuroScape corpus — MUST be ported to become the first two ingestor instances behind the common contract, each reproducing its former normalized output exactly.
@@ -153,13 +153,13 @@ error rather than silently passed downstream.
 - **SC-004**: Both existing sources are expressed as named ingestors behind the common contract; porting them changed **zero** lines of downstream stage logic (measured by the diff touching only ingestor + rename code).
 - **SC-005**: 100% of records emitted by each ingestor validate against the LinkML ingest schema; a deliberately malformed record is rejected with a precise, source-attributed error (0 malformed records reach downstream).
 - **SC-006**: A maintainer can onboard a new source by implementing only the ingestor contract + registering it, with no edits to downstream stages — demonstrated by a documented "add an ingestor" guide and the two ports as worked examples.
-- **SC-007**: Using a legacy name (`ohbmcli` / `import ohbm2026`) yields a clear rename pointer or a labeled-deprecated alias — never a silent or partial success.
+- **SC-007**: Using a legacy name (`ohbmcli` / `import ohbm2026`) fails loudly and immediately with the standard not-found error — never a silent or partial success. (Hard cutover: the old names are gone.)
 
 ## Assumptions
 
 - "Foundation only": this change renames + establishes the ingestor architecture + LinkML ingest schema + ports the two existing sources. It does **not** add arXiv/bioRxiv/medRxiv or new-conference ingestors — those are follow-on specs enabled by this foundation.
 - Data continuity is paramount: on-disk artifact layout and published data-package names are preserved verbatim (including the historical `ohbm2026.parquet` name), so the rename is a code/CLI/package/docs change with no data regeneration or site re-publish.
 - The standardized LinkML ingest schema is designed to **capture the existing normalized shape** (so the ported OHBM output validates and downstream stays byte-identical), while being general enough to admit literature-index sources — it does not reshape already-published data.
-- A deprecated `ohbmcli` alias (and/or an `ohbm2026` import shim) may be provided for one transition period; the canonical, documented interface is `aacli` / `abstractatlas`.
+- Hard cutover: NO deprecation shims. `ohbmcli` and `import ohbm2026` are removed and fail loudly; the sole interface is `aacli` / `abstractatlas`. (The local venv must be reinstalled so a previously pip-installed `ohbm2026` dist is replaced by `abstractatlas`.)
 - Governance docs (constitution) contain naming references (`ohbmcli`, `src/ohbm2026/`, `data/abstracts.json`); updating those references is in scope for doc-sync, coordinated with the project's constitution-amendment process where required.
 - Downstream stages already treat the corpus generically enough that a standardized ingest contract can be introduced without changing their outputs for the existing sources.

@@ -1,6 +1,6 @@
 """Stage 15 atlas package (spec ``015-neuroscape-context``).
 
-Orchestrates the ``ohbmcli build-atlas-package`` pipeline: NeuroScape
+Orchestrates the ``aacli build-atlas-package`` pipeline: NeuroScape
 release loader → deterministic 2D + 3D UMAP fit → OHBM 2026 projection
 via ``umap.transform`` → k=20 neighbour index → palette assignment →
 quadtree blue-noise LOD backdrop (progressive tiers) →

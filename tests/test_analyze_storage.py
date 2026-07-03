@@ -42,7 +42,7 @@ class WriteAnalysisBundleTests(unittest.TestCase):
             "algorithm_config_canonical_json": "{}",
             "cache_key": "sha256:deadbeef",
             "code_revision": "0" * 40,
-            "command": "ohbmcli analyze-matrix",
+            "command": "aacli analyze-matrix",
             "seed": 42,
             "started_at": "2026-05-14T00:00:00Z",
             "completed_at": "2026-05-14T00:00:01Z",

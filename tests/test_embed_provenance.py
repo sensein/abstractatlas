@@ -24,7 +24,7 @@ def _good_payload(**overrides) -> dict:
         "corpus_state_key": "f0c51e80dc0e",
         "corpus_source_path": "data/primary/abstracts_enriched.sqlite",
         "corpus_source_hash": "0" * 64,
-        "command_line": "ohbmcli embed-matrix --models minilm --components title",
+        "command_line": "aacli embed-matrix --models minilm --components title",
         "code_revision": "1234567",
         "seed": None,
         "started_at": "2026-05-14T00:00:00Z",

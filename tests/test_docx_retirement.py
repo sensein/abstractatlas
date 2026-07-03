@@ -1,7 +1,7 @@
 """T031 — DOCX export retired in Stage 11.1 US3.
 
 Contract:
-- `ohbmcli book --format docx` exits non-zero with a stderr message
+- `aacli book --format docx` exits non-zero with a stderr message
   naming the surviving formats (`--format md`, `--format pdf`).
 - No `book.docx` is written.
 - The `--format docx` choice is rejected at the argparse layer or

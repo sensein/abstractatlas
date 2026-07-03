@@ -214,7 +214,7 @@ def _debug_main(argv: list[str] | None = None) -> int:
         description=(
             "Render a single abstract in isolation, populating the "
             "per-abstract PDF cache. Useful for diagnosing a chunk "
-            "that fails inside the full ohbmcli book pipeline."
+            "that fails inside the full aacli book pipeline."
         ),
     )
     p.add_argument("--corpus", default="data/primary/abstracts.json")

@@ -1,6 +1,6 @@
 """Stage 1 orchestrator — fetch abstracts + persist GraphQL schema.
 
-Replaces the legacy ``ohbmcli ingest`` invocation per FR-014. Calls
+Replaces the legacy ``aacli ingest`` invocation per FR-014. Calls
 out to ``graphql_api`` for upstream I/O, ``schema_diff`` for tiered
 drift detection, ``assets`` for the per-record batched fetch with
 checkpoint hooks, and ``artifacts`` for path derivation + state-key.

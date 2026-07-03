@@ -23,7 +23,7 @@ The flat `analyze.py` module was split into per-concern submodules:
 - `analyze.umap` — Stage 4 UMAP fit + `project_into_umap` (US2).
 - `analyze.rollup` — Canonical UI rollup writer (annotations.parquet
   + sqlite).
-- `analyze.stage` — Stage 4 orchestrator (`ohbmcli analyze-matrix`).
+- `analyze.stage` — Stage 4 orchestrator (`aacli analyze-matrix`).
 
 **No package-level re-exports.** Per spec clarification Session
 2026-05-15 Q2, every caller imports from the explicit submodule that

@@ -597,7 +597,7 @@ class Stage19SemanticError(Stage15Error):
 
     Subclasses `Stage15Error` so any existing Stage-15 catcher catches
     Stage-19 errors too — the semantic-index step is wired into the
-    `ohbmcli build-atlas-package` orchestrator that Stage 15 established.
+    `aacli build-atlas-package` orchestrator that Stage 15 established.
     """
 
 

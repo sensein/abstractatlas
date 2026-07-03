@@ -43,20 +43,22 @@ option) — rejected by the requester for continuity.
 
 ## R3 — Legacy name policy (`ohbmcli`, `import ohbm2026`)
 
-**Decision**: `aacli` / `abstractatlas` are canonical. Provide a
-**deprecated shim** for one transition period: `ohbmcli` remains as an entry
-point that prints a clear "renamed to `aacli`" deprecation notice then
-delegates; `import ohbm2026` resolves via a thin shim module that re-exports
-`abstractatlas` with a `DeprecationWarning`. Both are labeled and slated for
-removal.
+**Decision (updated per requester): HARD CUTOVER — no deprecation shims.**
+`aacli` / `abstractatlas` are the sole names. The `ohbmcli` entry point and
+any `ohbm2026` import path are removed; using them fails loudly with the
+standard not-found error (`command not found: ohbmcli` /
+`ModuleNotFoundError: No module named 'ohbm2026'`). The venv is reinstalled
+(`uv pip uninstall ohbm2026 && uv pip install -e .`) so a previously
+pip-installed `ohbm2026` dist doesn't mask the cutover.
 
-**Rationale**: Avoids silently breaking existing scripts/cron while making
-the new name canonical (FR-003, SC-007, edge case). A hard break is also
-acceptable per the spec, but a labeled shim is lower-friction and still
-loud. The shim carries a root-cause comment + follow-up per Constitution VI.
+**Rationale**: The requester opted for a clean break — no shim to maintain
+or later remove. A bare not-found error is loud and unambiguous (satisfies
+FR-003/SC-007's "never silent/partial"), and there is no external
+consumer that needs a grace period.
 
-**Alternatives considered**: hard removal with an error — acceptable but
-more disruptive; chose the shim as the default, removable next cycle.
+**Alternatives considered**: a labeled deprecation shim (`ohbmcli` warns +
+delegates; `ohbm2026` meta-path redirect) — implemented first, then
+**removed** at the requester's direction in favour of the hard cutover.
 
 ## R4 — Ingestor contract: wrap, don't rewrite
 

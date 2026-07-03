@@ -5,7 +5,7 @@ machine) + ``contracts/cli-build-atlas-package.md`` (output paths +
 provenance schema) + R-009 (typed-exception subtree).
 
 The orchestrator is the single function the
-``ohbmcli build-atlas-package`` CLI wraps. It:
+``aacli build-atlas-package`` CLI wraps. It:
 
 1. Discovers + SHA-checks the NeuroScape v1.0.1 release inputs.
 2. Loads the article + cluster tables.
@@ -107,7 +107,7 @@ class AtlasBuildConfig:
     skip_link_check: bool = False
     link_check_rate: float = 3.0
     code_revision: str = "unknown"
-    command_line: str = "ohbmcli build-atlas-package"
+    command_line: str = "aacli build-atlas-package"
     titles_index_bin: bytes = field(default=b"")
     titles_index_meta: Mapping[str, Any] = field(default_factory=dict)
     # When set, the orchestrator records this ISO-8601 UTC string in

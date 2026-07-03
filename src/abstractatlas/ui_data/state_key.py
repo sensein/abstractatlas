@@ -80,7 +80,7 @@ def discover_rollup_state_key(analysis_root: Path) -> str:
     if not candidates:
         raise Stage6BuildError(
             f"No annotations__*.sqlite rollups found under {analysis_root}; "
-            "run Stage 4 (`ohbmcli analyze-matrix`) first."
+            "run Stage 4 (`aacli analyze-matrix`) first."
         )
     if len(candidates) > 1:
         names = ", ".join(sorted({c[1] for c in candidates}))

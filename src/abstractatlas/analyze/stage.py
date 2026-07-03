@@ -1,4 +1,4 @@
-"""Stage 4 orchestrator — `ohbmcli analyze-matrix`.
+"""Stage 4 orchestrator — `aacli analyze-matrix`.
 
 Iterates the `(model, input_source, analysis_kind)` matrix, dispatches
 to per-kind runners, writes per-bundle artifacts atomically, and emits
@@ -7,7 +7,7 @@ sqlite}` rollup.
 
 Per spec FR-001 / FR-002 / FR-003 / FR-014 / FR-017:
 
-- Single canonical CLI entrypoint (`ohbmcli analyze-matrix`).
+- Single canonical CLI entrypoint (`aacli analyze-matrix`).
 - Default matrix is **34 bundles** (5 models × 2 inputs × 4 kinds, with
   `neuroscape_clusters` auto-skipped for minilm/openai/pubmedbert
   because the published Stage-2 lens is Voyage-dim-specific).
@@ -365,7 +365,7 @@ def _run_entries_parallel(
     # internal thread pool should be 1. Setting these env vars BEFORE
     # the `Parallel` call ensures the loky-spawned subprocesses inherit
     # them. Existing user-set values win (the explicit env-var prefix
-    # `OMP_NUM_THREADS=N PYTHONPATH=src ohbmcli …` still applies).
+    # `OMP_NUM_THREADS=N PYTHONPATH=src aacli …` still applies).
     if config.n_jobs != 1:
         for var in (
             "OMP_NUM_THREADS",
@@ -594,7 +594,7 @@ def _git_rev_parse_head() -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="ohbmcli analyze-matrix",
+        prog="aacli analyze-matrix",
         description="Stage 4 canonical analysis & annotation matrix.",
     )
     p.add_argument("--env-file", type=Path, default=Path(".env"))
@@ -692,7 +692,7 @@ def main(argv: list[str] | None = None) -> int:
         sqlite_path=args.rollup_path.with_suffix(".sqlite") if args.rollup_path else None,
         neuroscape_centroids_dir=args.neuroscape_centroids,
         code_revision=args.code_revision or _git_rev_parse_head(),
-        command_line=" ".join(sys.argv if argv is None else ["ohbmcli", "analyze-matrix"] + list(argv)),
+        command_line=" ".join(sys.argv if argv is None else ["aacli", "analyze-matrix"] + list(argv)),
         env_file=args.env_file,
         dry_run=args.dry_run,
         n_jobs=args.n_jobs,

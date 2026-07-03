@@ -26,7 +26,7 @@ def _copy_actions(target: argparse.ArgumentParser, source: argparse.ArgumentPars
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ohbmcli",
+        prog="aacli",
         description="Unified CLI for OHBM 2026 ingest and enrichment",
         epilog=(
             f"Local artifacts are organized under {artifacts.INPUTS_ROOT}, "
@@ -196,7 +196,7 @@ def _run_analyze_umap_project(argv: list[str]) -> int:
         UnsupportedProjectionAlgorithm,
     )
 
-    parser = _argparse.ArgumentParser(prog="ohbmcli analyze-umap-project")
+    parser = _argparse.ArgumentParser(prog="aacli analyze-umap-project")
     parser.add_argument("--fitted-bundle", type=str, required=True)
     parser.add_argument("--input-vectors", type=str, required=True)
     parser.add_argument(
@@ -243,20 +243,6 @@ def _run_refresh_assets(argv: list[str]) -> int:
     if "--refresh-assets-from-existing-db" not in argv:
         argv = list(argv) + ["--refresh-assets-from-existing-db"]
     return assets.main(argv)
-
-
-def _ohbmcli_deprecated_main(argv: list[str] | None = None) -> int:
-    """Deprecated entry point: `ohbmcli` was renamed to `aacli` (spec 027).
-
-    Warns loudly on stderr, then delegates to :func:`main` so existing
-    scripts keep working for one transition cycle. Remove next release.
-    FOLLOW-UP: drop the `ohbmcli` entry in pyproject.toml [project.scripts].
-    """
-    print(
-        "ohbmcli is deprecated and will be removed; use 'aacli'. Delegating…",
-        file=sys.stderr,
-    )
-    return main(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
