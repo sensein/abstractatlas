@@ -11,6 +11,13 @@ This document is the companion to `specs/027-multi-source-foundation/`. That
 spec covers one slice (the ingest seam); this one covers where the whole system
 stands and what order the remaining work should happen in.
 
+> **Near-term objective (owner, 2026-07-28)**: *better flexibility and stability
+> of adding new sources and overlapping them.* A tiered service architecture is
+> the eventual destination (see D3), but it is explicitly not the current job.
+> Every arc below is prioritized against that objective — which is why Arc 0
+> (stability) and Arc A′ (adding sources) come before Arc B (overlapping them),
+> and why Arcs C–F wait.
+
 ---
 
 ## 1. Current state
@@ -114,20 +121,25 @@ recommendation is mine.
   evidence-depth signal, and surfacing it prevents the UI from presenting a
   cheaply-extracted claim and a tool-verified one as equally solid.
 
-### D3 — Static artifacts, or a service?
+### D3 — Static artifacts, or a service? — **DECIDED: tiered service, eventually**
 
-- The architecture's quiet superpower is zero infrastructure: static
-  content-addressed artifacts on gh-pages, queried in-browser by range fetch.
-  #66's asks (downloadable subgraphs, lab/personal graphs, agent/skill access)
-  create pressure toward a queryable backend.
-- **Recommendation: stay static as long as possible.** Ship knowledge-graph
-  tables in the same range-fetchable parquet layout and publish the URL +
-  schema as a documented data contract, so external consumers (structsense,
-  MCP servers, NeuroWiki, MeetGraph, lokf) fetch the same bytes the UI does.
-  "Download part of the graph into a local system" is *better* served by
-  immutable content-addressed files than by an API. Introduce a service only
-  when write-back or per-user personalization genuinely demands it — and when it
-  comes, let it wrap the artifacts rather than replace them.
+- **Owner's call (2026-07-28)**: the project *will* move to a more tiered
+  service architecture. For the moment the priority is **flexibility and
+  stability of adding new sources and overlapping them**, not building the
+  service.
+- **What that means for design now**: keep shipping static, range-fetchable
+  artifacts — but treat the data layout as a **contract a service will later
+  serve**, not as a gh-pages implementation detail. Concretely:
+  - Keep every artifact addressed by `(source, state_key)` and content hash,
+    so a future service can serve the same bytes without a rebuild.
+  - Keep the read path behind loader functions rather than inlining URL
+    construction in components, so the transport can be swapped once.
+  - Don't add new gh-pages-specific assumptions (path-shaped coupling,
+    build-time-only data joins) that a service would have to unwind.
+- **Deliberately deferred**: the service itself, auth, write-back, and
+  per-user personalization. The static tier remains the source of truth until
+  the service arrives, and the service should *wrap* these artifacts rather
+  than replace them.
 
 ### D4 — When to collapse the frontend to one build? (see F3)
 
@@ -160,15 +172,26 @@ premise), and every later arc is a large refactor whose safety net this is.
 ### Arc A — Source seam *(landed, in review: PR #73)*
 Merge it. Note it is inert until A′.
 
-### Arc A′ — Make the seam live *(the real unlock)*
-1. Add the `source` dimension to `artifacts.py` paths and
-   `build_dependency_basis`; relax one-corpus-per-tree guards to one-per-source.
-2. Point the embed component-resolver at `AbstractRecord.sections`, and make a
-   requested-but-absent section a **loud error** instead of a silent empty
-   bundle.
-3. Route OHBM and NeuroScape ingest through their adapters; assert existing
-   artifacts stay byte-identical.
-4. Bundle the D5 rename here if approved.
+### Arc A′ — Make the seam live *(the real unlock; partly landed)*
+1. ✅ **Source dimension in the artifact layer.** `build_dependency_basis(source=)`
+   plus optional `source=` on the cache/output/input-snapshot path builders and a
+   new `build_primary_abstracts_path(source=)`. `normalize_source()` validates the
+   path segment. Omitting `source` reproduces today's exact paths *and* state keys
+   — pinned by tests, because otherwise every cached artifact would invalidate.
+2. ✅ **Sections-aware component resolution + schema-mismatch gate.** The Stage 3
+   resolver reads `AbstractRecord.sections` first, falling back to Oxford
+   `responses[]`. A component empty across the *whole* corpus now raises
+   `ComponentAssemblyError` instead of silently emitting a zero-row bundle
+   (`DEFAULT_COMPONENTS` were exempt from the partial-coverage gate, so a
+   section-vocabulary mismatch passed unnoticed). Per-record empties stay legal.
+3. ⬜ **Relax the one-corpus-per-tree guards** to one-per-source:
+   `analyze/stage.py` (`_resolve_corpus_state_key` raises on multiple state keys)
+   and `ui_data/state_key.py` (`discover_rollup_state_key` requires exactly one
+   rollup). These are correct single-corpus rails that become blockers once two
+   corpora share a tree.
+4. ⬜ **Route OHBM and NeuroScape ingest through their adapters**, asserting
+   existing artifacts stay byte-identical.
+5. ⬜ Bundle the D5 rename here **if approved** (not yet decided).
 **Exit criterion**: two corpora coexist in one data tree, and adding a third
 requires no edits to existing ingest modules.
 
