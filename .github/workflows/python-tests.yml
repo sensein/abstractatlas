@@ -50,18 +50,33 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          # This repo has no uv.lock / requirements*.txt, so the action's
+          # default glob matches nothing and warns that the cache key would
+          # never invalidate. Key it on pyproject.toml, which is where the
+          # `test` extra actually lives.
+          cache-dependency-glob: pyproject.toml
 
       - name: Create venv
         # Principle I: all Python runs through the repo-local .venv.
         run: uv venv --python 3.11 .venv
 
-      - name: Install test dependencies
-        # torch comes from the CPU wheel index; the default index would pull a
-        # multi-GB CUDA build for a single test that only needs the import.
+      # torch is installed FIRST, from the PyTorch CPU index alone, and the
+      # rest of the set comes from PyPI in a separate step. Do not collapse
+      # these into one `--extra-index-url` install: uv resolves each package
+      # from the first index that offers it (deliberate dependency-confusion
+      # protection), and the PyTorch index also serves an old `requests`
+      # (2.28.1), so a single-shot install fails to satisfy `requests>=2.31`.
+      # Two single-index steps avoid that without weakening index protections
+      # via `--index-strategy unsafe-best-match`.
+      - name: Install torch (CPU wheel)
         run: |
           uv pip install --python .venv/bin/python \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
-            ".[test]"
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch
+
+      - name: Install test dependencies
+        # torch is already satisfied, so this resolves from PyPI only.
+        run: uv pip install --python .venv/bin/python ".[test]"
 
       - name: Run test suite
         run: PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
