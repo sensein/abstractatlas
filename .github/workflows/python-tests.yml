@@ -1,0 +1,86 @@
+name: python-tests
+
+# Arc 0 of specs/027-multi-source-foundation — enforce the repo's invariants
+# remotely. Before this workflow, all eight CI workflows were UI/deploy/e2e:
+# the Python suite and the constitution lint ran only in an opt-in local
+# pre-commit hook (`git config core.hooksPath .githooks`), so a contributor
+# without the hook could land changes that break byte-identity, provenance, or
+# the immutable-evidence rules with nothing to catch it.
+#
+# Two jobs deliberately: `constitution` is seconds and needs no dependencies,
+# so it fails fast and cheap on the rules that are pure pattern checks;
+# `tests` installs the verified `.[test]` set and runs the whole suite.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  constitution:
+    name: constitution lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The lint inspects tracked paths and git state; a full clone keeps
+          # those checks meaningful rather than shallow-clone-dependent.
+          fetch-depth: 0
+
+      - name: Run constitution check (full sweep)
+        run: .specify/scripts/bash/constitution-check.sh --full
+
+  tests:
+    name: unittest suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          # This repo has no uv.lock / requirements*.txt, so the action's
+          # default glob matches nothing and warns that the cache key would
+          # never invalidate. Key it on pyproject.toml, which is where the
+          # `test` extra actually lives.
+          cache-dependency-glob: pyproject.toml
+
+      - name: Create venv
+        # Principle I: all Python runs through the repo-local .venv.
+        run: uv venv --python 3.11 .venv
+
+      # torch is installed FIRST, from the PyTorch CPU index alone, and the
+      # rest of the set comes from PyPI in a separate step. Do not collapse
+      # these into one `--extra-index-url` install: uv resolves each package
+      # from the first index that offers it (deliberate dependency-confusion
+      # protection), and the PyTorch index also serves an old `requests`
+      # (2.28.1), so a single-shot install fails to satisfy `requests>=2.31`.
+      # Two single-index steps avoid that without weakening index protections
+      # via `--index-strategy unsafe-best-match`.
+      - name: Install torch (CPU wheel)
+        run: |
+          uv pip install --python .venv/bin/python \
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch
+
+      - name: Install test dependencies
+        # torch is already satisfied, so this resolves from PyPI only.
+        run: uv pip install --python .venv/bin/python ".[test]"
+
+      - name: Run test suite
+        run: PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
+
+      - name: Report Python version
+        if: always()
+        run: .venv/bin/python --version

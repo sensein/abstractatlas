@@ -13,6 +13,14 @@ data/outputs/
 # artifact root, not for source-tree package data.
 !src/ohbm2026/data/
 !src/ohbm2026/data/**
+# ...but that negation is broad enough to re-include build cruft inside the
+# package-data dir, which the global `__pycache__/` rule above would otherwise
+# have caught. Re-ignore it here (last matching pattern wins) so importing
+# `ohbm2026.data` never leaves untracked bytecode behind (Principle II —
+# generated files are never committed).
+src/ohbm2026/data/__pycache__/
+src/ohbm2026/data/**/__pycache__/
+src/ohbm2026/data/**/*.py[cod]
 .cache/
 .matplotlib/
 export/
