@@ -353,7 +353,26 @@ def run_single_bundle(
     present_count = len(ids_present)
     missing_count = len(missing_ids)
 
-    # 2. Coverage gate (FR-007).
+    # 2. Schema-mismatch gate (Arc A'.2 — specs/027-multi-source-foundation).
+    #
+    # A component that is empty on EVERY record is not partial coverage;
+    # it means the requested component does not exist in this corpus's
+    # section vocabulary at all (e.g. asking a source whose sections are
+    # named "Background"/"Approach" for "methods"). The
+    # DEFAULT_COMPONENTS exemption immediately below would let that pass
+    # silently and emit a zero-row bundle, so this case is checked FIRST
+    # and fails loudly (Principle VI/VII). Per-record empties remain
+    # legitimate — not every abstract has every section.
+    if total_count > 0 and present_count == 0:
+        raise ComponentAssemblyError(
+            f"schema mismatch: component {component!r} is empty on all "
+            f"{total_count} records of corpus {corpus_state_key!r}. The corpus "
+            "does not provide this component — check the source's section "
+            "vocabulary (AbstractRecord.sections / Oxford question_name) or "
+            "drop the component from --components."
+        )
+
+    # 3. Coverage gate (FR-007).
     #
     # DEFAULT_COMPONENTS (title, introduction, methods, results,
     # conclusion, claims) are allowed to have missing rows silently —

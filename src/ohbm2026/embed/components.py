@@ -12,7 +12,7 @@ The component recipes are documented in
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from ohbm2026.enrich.text import html_to_markdown
 
@@ -45,26 +45,45 @@ def _normalize_whitespace(value: str) -> str:
     return _WHITESPACE_RE.sub(" ", (value or "")).strip()
 
 
+def _render_section_value(value: str) -> str:
+    if not value or not value.strip():
+        return ""
+    # The enrichment helper already handles HTML→markdown for Oxford
+    # Abstracts payloads; reuse it for consistency across stages (and
+    # for any source whose section bodies carry markup).
+    return _normalize_whitespace(html_to_markdown(value))
+
+
 def _section_text(record: dict, component: str) -> str:
     """Return the prose text for a section component.
 
-    Pulls from `record["responses"]` matching `question_name` to the
-    requested component (case-insensitive). Runs Stage 2's HTML →
-    markdown conversion so that downstream embeddings see plain
-    text, not raw HTML.
+    Resolves against two record shapes, in this order (Arc A'.2 —
+    specs/027-multi-source-foundation):
+
+    1. ``record["sections"]`` — the canonical `AbstractRecord` open
+       section mapping, which any source can populate with its own
+       section vocabulary.
+    2. ``record["responses"]`` — the Oxford Abstracts shape, matched on
+       ``question_name``.
+
+    Both matches are case-insensitive. When ``sections`` contains the key
+    it wins outright (even if empty), so a source can explicitly assert
+    "this section exists and is blank"; when the key is absent entirely,
+    resolution falls through to ``responses`` so the legacy OHBM path is
+    untouched.
     """
     target = component.strip().lower()
+
+    sections = record.get("sections")
+    if isinstance(sections, Mapping):
+        for name, value in sections.items():
+            if isinstance(name, str) and name.strip().lower() == target:
+                return _render_section_value(value if isinstance(value, str) else "")
+
     for response in record.get("responses") or []:
         name = (response.get("question_name") or "").strip().lower()
         if name == target:
-            value = response.get("value") or ""
-            if not value.strip():
-                return ""
-            # The enrichment helper already handles HTML→markdown for
-            # Oxford Abstracts payloads; reuse it for consistency
-            # across stages.
-            markdown = html_to_markdown(value)
-            return _normalize_whitespace(markdown)
+            return _render_section_value(response.get("value") or "")
     return ""
 
 

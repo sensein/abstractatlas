@@ -82,6 +82,53 @@ def _normalized_strings(values: Iterable[str] | None) -> list[str]:
     return normalized
 
 
+# ---------------------------------------------------------------------------
+# Source scoping (Arc A'.1 — specs/027-multi-source-foundation FR-009)
+# ---------------------------------------------------------------------------
+#
+# A `source` names the corpus an artifact belongs to ("ohbm2026",
+# "biorxiv", ...), so two corpora can coexist in one data tree instead of
+# the historical one-corpus-per-tree assumption.
+#
+# BACK-COMPAT IS LOAD-BEARING: every existing artifact on disk was named
+# by the pre-source code. `source=None` therefore MUST reproduce the old
+# path verbatim, and MUST leave the dependency basis (hence the state
+# key) untouched — `build_dependency_basis` already drops None values, so
+# an omitted source contributes nothing to the hash. See
+# tests/test_artifacts_source_scope.py, which pins both guarantees.
+
+_SOURCE_FORBIDDEN = ("/", "\\", "\0")
+_SOURCE_RESERVED = {".", ".."}
+
+
+def normalize_source(source: str | None) -> str | None:
+    """Validate a source name for use as a single path segment.
+
+    Returns ``None`` unchanged (the unscoped, legacy case). Raises
+    ``ValueError`` for anything that would escape the artifact root or
+    produce an ambiguous path — a separator, a traversal component, or a
+    blank string (Principle VI: fail loudly rather than silently writing
+    outside the contract).
+    """
+    if source is None:
+        return None
+    candidate = str(source).strip()
+    if not candidate:
+        raise ValueError("source must be a non-empty name when provided")
+    for token in _SOURCE_FORBIDDEN:
+        if token in candidate:
+            raise ValueError(f"source {source!r} may not contain {token!r}")
+    if candidate in _SOURCE_RESERVED:
+        raise ValueError(f"source {source!r} is a reserved path component")
+    return candidate
+
+
+def _scoped(root: Path, source: str | None) -> Path:
+    """Return ``root`` (legacy) or ``root/<source>`` (scoped)."""
+    normalized = normalize_source(source)
+    return root if normalized is None else root / normalized
+
+
 def build_dependency_basis(
     *,
     input_sources: Iterable[str] | None = None,
@@ -91,7 +138,15 @@ def build_dependency_basis(
     options: Mapping[str, Any] | None = None,
     env_boundary: Iterable[str] | None = None,
     supersedes: str | None = None,
+    source: str | None = None,
 ) -> dict[str, Any]:
+    """Build the hashable dependency basis for a state key.
+
+    ``source`` (Arc A'.1) names the corpus this artifact derives from, so
+    two corpora produce distinct state keys even from otherwise-identical
+    inputs. Omitting it leaves the basis — and therefore every existing
+    state key — byte-identical, because None values are dropped below.
+    """
     basis: dict[str, Any] = {
         "input_sources": _normalized_strings(input_sources),
         "input_digest": str(input_digest).strip() if input_digest else None,
@@ -100,6 +155,7 @@ def build_dependency_basis(
         "options_digest": _stable_hash(options) if options else None,
         "env_boundary": _normalized_strings(env_boundary),
         "supersedes": str(supersedes).strip() if supersedes else None,
+        "source": normalize_source(source),
     }
     return {key: value for key, value in basis.items() if value not in (None, [], "")}
 
@@ -108,8 +164,26 @@ def build_state_key(dependency_basis: Mapping[str, Any], *, schema_version: str 
     return _stable_hash({"schema_version": schema_version, "dependency_basis": dict(dependency_basis)})
 
 
-def build_input_snapshot_path(source_name: str, state_key: str, *, suffix: str = ".json") -> Path:
-    return INPUTS_ROOT / f"{source_name}__{state_key}{suffix}"
+def build_input_snapshot_path(
+    source_name: str, state_key: str, *, suffix: str = ".json", source: str | None = None
+) -> Path:
+    """Path for an input snapshot.
+
+    ``source_name`` is the artifact's own name (e.g.
+    ``"abstracts_graphql"``); ``source`` is the optional corpus scope
+    (Arc A'.1). They are distinct concepts that unfortunately read
+    similarly — the scope nests, the name does not.
+    """
+    return _scoped(INPUTS_ROOT, source) / f"{source_name}__{state_key}{suffix}"
+
+
+def build_primary_abstracts_path(source: str | None = None) -> Path:
+    """Canonical normalized corpus path, optionally scoped to a source.
+
+    Unscoped returns :data:`PRIMARY_ABSTRACTS_PATH` exactly, so existing
+    call sites and on-disk corpora are untouched.
+    """
+    return _scoped(PRIMARY_ROOT, source) / "abstracts.json"
 
 
 def build_schema_artifact_path(state_key: str) -> Path:
@@ -139,14 +213,26 @@ def build_fetch_checkpoint_path(state_key: str) -> Path:
     return build_cache_path(FETCH_CHECKPOINT_WORKFLOW, "checkpoint", state_key)
 
 
-def build_cache_path(workflow: str, artifact_name: str, state_key: str, *, suffix: str = ".json") -> Path:
-    return CACHE_ROOT / workflow / f"{artifact_name}__{state_key}{suffix}"
+def build_cache_path(
+    workflow: str,
+    artifact_name: str,
+    state_key: str,
+    *,
+    suffix: str = ".json",
+    source: str | None = None,
+) -> Path:
+    """Resumable-cache path; ``source`` scopes the whole workflow namespace."""
+    return _scoped(CACHE_ROOT, source) / workflow / f"{artifact_name}__{state_key}{suffix}"
 
 
-def build_output_path(output_family: str, artifact_name: str, state_key: str) -> Path:
+def build_output_path(
+    output_family: str, artifact_name: str, state_key: str, *, source: str | None = None
+) -> Path:
+    """Output-artifact path; ``source`` nests inside the output family so
+    each family keeps one shape across corpora."""
     if output_family not in OUTPUT_FAMILIES:
         raise ValueError(f"Unsupported output family: {output_family}")
-    return OUTPUTS_ROOT / output_family / f"{artifact_name}__{state_key}"
+    return _scoped(OUTPUTS_ROOT / output_family, source) / f"{artifact_name}__{state_key}"
 
 
 def build_publish_path(site_name: str) -> Path:
